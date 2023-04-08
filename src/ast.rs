@@ -10,6 +10,26 @@ pub enum VarType {
     Boolean,
     Char,
     String,
+    Custom(Id),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PrimitiveVal {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+    Boolean(bool),
+    Char(char),
+    String(String),
+}
+impl From<PrimitiveVal> for Expr {
+    fn from(value: PrimitiveVal) -> Self {
+        Expr {
+            lhs: Exp::Term(Term::Factor(Factor::PrimitiveVal(value))),
+            rhs: None,
+        }
+    }
 }
 
 pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
@@ -99,9 +119,78 @@ pub fn str_to_cmp_op<'input>(lex: &Lexer<'input, Token<'input>>) -> CmpOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Id(String);
+pub struct Id(String);
 impl From<&str> for Id {
     fn from(value: &str) -> Self {
         Id(value.to_string())
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    VarDecl(VarDecl),
+    Block(Block),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PropertyName {
+    Id(Id),
+    String(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Destructure {
+    Id(Id),
+    Array(Vec<Destructure>),
+    Object(PropertyName, Option<Id>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarDecl {
+    pub scope_spec: ScopeSpecifier,
+    pub destructure: Destructure,
+    pub var_type: Option<VarType>,
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expr {
+    pub lhs: Exp,
+    pub rhs: Option<(CmpOp, Exp)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpBOp {
+    pub lhs: Term,
+    pub op: ExpOp,
+    pub rhs: Exp,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum Exp {
+    Term(Term),
+    BOp(Box<ExpBOp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermBOp {
+    pub lhs: Term,
+    pub op: TermOp,
+    pub rhs: Term,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum Term {
+    Factor(Factor),
+    BOp(Box<TermBOp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Factor {
+    ParenExpr(Box<Expr>),
+    PrimitiveVal(PrimitiveVal),
+    Id(Id),
 }
