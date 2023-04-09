@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Block, Destructure, PrimitiveVal, Stmt, VarDecl},
+    ast::{Block, Destructure, PrimitiveVal, Stmt, VarDecl, VarType},
     lexer::Token,
 };
 use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -15,24 +15,48 @@ fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     select! {
         Token::IntVal(i) => i
     }
-    .labelled("int")
+    .labelled("int value")
     .try_map(|str_num, span| i64::from_str(str_num).map_err(|e| Rich::custom(span, e)))
     .map(|i| PrimitiveVal::I64(i))
+}
+
+fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+    select! {
+        Token::FloatVal(f) => f
+    }
+    .labelled("int value")
+    .try_map(|str_num, span| f64::from_str(str_num).map_err(|e| Rich::custom(span, e)))
+    .map(|i| PrimitiveVal::F64(i))
+}
+
+fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+    int_parser().or(float_parser())
+}
+
+fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, VarType, extra::Err<Rich<'a, Token<'a>>>> {
+    just(Token::Colon)
+        .ignore_then(select! { Token::VarType(t) => t })
+        .labelled("type declaration")
 }
 
 fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Stmt, extra::Err<Rich<'a, Token<'a>>>> {
     let var_decl = select! { Token::ScopeSpecifier(ss) => ss }
+        // TODO: This should be a destructure
         .then(select! {
             Token::Id(id) => id
         })
+        .then(type_decl_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
-        .then(int_parser())
+        .then(primitive_val_parser())
         .then_ignore(just(Token::StmtEnd))
-        .map(|((scope_spec, id), val)| VarDecl {
+        .map(|(((scope_spec, id), var_type), val)| VarDecl {
             scope_spec,
             destructure: Destructure::Id(id.into()),
-            var_type: None,
+            var_type,
             expr: val.into(),
         })
         .map(|vd| Stmt::VarDecl(vd));

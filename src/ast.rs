@@ -22,6 +22,8 @@ pub enum PrimitiveVal {
     Boolean(bool),
     Char(char),
     String(String),
+    Array(ArrayVal),
+    Struct(StructVal),
 }
 impl From<PrimitiveVal> for Expr {
     fn from(value: PrimitiveVal) -> Self {
@@ -31,6 +33,12 @@ impl From<PrimitiveVal> for Expr {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayVal(pub Vec<PrimitiveVal>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructVal(pub Vec<(PropertyName, PrimitiveVal)>);
 
 pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
     let type_str = lex.slice();
