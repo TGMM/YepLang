@@ -27,9 +27,22 @@ fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     .map(|f| PrimitiveVal::Float(f))
 }
 
+fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    select! {
+        Token::BoolVal(b) => b
+    }
+    .labelled("boolean value")
+    .map(|f| match f {
+        "true" => PrimitiveVal::Boolean(true),
+        "false" => PrimitiveVal::Boolean(false),
+        _ => unreachable!(),
+    })
+}
+
 fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    int_parser().or(float_parser())
+    int_parser().or(float_parser()).or(bool_parser())
 }
 
 fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -37,6 +50,11 @@ fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
     just(Token::Colon)
         .ignore_then(select! { Token::VarType(t) => t })
         .labelled("type declaration")
+}
+
+fn stmt_end_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Token<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    just(Token::StmtEnd).recover_with(via_parser(empty().to(Token::StmtEnd)))
 }
 
 fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -49,7 +67,7 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
         .then(type_decl_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
         .then(primitive_val_parser())
-        .then_ignore(just(Token::StmtEnd))
+        .then_ignore(stmt_end_parser())
         .map(|(((scope_spec, id), var_type), val)| VarDecl {
             scope_spec,
             destructure: Destructure::Id(id.into()),
