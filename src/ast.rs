@@ -119,7 +119,7 @@ pub fn str_to_cmp_op<'input>(lex: &Lexer<'input, Token<'input>>) -> CmpOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Id(String);
+pub struct Id(pub String);
 impl From<&str> for Id {
     fn from(value: &str) -> Self {
         Id(value.to_string())

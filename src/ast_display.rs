@@ -1,5 +1,5 @@
 use crate::{
-    ast::{CmpOp, ExpOp},
+    ast::{CmpOp, ExpOp, Id, ScopeSpecifier, TermOp, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -8,35 +8,36 @@ impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Token::Id(id) => write!(f, "{}", id),
-            Token::Str(_) => todo!(),
-            Token::FloatVal(_) => todo!(),
-            Token::IntVal(_) => todo!(),
-            Token::VarType(_) => todo!(),
-            Token::ScopeSpecifier(_) => todo!(),
+            Token::Str(string) => write!(f, "{}", string),
+            Token::Char(c) => write!(f, "{}", c),
+            Token::FloatVal(fl) => write!(f, "{}", fl),
+            Token::IntVal(i) => write!(f, "{}", i),
+            Token::VarType(vt) => write!(f, "{}", vt),
+            Token::ScopeSpecifier(ss) => ss.fmt(f),
             Token::ExpOp(exp_op) => exp_op.fmt(f),
-            Token::TermOp(_) => todo!(),
+            Token::TermOp(term_op) => term_op.fmt(f),
             Token::CmpOp(cmp_op) => cmp_op.fmt(f),
             Token::AssignmentEq => write!(f, "="),
             Token::StmtEnd => write!(f, ";"),
-            Token::Colon => todo!(),
-            Token::Comma => todo!(),
-            Token::LBracket => todo!(),
-            Token::RBracket => todo!(),
-            Token::LSqBracket => todo!(),
-            Token::RSqBracket => todo!(),
-            Token::LParen => todo!(),
-            Token::RParen => todo!(),
-            Token::Class => todo!(),
-            Token::Break => todo!(),
-            Token::Continue => todo!(),
-            Token::For => todo!(),
-            Token::If => todo!(),
-            Token::Else => todo!(),
-            Token::Do => todo!(),
-            Token::While => todo!(),
-            Token::Function => todo!(),
-            Token::Extends => todo!(),
-            Token::Error => write!(f, "invalid token"),
+            Token::Colon => write!(f, ":"),
+            Token::Comma => write!(f, ","),
+            Token::LBracket => write!(f, "{{"),
+            Token::RBracket => write!(f, "}}"),
+            Token::LSqBracket => write!(f, "["),
+            Token::RSqBracket => write!(f, "]"),
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::Class => write!(f, "class"),
+            Token::Break => write!(f, "break"),
+            Token::Continue => write!(f, "continue"),
+            Token::For => write!(f, "for"),
+            Token::If => write!(f, "if"),
+            Token::Else => write!(f, "else"),
+            Token::Do => write!(f, "do"),
+            Token::While => write!(f, "while"),
+            Token::Function => write!(f, "function"),
+            Token::Extends => write!(f, "extends"),
+            Token::Error => write!(f, "unknown token"),
         }
     }
 }
@@ -59,6 +60,47 @@ impl<'a> fmt::Display for ExpOp {
         match self {
             ExpOp::Add => write!(f, "+"),
             ExpOp::Sub => write!(f, "-"),
+        }
+    }
+}
+
+impl<'a> fmt::Display for TermOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TermOp::Mul => write!(f, "*"),
+            TermOp::Div => write!(f, "/"),
+            TermOp::Mod => write!(f, "%"),
+        }
+    }
+}
+
+impl<'a> fmt::Display for VarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VarType::I32 => write!(f, "i32"),
+            VarType::I64 => write!(f, "i64"),
+            VarType::F32 => write!(f, "f32"),
+            VarType::F64 => write!(f, "f64"),
+            VarType::Boolean => write!(f, "boolean"),
+            VarType::Char => write!(f, "char"),
+            VarType::String => write!(f, "string"),
+            VarType::Custom(cs) => write!(f, "{}", cs),
+        }
+    }
+}
+
+impl<'a> fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl<'a> fmt::Display for ScopeSpecifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScopeSpecifier::Var => write!(f, "var"),
+            ScopeSpecifier::Const => write!(f, "const"),
+            ScopeSpecifier::Let => write!(f, "let"),
         }
     }
 }

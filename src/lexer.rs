@@ -8,8 +8,14 @@ use logos::Logos;
 pub enum Token<'input> {
     #[regex(r#"[\p{L}_][\p{L}\d_]*"#)]
     Id(&'input str),
-    #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#)]
+    #[regex(r#""(?:[^"\\]|\\t|\\u|\\n|\\")*""#)]
     Str(&'input str),
+    // This should be '(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)' but the regex
+    // engine does not support it.
+    #[regex(
+        r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|\\n|\\r|\\'|\\\\)'"#
+    )]
+    Char(&'input str),
     #[regex(r#"[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?"#)]
     FloatVal(&'input str),
     #[regex(r#"[-+]?\d+"#, priority = 2)]
