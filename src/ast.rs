@@ -14,19 +14,17 @@ pub enum VarType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PrimitiveVal {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
+pub enum PrimitiveVal<'input> {
+    Int(&'input str),
+    Float(&'input str),
     Boolean(bool),
     Char(char),
     String(String),
-    Array(ArrayVal),
-    Struct(StructVal),
+    Array(ArrayVal<'input>),
+    Struct(StructVal<'input>),
 }
-impl From<PrimitiveVal> for Expr {
-    fn from(value: PrimitiveVal) -> Self {
+impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
+    fn from(value: PrimitiveVal<'input>) -> Self {
         Expr {
             lhs: Exp::Term(Term::Factor(Factor::PrimitiveVal(value))),
             rhs: None,
@@ -35,10 +33,10 @@ impl From<PrimitiveVal> for Expr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayVal(pub Vec<PrimitiveVal>);
+pub struct ArrayVal<'input>(pub Vec<PrimitiveVal<'input>>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StructVal(pub Vec<(PropertyName, PrimitiveVal)>);
+pub struct StructVal<'input>(pub Vec<(PropertyName, PrimitiveVal<'input>)>);
 
 pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
     let type_str = lex.slice();
@@ -135,14 +133,14 @@ impl From<&str> for Id {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Block {
-    pub stmts: Vec<Stmt>,
+pub struct Block<'input> {
+    pub stmts: Vec<Stmt<'input>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
-    VarDecl(VarDecl),
-    Block(Block),
+pub enum Stmt<'input> {
+    VarDecl(VarDecl<'input>),
+    Block(Block<'input>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -159,46 +157,46 @@ pub enum Destructure {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarDecl {
+pub struct VarDecl<'input> {
     pub scope_spec: ScopeSpecifier,
     pub destructure: Destructure,
     pub var_type: Option<VarType>,
-    pub expr: Expr,
+    pub expr: Expr<'input>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Expr {
-    pub lhs: Exp,
-    pub rhs: Option<(CmpOp, Exp)>,
+pub struct Expr<'input> {
+    pub lhs: Exp<'input>,
+    pub rhs: Option<(CmpOp, Exp<'input>)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExpBOp {
-    pub lhs: Term,
+pub struct ExpBOp<'input> {
+    pub lhs: Term<'input>,
     pub op: ExpOp,
-    pub rhs: Exp,
+    pub rhs: Exp<'input>,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum Exp {
-    Term(Term),
-    BOp(Box<ExpBOp>),
+pub enum Exp<'input> {
+    Term(Term<'input>),
+    BOp(Box<ExpBOp<'input>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TermBOp {
-    pub lhs: Term,
+pub struct TermBOp<'input> {
+    pub lhs: Term<'input>,
     pub op: TermOp,
-    pub rhs: Term,
+    pub rhs: Term<'input>,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum Term {
-    Factor(Factor),
-    BOp(Box<TermBOp>),
+pub enum Term<'input> {
+    Factor(Factor<'input>),
+    BOp(Box<TermBOp<'input>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Factor {
-    ParenExpr(Box<Expr>),
-    PrimitiveVal(PrimitiveVal),
+pub enum Factor<'input> {
+    ParenExpr(Box<Expr<'input>>),
+    PrimitiveVal(PrimitiveVal<'input>),
     Id(Id),
 }

@@ -8,30 +8,27 @@ use chumsky::{
     prelude::*,
 };
 use logos::Logos;
-use std::str::FromStr;
 
 fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     select! {
         Token::IntVal(i) => i
     }
     .labelled("int value")
-    .try_map(|str_num, span| i64::from_str(str_num).map_err(|e| Rich::custom(span, e)))
-    .map(|i| PrimitiveVal::I64(i))
+    .map(|i| PrimitiveVal::Int(i))
 }
 
 fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     select! {
         Token::FloatVal(f) => f
     }
-    .labelled("int value")
-    .try_map(|str_num, span| f64::from_str(str_num).map_err(|e| Rich::custom(span, e)))
-    .map(|i| PrimitiveVal::F64(i))
+    .labelled("float value")
+    .map(|f| PrimitiveVal::Float(f))
 }
 
 fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     int_parser().or(float_parser())
 }
 
@@ -42,9 +39,9 @@ fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
         .labelled("type declaration")
 }
 
-fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Stmt, extra::Err<Rich<'a, Token<'a>>>> {
-    let var_decl = select! { Token::ScopeSpecifier(ss) => ss }
+fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, VarDecl<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    select! { Token::ScopeSpecifier(ss) => ss }
         // TODO: This should be a destructure
         .then(select! {
             Token::Id(id) => id
@@ -59,13 +56,17 @@ fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
             var_type,
             expr: val.into(),
         })
-        .map(|vd| Stmt::VarDecl(vd));
+}
+
+fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Stmt<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    let var_decl = var_decl_parser().map(|vd| Stmt::VarDecl(vd));
 
     var_decl
 }
 
 fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Block, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     recursive(|block| {
         let block_stmt = just(Token::LBracket)
             .ignore_then(block)
@@ -91,19 +92,23 @@ pub fn parse(input: &str) {
         Ok(block) => {
             dbg!(block);
         }
-        Err(errs) => errs.into_iter().for_each(|e| {
-            Report::build(ReportKind::Error, "test.file", e.span().start)
-                .with_code(3)
-                .with_message(e.to_string())
-                .with_label(
-                    Label::new(("test.file", e.span().into_range()))
-                        .with_message(e.reason().to_string())
-                        .with_color(Color::Red),
-                )
-                .finish()
-                .eprint(("test.file", Source::from(input)))
-                .unwrap()
-        }),
+        Err(errs) => {
+            dbg!(&errs);
+
+            errs.into_iter().for_each(|e| {
+                Report::build(ReportKind::Error, "test.file", e.span().start)
+                    .with_code(3)
+                    .with_message(e.to_string())
+                    .with_label(
+                        Label::new(("test.file", e.span().into_range()))
+                            .with_message(e.reason().to_string())
+                            .with_color(Color::Red),
+                    )
+                    .finish()
+                    .eprint(("test.file", Source::from(input)))
+                    .unwrap()
+            });
+        }
     }
 }
 
