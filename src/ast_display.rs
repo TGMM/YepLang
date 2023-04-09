@@ -42,7 +42,7 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-impl<'a> fmt::Display for CmpOp {
+impl fmt::Display for CmpOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CmpOp::Lt => write!(f, "<"),
@@ -55,7 +55,7 @@ impl<'a> fmt::Display for CmpOp {
     }
 }
 
-impl<'a> fmt::Display for ExpOp {
+impl fmt::Display for ExpOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExpOp::Add => write!(f, "+"),
@@ -64,7 +64,7 @@ impl<'a> fmt::Display for ExpOp {
     }
 }
 
-impl<'a> fmt::Display for TermOp {
+impl fmt::Display for TermOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TermOp::Mul => write!(f, "*"),
@@ -74,7 +74,7 @@ impl<'a> fmt::Display for TermOp {
     }
 }
 
-impl<'a> fmt::Display for VarType {
+impl fmt::Display for VarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VarType::I32 => write!(f, "i32"),
@@ -89,13 +89,13 @@ impl<'a> fmt::Display for VarType {
     }
 }
 
-impl<'a> fmt::Display for Id {
+impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl<'a> fmt::Display for ScopeSpecifier {
+impl fmt::Display for ScopeSpecifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ScopeSpecifier::Var => write!(f, "var"),
