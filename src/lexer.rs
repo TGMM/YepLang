@@ -20,6 +20,9 @@ pub enum Token<'input> {
     FloatVal(&'input str),
     #[regex(r#"[-+]?\d+"#, priority = 2)]
     IntVal(&'input str),
+    #[token("true")]
+    #[token("false")]
+    BoolVal(&'input str),
     #[token("i32", str_to_var_type)]
     #[token("i64", str_to_var_type)]
     #[token("f32", str_to_var_type)]

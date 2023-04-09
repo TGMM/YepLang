@@ -12,6 +12,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Char(c) => write!(f, "{}", c),
             Token::FloatVal(fl) => write!(f, "{}", fl),
             Token::IntVal(i) => write!(f, "{}", i),
+            Token::BoolVal(b) => write!(f, "{}", b),
             Token::VarType(vt) => write!(f, "{}", vt),
             Token::ScopeSpecifier(ss) => ss.fmt(f),
             Token::ExpOp(exp_op) => exp_op.fmt(f),
