@@ -10,6 +10,16 @@ use chumsky::{
 use logos::Logos;
 use std::str::FromStr;
 
+fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal, extra::Err<Rich<'a, Token<'a>>>> {
+    select! {
+        Token::IntVal(i) => i
+    }
+    .labelled("int")
+    .try_map(|str_num, span| i64::from_str(str_num).map_err(|e| Rich::custom(span, e)))
+    .map(|i| PrimitiveVal::I64(i))
+}
+
 fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Stmt, extra::Err<Rich<'a, Token<'a>>>> {
     let var_decl = select! { Token::ScopeSpecifier(ss) => ss }
@@ -17,18 +27,13 @@ fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
             Token::Id(id) => id
         })
         .then_ignore(just(Token::AssignmentEq))
-        .then(
-            select! {
-                Token::IntVal(i) => i
-            }
-            .labelled("value"),
-        )
+        .then(int_parser())
         .then_ignore(just(Token::StmtEnd))
         .map(|((scope_spec, id), val)| VarDecl {
             scope_spec,
             destructure: Destructure::Id(id.into()),
             var_type: None,
-            expr: PrimitiveVal::I64(i64::from_str(val).unwrap()).into(),
+            expr: val.into(),
         })
         .map(|vd| Stmt::VarDecl(vd));
 
@@ -85,7 +90,7 @@ mod test {
     #[test]
     pub fn test() {
         let input = r#"const x = 10; 
-        let y = 20;"#;
+        let y = 9223372036854775807;"#;
         parse(input);
     }
 }
