@@ -1,5 +1,7 @@
 use crate::{
-    ast::{Block, Destructure, PrimitiveVal, Stmt, VarDecl, VarType},
+    ast::{
+        ArrayVal, Block, Destructure, PrimitiveVal, PropertyName, Stmt, StructVal, VarDecl, VarType,
+    },
     lexer::Token,
 };
 use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -43,6 +45,45 @@ fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     int_parser().or(float_parser()).or(bool_parser())
+}
+
+fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    just(Token::LSqBracket)
+        .ignore_then(
+            primitive_val_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::RSqBracket))
+        .map(|vals| PrimitiveVal::Array(ArrayVal(vals)))
+}
+
+fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, StructVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    fn id_or_str<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+    ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> {
+        select! { Token::Id(i) => i }
+            .map(|i| PropertyName::Id(i.into()))
+            .or(select! { Token::Str(s) => s.trim_matches('"') }
+                .map(|p| PropertyName::String(p.to_string())))
+    }
+
+    fn property<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+    ) -> impl Parser<'a, I, (PropertyName, PrimitiveVal<'a>), extra::Err<Rich<'a, Token<'a>>>> {
+        id_or_str()
+            .then_ignore(just(Token::Colon))
+            .then(primitive_val_parser())
+    }
+
+    just(Token::LBracket)
+        .ignore_then(
+            property()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::RBracket))
+        .map(|s| StructVal(s))
 }
 
 fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
