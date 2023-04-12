@@ -173,12 +173,177 @@ pub fn parse(input: &str) {
 
 #[cfg(test)]
 mod test {
-    use super::parse;
+    use super::stmt_end_parser;
+    use crate::{
+        ast::{Destructure, PrimitiveVal, ScopeSpecifier, VarDecl, VarType},
+        lexer::Token,
+        parser::{
+            bool_parser, float_parser, int_parser, primitive_val_parser, type_decl_parser,
+            var_decl_parser,
+        },
+    };
+    use chumsky::{
+        error::RichPattern, input::Stream, prelude::Input, span::SimpleSpan, util::Maybe, Parser,
+    };
 
     #[test]
-    pub fn test() {
-        let input = r#"const x = 10; 
-        let y = 9223372036854775807;"#;
-        parse(input);
+    pub fn int_test() {
+        let token_iter = vec![(Token::IntVal("10"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = int_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&PrimitiveVal::Int("10")));
+    }
+
+    #[test]
+    pub fn float_test() {
+        let token_iter = vec![(Token::FloatVal("10.0"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = float_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&PrimitiveVal::Float("10.0")));
+    }
+
+    #[test]
+    pub fn bool_true_test() {
+        let token_iter = vec![(Token::BoolVal("true"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = bool_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(true)));
+    }
+
+    #[test]
+    pub fn bool_false_test() {
+        let token_iter = vec![(Token::BoolVal("false"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = bool_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(false)));
+    }
+
+    #[test]
+    pub fn primitive_val_test() {
+        // Parse bool
+        let token_iter = vec![(Token::BoolVal("false"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = primitive_val_parser().parse(token_stream);
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(false)));
+
+        // Parse int
+        let token_iter = vec![(Token::IntVal("10"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = primitive_val_parser().parse(token_stream);
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+        assert_eq!(res.output(), Some(&PrimitiveVal::Int("10")));
+
+        // Parse float
+        let token_iter = vec![(Token::FloatVal("10.0"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = primitive_val_parser().parse(token_stream);
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+        assert_eq!(res.output(), Some(&PrimitiveVal::Float("10.0")));
+    }
+
+    #[test]
+    pub fn type_decl_test() {
+        let token_iter = vec![
+            (Token::Colon, SimpleSpan::new(1usize, 1usize)),
+            (
+                Token::VarType(VarType::I32),
+                SimpleSpan::new(2usize, 2usize),
+            ),
+        ];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = type_decl_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&VarType::I32));
+    }
+
+    #[test]
+    pub fn stmt_end_test() {
+        let token_iter = vec![(Token::StmtEnd, SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = stmt_end_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&Token::StmtEnd));
+    }
+
+    #[test]
+    pub fn stmt_end_recovery_test() {
+        let token_iter: Vec<(Token, SimpleSpan)> = vec![];
+        let token_stream = Stream::from_iter(token_iter).spanned((0..0).into());
+        let res = stmt_end_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(res.has_errors());
+
+        assert_eq!(res.output(), Some(&Token::StmtEnd));
+
+        let err = res.errors().next().unwrap();
+        // Expected ;
+        assert_eq!(
+            err.expected().next(),
+            Some(&RichPattern::Token(Maybe::Val(Token::StmtEnd)))
+        );
+        // Found end of input
+        assert_eq!(err.reason().found(), None);
+    }
+
+    #[test]
+    pub fn var_decl_test() {
+        // const x: i32 = 10;
+        let token_iter = vec![
+            (
+                Token::ScopeSpecifier(ScopeSpecifier::Const),
+                SimpleSpan::new(1usize, 1usize),
+            ),
+            (Token::Id("x".into()), SimpleSpan::new(1usize, 1usize)),
+            (Token::Colon, SimpleSpan::new(1usize, 1usize)),
+            (
+                Token::VarType(VarType::I32),
+                SimpleSpan::new(1usize, 1usize),
+            ),
+            (Token::AssignmentEq, SimpleSpan::new(1usize, 1usize)),
+            (Token::IntVal("10"), SimpleSpan::new(1usize, 1usize)),
+            (Token::StmtEnd, SimpleSpan::new(1usize, 1usize)),
+        ];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = var_decl_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(
+            res.output(),
+            Some(&VarDecl {
+                scope_spec: ScopeSpecifier::Const,
+                destructure: Destructure::Id("x".into()),
+                var_type: Some(VarType::I32),
+                expr: PrimitiveVal::Int("10").into()
+            })
+        );
     }
 }
