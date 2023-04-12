@@ -33,7 +33,7 @@ impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayVal<'input>(pub Vec<PrimitiveVal<'input>>);
+pub struct ArrayVal<'input>(pub Vec<Expr<'input>>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructVal<'input>(pub Vec<(PropertyName, PrimitiveVal<'input>)>);

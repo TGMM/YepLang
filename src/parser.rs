@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        ArrayVal, Block, Destructure, PrimitiveVal, PropertyName, Stmt, StructVal, VarDecl, VarType,
+        ArrayVal, Block, Destructure, Expr, Id, PrimitiveVal, PropertyName, Stmt, StructVal,
+        VarDecl, VarType,
     },
     lexer::Token,
 };
@@ -11,12 +12,21 @@ use chumsky::{
 };
 use logos::Logos;
 
+fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> {
+    select! {
+        Token::Id(id) => id
+    }
+    .labelled("id")
+    .map(|id| Id(id.to_string()))
+}
+
 fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     select! {
         Token::IntVal(i) => i
     }
-    .labelled("int value")
+    .labelled("int")
     .map(|i| PrimitiveVal::Int(i))
 }
 
@@ -25,7 +35,7 @@ fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     select! {
         Token::FloatVal(f) => f
     }
-    .labelled("float value")
+    .labelled("float")
     .map(|f| PrimitiveVal::Float(f))
 }
 
@@ -34,7 +44,7 @@ fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     select! {
         Token::BoolVal(b) => b
     }
-    .labelled("boolean value")
+    .labelled("boolean")
     .map(|f| match f {
         "true" => PrimitiveVal::Boolean(true),
         "false" => PrimitiveVal::Boolean(false),
@@ -42,37 +52,49 @@ fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     })
 }
 
-fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+fn string_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    int_parser().or(float_parser()).or(bool_parser())
+    select! { Token::Str(s) => s.trim_matches('"')}
+        .labelled("string")
+        .map(|s| PrimitiveVal::String(s.to_string()))
 }
 
 fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     just(Token::LSqBracket)
         .ignore_then(
+            // TODO: This should be an Expr
             primitive_val_parser()
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>(),
         )
         .then_ignore(just(Token::RSqBracket))
-        .map(|vals| PrimitiveVal::Array(ArrayVal(vals)))
+        .map(|vals| {
+            PrimitiveVal::Array(ArrayVal(
+                vals.iter()
+                    .map(|pv| Into::<Expr>::into(pv.clone()))
+                    .collect(),
+            ))
+        })
 }
 
 fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, StructVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     fn id_or_str<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> {
-        select! { Token::Id(i) => i }
+        id_parser()
             .map(|i| PropertyName::Id(i.into()))
-            .or(select! { Token::Str(s) => s.trim_matches('"') }
-                .map(|p| PropertyName::String(p.to_string())))
+            .or(string_parser().map(|p| match p {
+                PrimitiveVal::String(s) => PropertyName::String(s),
+                _ => unreachable!(),
+            }))
     }
 
     fn property<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     ) -> impl Parser<'a, I, (PropertyName, PrimitiveVal<'a>), extra::Err<Rich<'a, Token<'a>>>> {
         id_or_str()
             .then_ignore(just(Token::Colon))
+            // TODO: This should be an Expr
             .then(primitive_val_parser())
     }
 
@@ -86,9 +108,15 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
         .map(|s| StructVal(s))
 }
 
+fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    int_parser().or(float_parser()).or(bool_parser())
+}
+
 fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, VarType, extra::Err<Rich<'a, Token<'a>>>> {
     just(Token::Colon)
+        // TODO: This should also parse an ID
         .ignore_then(select! { Token::VarType(t) => t })
         .labelled("type declaration")
 }
@@ -102,9 +130,7 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, VarDecl<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     select! { Token::ScopeSpecifier(ss) => ss }
         // TODO: This should be a destructure
-        .then(select! {
-            Token::Id(id) => id
-        })
+        .then(id_parser())
         .then(type_decl_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
         .then(primitive_val_parser())
