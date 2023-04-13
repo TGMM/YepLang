@@ -172,7 +172,7 @@ pub struct Expr<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpBOp<'input> {
-    pub lhs: Term<'input>,
+    pub lhs: Exp<'input>,
     pub op: ExpOp,
     pub rhs: Exp<'input>,
 }

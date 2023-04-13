@@ -108,7 +108,7 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
         .map(|s| StructVal(s))
 }
 
-fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     int_parser().or(float_parser()).or(bool_parser())
 }
@@ -199,14 +199,13 @@ pub fn parse(input: &str) {
 
 #[cfg(test)]
 mod test {
-    use super::stmt_end_parser;
+    use super::{
+        bool_parser, float_parser, int_parser, primitive_val_parser, stmt_end_parser,
+        type_decl_parser, var_decl_parser,
+    };
     use crate::{
         ast::{Destructure, PrimitiveVal, ScopeSpecifier, VarDecl, VarType},
         lexer::Token,
-        parser::{
-            bool_parser, float_parser, int_parser, primitive_val_parser, type_decl_parser,
-            var_decl_parser,
-        },
     };
     use chumsky::{
         error::RichPattern, input::Stream, prelude::Input, span::SimpleSpan, util::Maybe, Parser,
