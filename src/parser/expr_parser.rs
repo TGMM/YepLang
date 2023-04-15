@@ -1,3 +1,4 @@
+use super::value_parser::primitive_val_parser;
 use crate::{
     ast::{CmpOp, Exp, ExpBOp, ExpOp, Expr, Factor, Term, TermBOp, TermOp},
     lexer::Token,
@@ -5,8 +6,6 @@ use crate::{
 use chumsky::{
     extra, input::ValueInput, prelude::Rich, select, span::SimpleSpan, IterParser, Parser,
 };
-
-use super::main_parser::primitive_val_parser;
 
 fn factor_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Factor<'a>, extra::Err<Rich<'a, Token<'a>>>> {
