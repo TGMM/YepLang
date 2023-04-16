@@ -50,14 +50,19 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
         })
 }
 
-fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Stmt<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     let var_decl = var_decl_parser().map(|vd| Stmt::VarDecl(vd));
 
     var_decl
 }
 
-fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    top_block_parser().delimited_by(just(Token::LBracket), just(Token::RBracket))
+}
+
+pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     recursive(|block| {
         let block_stmt = just(Token::LBracket)

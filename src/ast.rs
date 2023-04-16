@@ -178,8 +178,16 @@ pub struct Block<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'input> {
-    VarDecl(VarDecl<'input>),
+    FnCall(FnCall<'input>),
+    Expr(Expr<'input>),
+    ClassDecl,
+    FnDecl,
+    For(For<'input>),
+    While(While<'input>),
+    DoWhile(DoWhile<'input>),
+    If(If<'input>),
     Block(Block<'input>),
+    VarDecl(VarDecl<'input>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +201,11 @@ pub enum Destructure {
     Id(Id),
     Array(Vec<Destructure>),
     Object(PropertyName, Option<Id>),
+}
+impl<'input> From<Id> for Destructure {
+    fn from(value: Id) -> Self {
+        Destructure::Id(value)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -250,4 +263,38 @@ pub struct Indexing<'a> {
 pub struct FnCall<'a> {
     pub fn_expr: Expr<'a>,
     pub args: Vec<Expr<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoWhile<'a> {
+    pub do_block: Block<'a>,
+    pub while_cond: Expr<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct While<'a> {
+    pub while_cond: Expr<'a>,
+    pub block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct For<'a> {
+    pub decl_expr: Option<Expr<'a>>,
+    pub cmp_expr: Option<Expr<'a>>,
+    pub postfix_expr: Option<Expr<'a>>,
+    pub block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct If<'a> {
+    pub if_expr: Expr<'a>,
+    pub if_block: Block<'a>,
+    pub else_if: Vec<ElseIf<'a>>,
+    pub else_b: Option<Block<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ElseIf<'a> {
+    pub else_expr: Expr<'a>,
+    pub else_block: Block<'a>,
 }
