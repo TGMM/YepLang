@@ -1,5 +1,6 @@
 use crate::ast::{
-    str_to_cmp_op, str_to_exp_op, str_to_scope_spec, str_to_term_op, str_to_var_type,
+    str_to_bool_uop, str_to_cmp_op, str_to_exp_op, str_to_scope_spec, str_to_term_op,
+    str_to_var_type, BoolUnaryOp,
 };
 use crate::ast::{CmpOp, ExpOp, ScopeSpecifier, TermOp, VarType};
 use logos::Logos;
@@ -16,9 +17,9 @@ pub enum Token<'input> {
         r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|\\n|\\r|\\'|\\\\)'"#
     )]
     Char(&'input str),
-    #[regex(r#"[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?"#)]
+    #[regex(r#"[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?"#)]
     FloatVal(&'input str),
-    #[regex(r#"[-+]?\d+"#, priority = 2)]
+    #[regex(r#"\d+"#, priority = 2)]
     IntVal(&'input str),
     #[token("true")]
     #[token("false")]
@@ -35,6 +36,8 @@ pub enum Token<'input> {
     #[token("const", str_to_scope_spec)]
     #[token("let", str_to_scope_spec)]
     ScopeSpecifier(ScopeSpecifier),
+    #[token("!", str_to_bool_uop)]
+    BoolUnaryOp(BoolUnaryOp),
     #[token("+", str_to_exp_op)]
     #[token("-", str_to_exp_op)]
     ExpOp(ExpOp),

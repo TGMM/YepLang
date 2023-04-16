@@ -1,5 +1,9 @@
+use super::expr_parser::expr_parser;
 use crate::{
-    ast::{ArrayVal, Expr, PrimitiveVal, PropertyName, StructVal},
+    ast::{
+        ArrayVal, BoolLiteral, Expr, FnCall, Indexing, NumericLiteral, NumericUnaryOp,
+        PrimitiveVal, PropertyName, StructVal,
+    },
     lexer::Token,
     parser::main_parser::id_parser,
 };
@@ -7,33 +11,41 @@ use chumsky::{input::ValueInput, prelude::*};
 
 fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    select! {
-        Token::IntVal(i) => i
-    }
-    .labelled("int")
-    .map(|i| PrimitiveVal::Int(i))
+    select! { Token::ExpOp(op) => op }
+        .map(|op| Into::<NumericUnaryOp>::into(op))
+        .or_not()
+        .then(select! {
+            Token::IntVal(i) => i
+        })
+        .labelled("int")
+        .map(|(uop, i)| PrimitiveVal::Number(uop, NumericLiteral::Int(i)))
 }
 
 fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    select! {
-        Token::FloatVal(f) => f
-    }
-    .labelled("float")
-    .map(|f| PrimitiveVal::Float(f))
+    select! { Token::ExpOp(op) => op }
+        .map(|op| Into::<NumericUnaryOp>::into(op))
+        .or_not()
+        .then(select! {
+            Token::FloatVal(f) => f
+        })
+        .labelled("float")
+        .map(|(uop, f)| PrimitiveVal::Number(uop, NumericLiteral::Float(f)))
 }
 
 fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    select! {
-        Token::BoolVal(b) => b
-    }
-    .labelled("boolean")
-    .map(|f| match f {
-        "true" => PrimitiveVal::Boolean(true),
-        "false" => PrimitiveVal::Boolean(false),
-        _ => unreachable!(),
-    })
+    select! { Token::BoolUnaryOp(op) => op }
+        .or_not()
+        .then(select! {
+            Token::BoolVal(b) => b
+        })
+        .labelled("boolean")
+        .map(|(uop, b)| match b {
+            "true" => PrimitiveVal::Boolean(uop, BoolLiteral(true)),
+            "false" => PrimitiveVal::Boolean(uop, BoolLiteral(false)),
+            _ => unreachable!(),
+        })
 }
 
 fn string_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -97,10 +109,35 @@ pub fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = Simp
     int_parser().or(float_parser()).or(bool_parser())
 }
 
+pub fn indexing_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Indexing<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    expr_parser()
+        .then_ignore(just(Token::LSqBracket))
+        .then(expr_parser())
+        .then_ignore(just(Token::RSqBracket))
+        .map(|(indexed, indexer)| Indexing { indexed, indexer })
+}
+
+pub fn fn_call<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, FnCall<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    expr_parser()
+        .then_ignore(just(Token::LParen))
+        .then(
+            expr_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::RParen))
+        .map(|(fn_expr, args)| FnCall { fn_expr, args })
+}
+
 #[cfg(test)]
 mod test {
     use super::{bool_parser, float_parser, int_parser, primitive_val_parser};
-    use crate::{ast::PrimitiveVal, lexer::Token};
+    use crate::{
+        ast::{BoolLiteral, NumericLiteral, PrimitiveVal},
+        lexer::Token,
+    };
     use chumsky::{input::Stream, prelude::Input, span::SimpleSpan, Parser};
 
     #[test]
@@ -112,7 +149,10 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        assert_eq!(res.output(), Some(&PrimitiveVal::Int("10")));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+        );
     }
 
     #[test]
@@ -124,7 +164,10 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        assert_eq!(res.output(), Some(&PrimitiveVal::Float("10.0")));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Number(None, NumericLiteral::Float("10.0")))
+        );
     }
 
     #[test]
@@ -136,7 +179,10 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(true)));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Boolean(None, BoolLiteral(true)))
+        );
     }
 
     #[test]
@@ -148,7 +194,10 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(false)));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Boolean(None, BoolLiteral(false)))
+        );
     }
 
     #[test]
@@ -159,7 +208,10 @@ mod test {
         let res = primitive_val_parser().parse(token_stream);
         assert!(res.has_output());
         assert!(!res.has_errors());
-        assert_eq!(res.output(), Some(&PrimitiveVal::Boolean(false)));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Boolean(None, BoolLiteral(false)))
+        );
 
         // Parse int
         let token_iter = vec![(Token::IntVal("10"), SimpleSpan::new(1usize, 1usize))];
@@ -167,7 +219,10 @@ mod test {
         let res = primitive_val_parser().parse(token_stream);
         assert!(res.has_output());
         assert!(!res.has_errors());
-        assert_eq!(res.output(), Some(&PrimitiveVal::Int("10")));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+        );
 
         // Parse float
         let token_iter = vec![(Token::FloatVal("10.0"), SimpleSpan::new(1usize, 1usize))];
@@ -175,6 +230,9 @@ mod test {
         let res = primitive_val_parser().parse(token_stream);
         assert!(res.has_output());
         assert!(!res.has_errors());
-        assert_eq!(res.output(), Some(&PrimitiveVal::Float("10.0")));
+        assert_eq!(
+            res.output(),
+            Some(&PrimitiveVal::Number(None, NumericLiteral::Float("10.0")))
+        );
     }
 }

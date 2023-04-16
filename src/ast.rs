@@ -14,10 +14,49 @@ pub enum VarType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PrimitiveVal<'input> {
+pub enum NumericLiteral<'input> {
     Int(&'input str),
     Float(&'input str),
-    Boolean(bool),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumericUnaryOp {
+    Plus,
+    Minus,
+}
+impl From<ExpOp> for NumericUnaryOp {
+    fn from(value: ExpOp) -> Self {
+        match value {
+            ExpOp::Add => NumericUnaryOp::Plus,
+            ExpOp::Sub => NumericUnaryOp::Minus,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoolLiteral(pub bool);
+#[derive(Debug, Clone, PartialEq)]
+pub enum BoolUnaryOp {
+    Not,
+}
+
+pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> BoolUnaryOp {
+    let exp_op_str = lex.slice();
+    match exp_op_str {
+        "!" => BoolUnaryOp::Not,
+        _ => unreachable!(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Numeric(NumericUnaryOp),
+    Bool(BoolUnaryOp),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PrimitiveVal<'input> {
+    Number(Option<NumericUnaryOp>, NumericLiteral<'input>),
+    Boolean(Option<BoolUnaryOp>, BoolLiteral),
     Char(char),
     String(String),
     Array(ArrayVal<'input>),
@@ -196,7 +235,19 @@ pub enum Term<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Factor<'input> {
-    ParenExpr(Box<Expr<'input>>),
+    ParenExpr(UnaryOp, Box<Expr<'input>>),
     PrimitiveVal(PrimitiveVal<'input>),
     Id(Id),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Indexing<'a> {
+    pub indexed: Expr<'a>,
+    pub indexer: Expr<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnCall<'a> {
+    pub fn_expr: Expr<'a>,
+    pub args: Vec<Expr<'a>>,
 }

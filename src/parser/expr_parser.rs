@@ -94,7 +94,7 @@ fn cmp_op_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     select! { Token::CmpOp(cmp_op) => cmp_op }
 }
 
-fn expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Expr<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     fn expr_rhs_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     ) -> impl Parser<'a, I, (CmpOp, Exp<'a>), extra::Err<Rich<'a, Token<'a>>>> {
@@ -110,7 +110,10 @@ fn expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 mod test {
     use super::expr_parser;
     use crate::{
-        ast::{CmpOp, Exp, ExpBOp, ExpOp, Expr, Factor, PrimitiveVal, Term, TermBOp, TermOp},
+        ast::{
+            CmpOp, Exp, ExpBOp, ExpOp, Expr, Factor, NumericLiteral, PrimitiveVal, Term, TermBOp,
+            TermOp,
+        },
         lexer::Token,
         parser::expr_parser::{exp_parser, term_parser},
     };
@@ -130,9 +133,15 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        let lhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10"))));
+        let lhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        ))));
         let op = CmpOp::Gt;
-        let rhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10"))));
+        let rhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        ))));
         assert_eq!(
             res.output(),
             Some(&Expr {
@@ -159,9 +168,15 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        let lhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10"))));
+        let lhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        ))));
         let op = ExpOp::Add;
-        let rhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10"))));
+        let rhs = Exp::Term(Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        ))));
         assert_eq!(
             res.output(),
             Some(&Exp::BOp(Box::new(ExpBOp { lhs, op, rhs })))
@@ -185,9 +200,15 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        let lhs = Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10")));
+        let lhs = Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        )));
         let op = TermOp::Mul;
-        let rhs = Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Int("10")));
+        let rhs = Term::Factor(Factor::PrimitiveVal(PrimitiveVal::Number(
+            None,
+            NumericLiteral::Int("10"),
+        )));
         assert_eq!(
             res.output(),
             Some(&Term::BOp(Box::new(TermBOp { lhs, op, rhs })))

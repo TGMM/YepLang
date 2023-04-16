@@ -107,7 +107,7 @@ pub fn parse(input: &str) {
 mod test {
     use super::{stmt_end_parser, type_decl_parser, var_decl_parser};
     use crate::{
-        ast::{Destructure, PrimitiveVal, ScopeSpecifier, VarDecl, VarType},
+        ast::{Destructure, NumericLiteral, PrimitiveVal, ScopeSpecifier, VarDecl, VarType},
         lexer::Token,
     };
     use chumsky::{
@@ -195,7 +195,7 @@ mod test {
                 scope_spec: ScopeSpecifier::Const,
                 destructure: Destructure::Id("x".into()),
                 var_type: Some(VarType::I32),
-                expr: PrimitiveVal::Int("10").into()
+                expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
             })
         );
     }
