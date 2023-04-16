@@ -235,7 +235,7 @@ pub enum Term<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Factor<'input> {
-    ParenExpr(UnaryOp, Box<Expr<'input>>),
+    ParenExpr(Option<UnaryOp>, Box<Expr<'input>>),
     PrimitiveVal(PrimitiveVal<'input>),
     Id(Id),
 }

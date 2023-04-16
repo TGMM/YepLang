@@ -1,15 +1,23 @@
-use super::value_parser::primitive_val_parser;
+use super::{main_parser::id_parser, value_parser::primitive_val_parser};
 use crate::{
     ast::{CmpOp, Exp, ExpBOp, ExpOp, Expr, Factor, Term, TermBOp, TermOp},
     lexer::Token,
 };
 use chumsky::{
-    extra, input::ValueInput, prelude::Rich, select, span::SimpleSpan, IterParser, Parser,
+    extra::{self},
+    input::ValueInput,
+    prelude::Rich,
+    select,
+    span::SimpleSpan,
+    IterParser, Parser,
 };
 
 fn factor_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Factor<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    primitive_val_parser().map(|pv| Factor::PrimitiveVal(pv))
+    let id = id_parser().map(|id| Factor::Id(id));
+    let literal = primitive_val_parser().map(|pv| Factor::PrimitiveVal(pv));
+
+    literal.or(id)
 }
 
 fn term_op_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -115,10 +123,22 @@ mod test {
             TermOp,
         },
         lexer::Token,
-        parser::expr_parser::{exp_parser, term_parser},
+        parser::expr_parser::{exp_parser, factor_parser, term_parser},
     };
     use chumsky::{input::Stream, prelude::Input, span::SimpleSpan, Parser};
     use logos::Logos;
+
+    #[test]
+    fn factor_test() {
+        let token_iter = vec![(Token::Id("test"), SimpleSpan::new(1usize, 1usize))];
+        let token_stream = Stream::from_iter(token_iter).spanned((1..1).into());
+        let res = factor_parser().parse(token_stream);
+
+        assert!(res.has_output());
+        assert!(!res.has_errors());
+
+        assert_eq!(res.output(), Some(&Factor::Id("test".into())));
+    }
 
     #[test]
     fn expr_test() {
