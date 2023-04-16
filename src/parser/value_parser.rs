@@ -59,19 +59,12 @@ fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     just(Token::LSqBracket)
         .ignore_then(
-            // TODO: This should be an Expr
-            primitive_val_parser()
+            expr_parser()
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>(),
         )
         .then_ignore(just(Token::RSqBracket))
-        .map(|vals| {
-            PrimitiveVal::Array(ArrayVal(
-                vals.iter()
-                    .map(|pv| Into::<Expr>::into(pv.clone()))
-                    .collect(),
-            ))
-        })
+        .map(|vals| PrimitiveVal::Array(ArrayVal(vals.into_iter().collect::<Vec<_>>())))
 }
 
 fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -87,11 +80,10 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
     }
 
     fn property<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<'a, I, (PropertyName, PrimitiveVal<'a>), extra::Err<Rich<'a, Token<'a>>>> {
+    ) -> impl Parser<'a, I, (PropertyName, Expr<'a>), extra::Err<Rich<'a, Token<'a>>>> {
         id_or_str()
             .then_ignore(just(Token::Colon))
-            // TODO: This should be an Expr
-            .then(primitive_val_parser())
+            .then(expr_parser())
     }
 
     just(Token::LBracket)

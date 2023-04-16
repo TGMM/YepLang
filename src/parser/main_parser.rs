@@ -22,8 +22,9 @@ pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, VarType, extra::Err<Rich<'a, Token<'a>>>> {
     just(Token::Colon)
-        // TODO: This should also parse an ID
-        .ignore_then(select! { Token::VarType(t) => t })
+        .ignore_then(
+            select! { Token::VarType(t) => t }.or(id_parser().map(|id| VarType::Custom(id))),
+        )
         .labelled("type declaration")
 }
 

@@ -75,7 +75,7 @@ impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
 pub struct ArrayVal<'input>(pub Vec<Expr<'input>>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StructVal<'input>(pub Vec<(PropertyName, PrimitiveVal<'input>)>);
+pub struct StructVal<'input>(pub Vec<(PropertyName, Expr<'input>)>);
 
 pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
     let type_str = lex.slice();
