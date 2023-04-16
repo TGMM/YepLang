@@ -11,7 +11,7 @@ use chumsky::{
 use logos::Logos;
 
 pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! {
         Token::Id(id) => id
     }

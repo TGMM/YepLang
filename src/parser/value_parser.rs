@@ -10,7 +10,7 @@ use crate::{
 use chumsky::{input::ValueInput, prelude::*};
 
 fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! { Token::ExpOp(op) => op }
         .map(|op| Into::<NumericUnaryOp>::into(op))
         .or_not()
@@ -22,7 +22,7 @@ fn int_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 }
 
 fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! { Token::ExpOp(op) => op }
         .map(|op| Into::<NumericUnaryOp>::into(op))
         .or_not()
@@ -34,7 +34,7 @@ fn float_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 }
 
 fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! { Token::BoolUnaryOp(op) => op }
         .or_not()
         .then(select! {
@@ -49,14 +49,14 @@ fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 }
 
 fn string_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! { Token::Str(s) => s.trim_matches('"')}
         .labelled("string")
         .map(|s| PrimitiveVal::String(s.to_string()))
 }
 
 fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::LSqBracket)
         .ignore_then(
             expr_parser()
@@ -68,9 +68,9 @@ fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
 }
 
 fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, StructVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, StructVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     fn id_or_str<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> {
+    ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> + Clone {
         id_parser()
             .map(|i| PropertyName::Id(i.into()))
             .or(string_parser().map(|p| match p {
@@ -80,7 +80,7 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
     }
 
     fn property<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<'a, I, (PropertyName, Expr<'a>), extra::Err<Rich<'a, Token<'a>>>> {
+    ) -> impl Parser<'a, I, (PropertyName, Expr<'a>), extra::Err<Rich<'a, Token<'a>>>> + Clone {
         id_or_str()
             .then_ignore(just(Token::Colon))
             .then(expr_parser())
@@ -97,7 +97,7 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
 }
 
 pub fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     int_parser().or(float_parser()).or(bool_parser())
 }
 
