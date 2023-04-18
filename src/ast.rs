@@ -12,6 +12,11 @@ pub enum VarType {
     String,
     Custom(Id),
 }
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValueVarType {
+    pub vtype: VarType,
+    pub is_array: bool,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumericLiteral<'input> {
@@ -87,7 +92,7 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
         "boolean" => VarType::Boolean,
         "char" => VarType::Char,
         "string" => VarType::String,
-        _ => unreachable!(),
+        custom => VarType::Custom(custom.into()),
     }
 }
 
@@ -223,7 +228,7 @@ impl<'input> From<Id> for Destructure {
 pub struct VarDecl<'input> {
     pub scope_spec: ScopeSpecifier,
     pub destructure: Destructure,
-    pub var_type: Option<VarType>,
+    pub var_type: Option<ValueVarType>,
     pub expr: Expr<'input>,
 }
 
@@ -327,6 +332,7 @@ pub struct MemberAcess<'a> {
 pub struct FnDecl<'a> {
     pub fn_id: Id,
     pub args: Vec<Destructure>,
+    pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }
 
@@ -334,5 +340,6 @@ pub struct FnDecl<'a> {
 pub struct MethodDecl<'a> {
     pub method_id: Id,
     pub args: Vec<Destructure>,
+    pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }

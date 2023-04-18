@@ -1,4 +1,4 @@
-use crate::ast::{PropertyDestructure, PropertyDestructureName, PropertyName};
+use crate::ast::{PropertyDestructure, PropertyDestructureName, PropertyName, ValueVarType};
 use crate::parser::value_parser::primitive_val_parser;
 use crate::{
     ast::{Block, Destructure, Id, Stmt, VarDecl, VarType},
@@ -57,13 +57,20 @@ pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = Simple
     })
 }
 
-fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, VarType, extra::Err<Rich<'a, Token<'a>>>> {
+pub fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, ValueVarType, extra::Err<Rich<'a, Token<'a>>>> {
+    let arr_type_decl = just(Token::LSqBracket).ignore_then(just(Token::RSqBracket).ignored());
+
     just(Token::Colon)
         .ignore_then(
             select! { Token::VarType(t) => t }.or(id_parser().map(|id| VarType::Custom(id))),
         )
+        .then(arr_type_decl.or_not())
         .labelled("type declaration")
+        .map(|(vtype, arr_decl)| ValueVarType {
+            vtype,
+            is_array: arr_decl.is_some(),
+        })
 }
 
 fn stmt_end_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -150,7 +157,10 @@ pub fn parse(input: &str) {
 mod test {
     use super::{stmt_end_parser, type_decl_parser, var_decl_parser};
     use crate::{
-        ast::{Destructure, NumericLiteral, PrimitiveVal, ScopeSpecifier, VarDecl, VarType},
+        ast::{
+            Destructure, NumericLiteral, PrimitiveVal, ScopeSpecifier, ValueVarType, VarDecl,
+            VarType,
+        },
         lexer::Token,
     };
     use chumsky::{
@@ -172,7 +182,13 @@ mod test {
         assert!(res.has_output());
         assert!(!res.has_errors());
 
-        assert_eq!(res.output(), Some(&VarType::I32));
+        assert_eq!(
+            res.output(),
+            Some(&ValueVarType {
+                vtype: VarType::I32,
+                is_array: false
+            })
+        );
     }
 
     #[test]
@@ -237,7 +253,10 @@ mod test {
             Some(&VarDecl {
                 scope_spec: ScopeSpecifier::Const,
                 destructure: Destructure::Id("x".into()),
-                var_type: Some(VarType::I32),
+                var_type: Some(ValueVarType {
+                    vtype: VarType::I32,
+                    is_array: false
+                }),
                 expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
             })
         );
