@@ -1,5 +1,6 @@
 use crate::ast::{
-    Assignment, PropertyDestructure, PropertyDestructureName, PropertyName, ValueVarType,
+    Assignment, ClassDecl, DoWhile, ElseIf, FnDecl, For, If, MethodDecl, PropertyDestructure,
+    PropertyDestructureName, PropertyName, ValueVarType, While,
 };
 use crate::parser::value_parser::primitive_val_parser;
 use crate::{
@@ -13,8 +14,7 @@ use chumsky::{
 };
 use logos::Logos;
 
-use super::class_parser::{class_decl_parser, fn_decl_parser};
-use super::control_flow_parser::{do_while_parser, for_parser, if_else_parser, while_parser};
+use super::control_flow_parser::paren_expr_parser;
 use super::expr_parser::expr_parser;
 use super::value_parser::{fn_call_parser, string_parser};
 
@@ -129,18 +129,158 @@ pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
 
 pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    recursive(|block| {
-        let block_stmt = just(Token::LBracket)
-            .ignore_then(block)
-            .then_ignore(just(Token::RBracket))
-            .map(|b| Stmt::Block(b));
+    let mut block = Recursive::declare();
 
+    let block_stmt = just(Token::LBracket)
+        .ignore_then(block.clone())
+        .then_ignore(just(Token::RBracket))
+        .map(|b| Stmt::Block(b));
+
+    let class_decl_parser = {
+        let extends_parser = just(Token::Extends).ignore_then(id_parser());
+
+        just(Token::Class)
+            .ignore_then(id_parser())
+            .then(extends_parser.or_not())
+            .then(block.clone())
+            .map(|((class_id, extended_class_id), block)| ClassDecl {
+                class_id,
+                extended_class_id,
+                block,
+            })
+    };
+
+    let method_decl_parser = {
+        let return_type = type_decl_parser();
+
+        id_parser()
+            .then_ignore(just(Token::LParen))
+            .then(
+                destructure_parser()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>(),
+            )
+            .then(return_type.or_not())
+            .then(block.clone())
+            .map(|(((method_id, args), ret_type), block)| MethodDecl {
+                method_id,
+                args,
+                ret_type,
+                block,
+            })
+    };
+
+    let fn_decl_parser = {
+        just(Token::Function)
+            .ignore_then(method_decl_parser)
+            .map(|md| FnDecl {
+                fn_id: md.method_id,
+                args: md.args,
+                ret_type: md.ret_type,
+                block: md.block,
+            })
+    };
+
+    let for_parser = {
+        let for_conditions_parser = just(Token::LParen)
+            .ignore_then(expr_parser().or_not())
+            .then_ignore(just(Token::StmtEnd))
+            .then(expr_parser().or_not())
+            .then_ignore(just(Token::StmtEnd))
+            .then(expr_parser().or_not())
+            .then_ignore(just(Token::RParen))
+            .map(|((e1, e2), e3)| (e1, e2, e3));
+
+        just(Token::For)
+            .ignore_then(for_conditions_parser)
+            .then(block.clone())
+            .map(|((decl_expr, cmp_expr, postfix_expr), block)| For {
+                decl_expr,
+                cmp_expr,
+                postfix_expr,
+                block,
+            })
+    };
+
+    let while_parser = {
+        just(Token::While)
+            .ignore_then(paren_expr_parser())
+            .then(block.clone())
+            .map(|(while_cond, block)| While { while_cond, block })
+    };
+
+    let do_while_parser = {
+        just(Token::Do)
+            .ignore_then(block.clone())
+            .then_ignore(just(Token::While))
+            .then_ignore(just(Token::LParen))
+            .then(paren_expr_parser())
+            .then_ignore(just(Token::RParen))
+            .map(|(do_block, while_cond)| DoWhile {
+                do_block,
+                while_cond,
+            })
+    };
+
+    let if_else_parser = {
+        let else_if_parser = {
+            just(Token::Else)
+                .ignore_then(just(Token::If))
+                .ignore_then(paren_expr_parser())
+                .then(block.clone())
+                .map(|(else_expr, else_block)| ElseIf {
+                    else_expr,
+                    else_block,
+                })
+                .repeated()
+                .collect::<Vec<_>>()
+        };
+
+        let else_parser = just(Token::Else).ignore_then(block.clone());
+
+        just(Token::If)
+            .ignore_then(paren_expr_parser())
+            .then(block.clone())
+            .then(else_if_parser)
+            .then(else_parser.or_not())
+            .map(|(((if_expr, if_block), else_if), else_b)| If {
+                if_expr,
+                if_block,
+                else_if,
+                else_b,
+            })
+    };
+
+    // TODO: Deduplicate these functions
+    // fn_decl_parser
+    // do_while_parser
+    // for_parser
+    // if_else_parser
+    // while_parser
+
+    let class_decl = class_decl_parser.map(|cd| Stmt::ClassDecl(cd));
+    let fn_decl = fn_decl_parser.map(|fd| Stmt::FnDecl(fd));
+    let for_d = for_parser.map(|f| Stmt::For(f));
+    let while_d = while_parser.map(|w| Stmt::While(w));
+    let do_while_d = do_while_parser.map(|dw| Stmt::DoWhile(dw));
+    let if_d = if_else_parser.map(|ie| Stmt::If(ie));
+    let rec_stms_parser = class_decl
+        .or(fn_decl)
+        .or(for_d)
+        .or(while_d)
+        .or(do_while_d)
+        .or(if_d);
+
+    block.define(
         block_stmt
             .or(non_rec_stmt_parser().boxed())
+            .or(rec_stms_parser.boxed())
             .repeated()
             .collect::<Vec<Stmt>>()
-            .map(|stmts| Block { stmts })
-    })
+            .map(|stmts| Block { stmts }),
+    );
+
+    block
 }
 
 pub fn parse(input: &str) {
