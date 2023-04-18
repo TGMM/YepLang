@@ -1,3 +1,4 @@
+use crate::ast::{PropertyDestructure, PropertyDestructureName, PropertyName};
 use crate::parser::value_parser::primitive_val_parser;
 use crate::{
     ast::{Block, Destructure, Id, Stmt, VarDecl, VarType},
@@ -10,6 +11,8 @@ use chumsky::{
 };
 use logos::Logos;
 
+use super::value_parser::string_parser;
+
 pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     select! {
@@ -17,6 +20,41 @@ pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     }
     .labelled("id")
     .map(|id| Id(id.to_string()))
+}
+
+pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Destructure, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    recursive(|destructure| {
+        let id = id_parser().map(|id| Destructure::Id(id));
+        let array = destructure
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
+            .map(|destructures| Destructure::Array(destructures));
+
+        let str_prop_name = string_parser()
+            .map(|s| PropertyName::String(s.to_string()))
+            .map(|pn| PropertyDestructureName::PropName(pn));
+        let id_prop_name = id_parser()
+            .map(|id| PropertyName::Id(id))
+            .map(|pn| PropertyDestructureName::PropName(pn));
+        let destructure_prop_name = destructure.map(|d| PropertyDestructureName::Destructure(d));
+        let alias = just(Token::Colon).ignore_then(id_parser());
+        let property = str_prop_name
+            .or(id_prop_name)
+            .or(destructure_prop_name)
+            .then(alias.or_not())
+            .map(|(name, alias)| PropertyDestructure { name, alias });
+
+        let object = property
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(|o| Destructure::Object(o));
+
+        id.or(array).or(object)
+    })
 }
 
 fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(

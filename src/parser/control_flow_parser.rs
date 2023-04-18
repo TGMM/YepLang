@@ -1,14 +1,13 @@
+use super::{
+    expr_parser::expr_parser,
+    main_parser::{block_parser, stmt_parser},
+};
 use crate::{
     ast::{Block, DoWhile, ElseIf, Expr, For, If, While},
     lexer::Token,
 };
 use chumsky::{
     extra, input::ValueInput, prelude::Rich, primitive::just, span::SimpleSpan, IterParser, Parser,
-};
-
-use super::{
-    expr_parser::expr_parser,
-    main_parser::{block_parser, stmt_parser},
 };
 
 pub fn paren_expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(

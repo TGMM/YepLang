@@ -42,6 +42,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::BoolUnaryOp(op) => match op {
                 BoolUnaryOp::Not => write!(f, "!"),
             },
+            Token::Dot => write!(f, "."),
         }
     }
 }

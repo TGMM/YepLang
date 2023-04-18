@@ -1,3 +1,4 @@
+mod class_parser;
 pub mod control_flow_parser;
 pub mod expr_parser;
 mod helpers;

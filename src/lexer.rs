@@ -72,6 +72,8 @@ pub enum Token<'input> {
     LParen,
     #[token(")")]
     RParen,
+    #[token(".")]
+    Dot,
     #[token("class")]
     Class,
     #[token("break")]
@@ -242,7 +244,7 @@ mod test {
     }
 
     #[test]
-    fn string_parser_test() {
+    fn string_val_parser_test() {
         let input = r#""This is a test string\n" "This is another test string\t""#;
         let lex = Token::lexer(input);
         let tokens: Vec<Token> = lex.into_iter().collect();

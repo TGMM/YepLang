@@ -48,11 +48,14 @@ fn bool_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
         })
 }
 
-fn string_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn string_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, &'a str, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    select! { Token::Str(s) => s.trim_matches('"')}.labelled("string")
+}
+
+pub fn string_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    select! { Token::Str(s) => s.trim_matches('"')}
-        .labelled("string")
-        .map(|s| PrimitiveVal::String(s.to_string()))
+    string_parser().map(|s| PrimitiveVal::String(s.to_string()))
 }
 
 fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -73,7 +76,7 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
     ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> + Clone {
         id_parser()
             .map(|i| PropertyName::Id(i.into()))
-            .or(string_parser().map(|p| match p {
+            .or(string_val_parser().map(|p| match p {
                 PrimitiveVal::String(s) => PropertyName::String(s),
                 _ => unreachable!(),
             }))

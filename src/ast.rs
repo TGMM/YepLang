@@ -197,10 +197,20 @@ pub enum PropertyName {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum PropertyDestructureName {
+    PropName(PropertyName),
+    Destructure(Destructure),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyDestructure {
+    pub name: PropertyDestructureName,
+    pub alias: Option<Id>,
+}
+#[derive(Debug, Clone, PartialEq)]
 pub enum Destructure {
     Id(Id),
     Array(Vec<Destructure>),
-    Object(PropertyName, Option<Id>),
+    Object(Vec<PropertyDestructure>),
 }
 impl<'input> From<Id> for Destructure {
     fn from(value: Id) -> Self {
@@ -297,4 +307,31 @@ pub struct If<'a> {
 pub struct ElseIf<'a> {
     pub else_expr: Expr<'a>,
     pub else_block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassDecl<'a> {
+    pub class_id: Id,
+    pub extended_class_id: Option<Id>,
+    pub block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemberAcess<'a> {
+    pub accessed: Expr<'a>,
+    pub property: Id,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnDecl<'a> {
+    pub fn_id: Id,
+    pub args: Vec<Destructure>,
+    pub block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodDecl<'a> {
+    pub method_id: Id,
+    pub args: Vec<Destructure>,
+    pub block: Block<'a>,
 }
