@@ -177,6 +177,14 @@ impl From<&str> for Id {
         Id(value.to_string())
     }
 }
+impl<'a> From<Id> for Expr<'a> {
+    fn from(value: Id) -> Self {
+        Expr {
+            lhs: Exp::Term(Term::Factor(Factor::Id(value))),
+            rhs: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'input> {
@@ -190,6 +198,7 @@ pub enum Stmt<'input> {
     Expr(Expr<'input>),
     ClassDecl(ClassDecl<'input>),
     FnDecl(FnDecl<'input>),
+    MethodDecl(MethodDecl<'input>),
     For(For<'input>),
     While(While<'input>),
     DoWhile(DoWhile<'input>),
@@ -205,22 +214,23 @@ pub enum PropertyName {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PropertyDestructureName {
+pub enum PropertyDestructureName<'input> {
     PropName(PropertyName),
-    Destructure(Destructure),
+    Destructure(Destructure<'input>),
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct PropertyDestructure {
-    pub name: PropertyDestructureName,
+pub struct PropertyDestructure<'input> {
+    pub name: PropertyDestructureName<'input>,
     pub alias: Option<Id>,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum Destructure {
+pub enum Destructure<'input> {
     Id(Id),
-    Array(Vec<Destructure>),
-    Object(Vec<PropertyDestructure>),
+    MemberAccess(MemberAcess<'input>),
+    Array(Vec<Destructure<'input>>),
+    Object(Vec<PropertyDestructure<'input>>),
 }
-impl<'input> From<Id> for Destructure {
+impl<'input> From<Id> for Destructure<'input> {
     fn from(value: Id) -> Self {
         Destructure::Id(value)
     }
@@ -229,7 +239,7 @@ impl<'input> From<Id> for Destructure {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl<'input> {
     pub scope_spec: ScopeSpecifier,
-    pub destructure: Destructure,
+    pub destructure: Destructure<'input>,
     pub var_type: Option<ValueVarType>,
     pub expr: Expr<'input>,
 }
@@ -268,6 +278,7 @@ pub enum Term<'input> {
 pub enum Factor<'input> {
     ParenExpr(Option<UnaryOp>, Box<Expr<'input>>),
     PrimitiveVal(PrimitiveVal<'input>),
+    FnCall(Box<FnCall<'input>>),
     Id(Id),
 }
 
@@ -333,7 +344,7 @@ pub struct MemberAcess<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDecl<'a> {
     pub fn_id: Id,
-    pub args: Vec<Destructure>,
+    pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }
@@ -341,13 +352,13 @@ pub struct FnDecl<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethodDecl<'a> {
     pub method_id: Id,
-    pub args: Vec<Destructure>,
+    pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment<'a> {
-    pub destructure: Destructure,
+    pub destructure: Destructure<'a>,
     pub assigned_expr: Expr<'a>,
 }

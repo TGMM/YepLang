@@ -1,4 +1,4 @@
-use super::expr_parser::expr_parser;
+use super::{expr_parser::expr_parser, main_parser::stmt_end_parser};
 use crate::{
     ast::{
         ArrayVal, BoolLiteral, Expr, FnCall, Indexing, NumericLiteral, NumericUnaryOp,
@@ -58,7 +58,7 @@ pub fn string_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleS
     string_parser().map(|s| PrimitiveVal::String(s.to_string()))
 }
 
-fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+fn array_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::LSqBracket)
         .ignore_then(
@@ -70,7 +70,7 @@ fn array_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
         .map(|vals| PrimitiveVal::Array(ArrayVal(vals.into_iter().collect::<Vec<_>>())))
 }
 
-fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+fn struct_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, StructVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     fn id_or_str<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
     ) -> impl Parser<'a, I, PropertyName, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -101,7 +101,11 @@ fn struct_var_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
 
 pub fn primitive_val_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, PrimitiveVal<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    int_parser().or(float_parser()).or(bool_parser())
+    // TODO: Add arr and struct vals
+    int_parser()
+        .or(float_parser())
+        .or(bool_parser())
+        .or(string_val_parser())
 }
 
 pub fn indexing_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -114,7 +118,7 @@ pub fn indexing_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpa
 }
 
 pub fn fn_call_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, FnCall<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, FnCall<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     expr_parser()
         .then_ignore(just(Token::LParen))
         .then(
@@ -123,6 +127,7 @@ pub fn fn_call_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan
                 .collect::<Vec<_>>(),
         )
         .then_ignore(just(Token::RParen))
+        .then_ignore(stmt_end_parser())
         .map(|(fn_expr, args)| FnCall { fn_expr, args })
 }
 

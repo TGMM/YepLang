@@ -26,7 +26,7 @@ pub fn class_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleS
 }
 
 pub fn member_accesss_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, MemberAcess<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, MemberAcess<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     expr_parser()
         .then_ignore(just(Token::Dot))
         .then(id_parser())
@@ -36,14 +36,15 @@ pub fn member_accesss_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = Sim
 pub fn method_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, MethodDecl<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     let return_type = type_decl_parser();
+    let args = destructure_parser()
+        .then(type_decl_parser())
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>();
 
     id_parser()
         .then_ignore(just(Token::LParen))
-        .then(
-            destructure_parser()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<_>>(),
-        )
+        .then(args)
+        .then_ignore(just(Token::RParen))
         .then(return_type.or_not())
         .then(block_parser())
         .map(|(((method_id, args), ret_type), block)| MethodDecl {

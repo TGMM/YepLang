@@ -1,4 +1,7 @@
-use super::{expr_parser::expr_parser, main_parser::block_parser};
+use super::{
+    expr_parser::expr_parser,
+    main_parser::{block_parser, stmt_end_parser},
+};
 use crate::{
     ast::{Block, DoWhile, ElseIf, Expr, For, If, While},
     lexer::Token,
@@ -27,9 +30,8 @@ pub fn do_while_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpa
     just(Token::Do)
         .ignore_then(block_parser())
         .then_ignore(just(Token::While))
-        .then_ignore(just(Token::LParen))
         .then(paren_expr_parser())
-        .then_ignore(just(Token::RParen))
+        .then_ignore(stmt_end_parser())
         .map(|(do_block, while_cond)| DoWhile {
             do_block,
             while_cond,

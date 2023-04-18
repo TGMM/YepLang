@@ -14,6 +14,7 @@ use chumsky::{
 };
 use logos::Logos;
 
+use super::class_parser::member_accesss_parser;
 use super::control_flow_parser::paren_expr_parser;
 use super::expr_parser::expr_parser;
 use super::value_parser::{fn_call_parser, string_parser};
@@ -35,7 +36,7 @@ token_parser!(id_parser, Id, {
 });
 
 pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Destructure, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+) -> impl Parser<'a, I, Destructure<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     recursive(|destructure| {
         let id = id_parser().map(|id| Destructure::Id(id));
         let array = destructure
@@ -59,13 +60,15 @@ pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = Simple
             .then(alias.or_not())
             .map(|(name, alias)| PropertyDestructure { name, alias });
 
+        let member_access = member_accesss_parser().map(|ma| Destructure::MemberAccess(ma));
+
         let object = property
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(|o| Destructure::Object(o));
 
-        id.or(array).or(object)
+        member_access.or(id).or(array).or(object)
     })
 }
 
@@ -76,6 +79,7 @@ pub fn destructure_assignment_parser<
     destructure_parser()
         .then_ignore(just(Token::AssignmentEq))
         .then(expr_parser())
+        .then_ignore(stmt_end_parser())
         .map(|(destructure, assigned_expr)| Assignment {
             destructure,
             assigned_expr,
@@ -83,7 +87,7 @@ pub fn destructure_assignment_parser<
 }
 
 pub fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, ValueVarType, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, ValueVarType, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     let arr_type_decl = just(Token::LSqBracket).ignore_then(just(Token::RSqBracket).ignored());
 
     just(Token::Colon)
@@ -98,8 +102,8 @@ pub fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
         })
 }
 
-fn stmt_end_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Token<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+pub fn stmt_end_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+) -> impl Parser<'a, I, Token<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::StmtEnd).recover_with(via_parser(empty().to(Token::StmtEnd)))
 }
 
@@ -109,7 +113,7 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
         .then(destructure_parser())
         .then(type_decl_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
-        .then(primitive_val_parser())
+        .then(expr_parser())
         .then_ignore(stmt_end_parser())
         .map(|(((scope_spec, destruct), var_type), val)| VarDecl {
             scope_spec,
@@ -122,11 +126,11 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 pub fn non_rec_stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Stmt<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     let assignment = destructure_assignment_parser().map(|a| Stmt::Assignment(a));
-    let fn_call = fn_call_parser().map(|fc| Stmt::FnCall(fc));
     let expr = expr_parser().map(|e| Stmt::Expr(e));
     let var_decl = var_decl_parser().map(|vd| Stmt::VarDecl(vd));
+    let fn_call = fn_call_parser().map(|fc| Stmt::FnCall(fc));
 
-    assignment.or(fn_call).or(expr).or(var_decl)
+    assignment.or(fn_call).or(var_decl).or(expr)
 }
 
 pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -136,12 +140,11 @@ pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
 
 pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    let mut block = Recursive::declare();
-
-    let block_stmt = just(Token::LBracket)
-        .ignore_then(block.clone())
-        .then_ignore(just(Token::RBracket))
-        .map(|b| Stmt::Block(b));
+    let mut top_block = Recursive::declare();
+    let block = just(Token::LBracket)
+        .ignore_then(top_block.clone())
+        .then_ignore(just(Token::RBracket));
+    let block_stmt = block.clone().map(|b| Stmt::Block(b));
 
     let class_decl_parser = {
         let extends_parser = just(Token::Extends).ignore_then(id_parser());
@@ -159,14 +162,15 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
 
     let method_decl_parser = {
         let return_type = type_decl_parser();
+        let args = destructure_parser()
+            .then(type_decl_parser())
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>();
 
         id_parser()
             .then_ignore(just(Token::LParen))
-            .then(
-                destructure_parser()
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>(),
-            )
+            .then(args)
+            .then_ignore(just(Token::RParen))
             .then(return_type.or_not())
             .then(block.clone())
             .map(|(((method_id, args), ret_type), block)| MethodDecl {
@@ -179,7 +183,7 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
 
     let fn_decl_parser = {
         just(Token::Function)
-            .ignore_then(method_decl_parser)
+            .ignore_then(method_decl_parser.clone())
             .map(|md| FnDecl {
                 fn_id: md.method_id,
                 args: md.args,
@@ -220,9 +224,8 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
         just(Token::Do)
             .ignore_then(block.clone())
             .then_ignore(just(Token::While))
-            .then_ignore(just(Token::LParen))
             .then(paren_expr_parser())
-            .then_ignore(just(Token::RParen))
+            .then_ignore(stmt_end_parser())
             .map(|(do_block, while_cond)| DoWhile {
                 do_block,
                 while_cond,
@@ -264,40 +267,42 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
     // for_parser
     // if_else_parser
     // while_parser
-
     let class_decl = class_decl_parser.map(|cd| Stmt::ClassDecl(cd));
     let fn_decl = fn_decl_parser.map(|fd| Stmt::FnDecl(fd));
     let for_d = for_parser.map(|f| Stmt::For(f));
     let while_d = while_parser.map(|w| Stmt::While(w));
     let do_while_d = do_while_parser.map(|dw| Stmt::DoWhile(dw));
     let if_d = if_else_parser.map(|ie| Stmt::If(ie));
+    let method_decl = method_decl_parser.map(|md| Stmt::MethodDecl(md));
     let rec_stms_parser = class_decl
         .or(fn_decl)
+        .or(method_decl)
         .or(for_d)
         .or(while_d)
         .or(do_while_d)
         .or(if_d);
 
-    block.define(
+    top_block.define(
         block_stmt
-            .or(non_rec_stmt_parser().boxed())
             .or(rec_stms_parser.boxed())
+            .or(non_rec_stmt_parser().boxed())
             .repeated()
             .collect::<Vec<Stmt>>()
             .map(|stmts| Block { stmts }),
     );
 
-    block
+    top_block
 }
 
 pub fn parse(input: &str) {
-    let token_iter = Token::lexer(input)
-        .spanned()
+    let tokens = Token::lexer(input).spanned().collect::<Vec<_>>();
+    let token_iter = tokens
+        .into_iter()
         .map::<(Token, SimpleSpan), _>(|(tok, span)| (tok, span.into()));
 
     let token_stream = Stream::from_iter(token_iter).spanned((input.len()..input.len()).into());
 
-    match block_parser().parse(token_stream).into_result() {
+    match top_block_parser().parse(token_stream).into_result() {
         Ok(block) => {
             dbg!(block);
         }
