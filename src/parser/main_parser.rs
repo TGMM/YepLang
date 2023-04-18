@@ -18,14 +18,21 @@ use super::control_flow_parser::paren_expr_parser;
 use super::expr_parser::expr_parser;
 use super::value_parser::{fn_call_parser, string_parser};
 
-pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+pub type RichTokenErr<'a> = extra::Err<Rich<'a, Token<'a>>>;
+macro_rules! token_parser {
+    ($name:ident, $ret_type:ty, $b:block) => {
+        pub fn $name<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+        ) -> impl Parser<'a, I, $ret_type, RichTokenErr<'a>> + Clone $b
+    };
+}
+
+token_parser!(id_parser, Id, {
     select! {
         Token::Id(id) => id
     }
     .labelled("id")
     .map(|id| Id(id.to_string()))
-}
+});
 
 pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Destructure, extra::Err<Rich<'a, Token<'a>>>> + Clone {
