@@ -178,10 +178,11 @@ pub struct Block<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'input> {
+    Assignment,
     FnCall(FnCall<'input>),
     Expr(Expr<'input>),
-    ClassDecl,
-    FnDecl,
+    ClassDecl(ClassDecl<'input>),
+    FnDecl(FnDecl<'input>),
     For(For<'input>),
     While(While<'input>),
     DoWhile(DoWhile<'input>),
