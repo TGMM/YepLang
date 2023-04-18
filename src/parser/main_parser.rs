@@ -74,15 +74,14 @@ fn stmt_end_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, VarDecl<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     select! { Token::ScopeSpecifier(ss) => ss }
-        // TODO: This should be a destructure
-        .then(id_parser())
+        .then(destructure_parser())
         .then(type_decl_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
         .then(primitive_val_parser())
         .then_ignore(stmt_end_parser())
-        .map(|(((scope_spec, id), var_type), val)| VarDecl {
+        .map(|(((scope_spec, destruct), var_type), val)| VarDecl {
             scope_spec,
-            destructure: Destructure::Id(id.into()),
+            destructure: destruct,
             var_type,
             expr: val.into(),
         })
