@@ -1,4 +1,6 @@
-use crate::ast::{PropertyDestructure, PropertyDestructureName, PropertyName, ValueVarType};
+use crate::ast::{
+    Assignment, PropertyDestructure, PropertyDestructureName, PropertyName, ValueVarType,
+};
 use crate::parser::value_parser::primitive_val_parser;
 use crate::{
     ast::{Block, Destructure, Id, Stmt, VarDecl, VarType},
@@ -11,6 +13,7 @@ use chumsky::{
 };
 use logos::Logos;
 
+use super::expr_parser::expr_parser;
 use super::value_parser::string_parser;
 
 pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -55,6 +58,19 @@ pub fn destructure_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = Simple
 
         id.or(array).or(object)
     })
+}
+
+pub fn destructure_assignment_parser<
+    'a,
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+>() -> impl Parser<'a, I, Assignment<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    destructure_parser()
+        .then_ignore(just(Token::AssignmentEq))
+        .then(expr_parser())
+        .map(|(destructure, assigned_expr)| Assignment {
+            destructure,
+            assigned_expr,
+        })
 }
 
 pub fn type_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(

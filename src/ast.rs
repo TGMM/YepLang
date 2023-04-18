@@ -15,6 +15,8 @@ pub enum VarType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueVarType {
     pub vtype: VarType,
+    // TODO: This should give the nesting level
+    // instead of just saying if it's an array or not
     pub is_array: bool,
 }
 
@@ -183,7 +185,7 @@ pub struct Block<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'input> {
-    Assignment,
+    Assignment(Assignment<'input>),
     FnCall(FnCall<'input>),
     Expr(Expr<'input>),
     ClassDecl(ClassDecl<'input>),
@@ -342,4 +344,10 @@ pub struct MethodDecl<'a> {
     pub args: Vec<Destructure>,
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assignment<'a> {
+    pub destructure: Destructure,
+    pub assigned_expr: Expr<'a>,
 }
