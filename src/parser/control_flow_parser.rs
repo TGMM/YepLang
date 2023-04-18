@@ -3,12 +3,7 @@ use crate::{
     lexer::Token,
 };
 use chumsky::{
-    extra,
-    input::ValueInput,
-    prelude::Rich,
-    primitive::{just, todo},
-    span::SimpleSpan,
-    IterParser, Parser,
+    extra, input::ValueInput, prelude::Rich, primitive::just, span::SimpleSpan, IterParser, Parser,
 };
 
 use super::{
