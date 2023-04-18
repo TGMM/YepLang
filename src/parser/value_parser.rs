@@ -113,7 +113,7 @@ pub fn indexing_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpa
         .map(|(indexed, indexer)| Indexing { indexed, indexer })
 }
 
-pub fn fn_call<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn fn_call_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, FnCall<'a>, extra::Err<Rich<'a, Token<'a>>>> {
     expr_parser()
         .then_ignore(just(Token::LParen))

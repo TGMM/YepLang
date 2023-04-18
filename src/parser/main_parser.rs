@@ -13,8 +13,10 @@ use chumsky::{
 };
 use logos::Logos;
 
+use super::class_parser::{class_decl_parser, fn_decl_parser};
+use super::control_flow_parser::{do_while_parser, for_parser, if_else_parser, while_parser};
 use super::expr_parser::expr_parser;
-use super::value_parser::string_parser;
+use super::value_parser::{fn_call_parser, string_parser};
 
 pub fn id_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Id, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -110,11 +112,14 @@ fn var_decl_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
         })
 }
 
-pub fn stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
+pub fn non_rec_stmt_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Stmt<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    let assignment = destructure_assignment_parser().map(|a| Stmt::Assignment(a));
+    let fn_call = fn_call_parser().map(|fc| Stmt::FnCall(fc));
+    let expr = expr_parser().map(|e| Stmt::Expr(e));
     let var_decl = var_decl_parser().map(|vd| Stmt::VarDecl(vd));
 
-    var_decl
+    assignment.or(fn_call).or(expr).or(var_decl)
 }
 
 pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
@@ -131,7 +136,7 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
             .map(|b| Stmt::Block(b));
 
         block_stmt
-            .or(stmt_parser().boxed())
+            .or(non_rec_stmt_parser().boxed())
             .repeated()
             .collect::<Vec<Stmt>>()
             .map(|stmts| Block { stmts })

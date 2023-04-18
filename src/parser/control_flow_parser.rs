@@ -1,7 +1,4 @@
-use super::{
-    expr_parser::expr_parser,
-    main_parser::{block_parser, stmt_parser},
-};
+use super::{expr_parser::expr_parser, main_parser::block_parser};
 use crate::{
     ast::{Block, DoWhile, ElseIf, Expr, For, If, While},
     lexer::Token,
@@ -30,8 +27,9 @@ pub fn do_while_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpa
     just(Token::Do)
         .ignore_then(block_parser())
         .then_ignore(just(Token::While))
+        .then_ignore(just(Token::LParen))
         .then(paren_expr_parser())
-        .then_ignore(stmt_parser())
+        .then_ignore(just(Token::RParen))
         .map(|(do_block, while_cond)| DoWhile {
             do_block,
             while_cond,
@@ -108,7 +106,7 @@ mod test {
     use crate::{
         ast::{
             Block, BoolLiteral, Exp, Expr, Factor, Id, If, NumericLiteral, PrimitiveVal,
-            ScopeSpecifier, Stmt, Term, VarDecl, VarType,
+            ScopeSpecifier, Stmt, Term, VarDecl,
         },
         lexer::Token,
         parser::control_flow_parser::if_else_parser,
@@ -119,6 +117,7 @@ mod test {
 
     #[test]
     pub fn if_test() {
+        // if(true) { let x = 10; }
         let token_iter = vec![
             span_token!(Token::If),
             span_token!(Token::LParen),
