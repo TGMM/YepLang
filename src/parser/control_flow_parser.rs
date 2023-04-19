@@ -1,9 +1,6 @@
-use super::{
-    expr_parser::expr_parser,
-    main_parser::{block_parser, stmt_end_parser},
-};
+use super::{expr_parser::expr_parser, main_parser::master_parser};
 use crate::{
-    ast::{Block, DoWhile, ElseIf, Expr, For, If, While},
+    ast::{DoWhile, Expr, For, If, While},
     lexer::Token,
 };
 use chumsky::{
@@ -11,7 +8,7 @@ use chumsky::{
 };
 
 pub fn paren_expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-) -> impl Parser<'a, I, Expr<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+) -> impl Parser<'a, I, Expr<'a>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::LParen)
         .ignore_then(expr_parser())
         .then_ignore(just(Token::RParen))
@@ -19,87 +16,22 @@ pub fn paren_expr_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleS
 
 pub fn while_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, While<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    just(Token::While)
-        .ignore_then(paren_expr_parser())
-        .then(block_parser())
-        .map(|(while_cond, block)| While { while_cond, block })
+    master_parser().0.while_d
 }
 
 pub fn do_while_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, DoWhile<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    just(Token::Do)
-        .ignore_then(block_parser())
-        .then_ignore(just(Token::While))
-        .then(paren_expr_parser())
-        .then_ignore(stmt_end_parser())
-        .map(|(do_block, while_cond)| DoWhile {
-            do_block,
-            while_cond,
-        })
+    master_parser().0.do_while_d
 }
 
 pub fn if_else_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, If<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    pub fn else_if_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<'a, I, Vec<ElseIf<'a>>, extra::Err<Rich<'a, Token<'a>>>> {
-        just(Token::Else)
-            .ignore_then(just(Token::If))
-            .ignore_then(paren_expr_parser())
-            .then(block_parser())
-            .map(|(else_expr, else_block)| ElseIf {
-                else_expr,
-                else_block,
-            })
-            .repeated()
-            .collect::<Vec<_>>()
-    }
-
-    pub fn else_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-        just(Token::Else).ignore_then(block_parser())
-    }
-
-    just(Token::If)
-        .ignore_then(paren_expr_parser())
-        .then(block_parser())
-        .then(else_if_parser())
-        .then(else_parser().or_not())
-        .map(|(((if_expr, if_block), else_if), else_b)| If {
-            if_expr,
-            if_block,
-            else_if,
-            else_b,
-        })
+    master_parser().0.if_d
 }
 
 pub fn for_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, For<'a>, extra::Err<Rich<'a, Token<'a>>>> {
-    pub fn for_conditions_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
-    ) -> impl Parser<
-        'a,
-        I,
-        (Option<Expr<'a>>, Option<Expr<'a>>, Option<Expr<'a>>),
-        extra::Err<Rich<'a, Token<'a>>>,
-    > {
-        just(Token::LParen)
-            .ignore_then(expr_parser().or_not())
-            .then_ignore(just(Token::StmtEnd))
-            .then(expr_parser().or_not())
-            .then_ignore(just(Token::StmtEnd))
-            .then(expr_parser().or_not())
-            .then_ignore(just(Token::RParen))
-            .map(|((e1, e2), e3)| (e1, e2, e3))
-    }
-
-    just(Token::For)
-        .ignore_then(for_conditions_parser())
-        .then(block_parser())
-        .map(|((decl_expr, cmp_expr, postfix_expr), block)| For {
-            decl_expr,
-            cmp_expr,
-            postfix_expr,
-            block,
-        })
+    master_parser().0.for_d
 }
 
 #[cfg(test)]

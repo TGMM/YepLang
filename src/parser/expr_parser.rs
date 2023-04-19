@@ -1,7 +1,4 @@
-use super::{
-    main_parser::id_parser,
-    value_parser::{fn_call_parser, primitive_val_parser},
-};
+use super::{main_parser::id_parser, value_parser::primitive_val_parser};
 use crate::{
     ast::{CmpOp, Exp, ExpBOp, ExpOp, Expr, Factor, Term, TermBOp, TermOp},
     lexer::Token,

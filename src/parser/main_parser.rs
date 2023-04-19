@@ -2,12 +2,12 @@ use crate::ast::{
     Assignment, ClassDecl, DoWhile, ElseIf, FnDecl, For, If, MethodDecl, PropertyDestructure,
     PropertyDestructureName, PropertyName, ValueVarType, While,
 };
-use crate::parser::value_parser::primitive_val_parser;
 use crate::{
     ast::{Block, Destructure, Id, Stmt, VarDecl, VarType},
     lexer::Token,
 };
 use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::extra::Full;
 use chumsky::{
     input::{Stream, ValueInput},
     prelude::*,
@@ -138,8 +138,26 @@ pub fn block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>
     top_block_parser().delimited_by(just(Token::LBracket), just(Token::RBracket))
 }
 
+pub struct RecursiveParsers<'a, 'b, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>> {
+    pub class_decl: Boxed<'a, 'b, I, ClassDecl<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub fn_decl: Boxed<'a, 'b, I, FnDecl<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub for_d: Boxed<'a, 'b, I, For<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub while_d: Boxed<'a, 'b, I, While<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub do_while_d: Boxed<'a, 'b, I, DoWhile<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub if_d: Boxed<'a, 'b, I, If<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+    pub method_decl: Boxed<'a, 'b, I, MethodDecl<'a>, Full<Rich<'a, Token<'a>>, (), ()>>,
+}
+
 pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>(
 ) -> impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>> {
+    master_parser().1
+}
+
+// Yes, it's so godly it deserves this name
+pub fn master_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>>() -> (
+    RecursiveParsers<'a, 'a, I>,
+    impl Parser<'a, I, Block<'a>, extra::Err<Rich<'a, Token<'a>>>>,
+) {
     let mut top_block = Recursive::declare();
     let block = just(Token::LBracket)
         .ignore_then(top_block.clone())
@@ -261,12 +279,16 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
             })
     };
 
-    // TODO: Deduplicate these functions
-    // fn_decl_parser
-    // do_while_parser
-    // for_parser
-    // if_else_parser
-    // while_parser
+    let rec_parser_struct = RecursiveParsers {
+        class_decl: class_decl_parser.clone().boxed(),
+        fn_decl: fn_decl_parser.clone().boxed(),
+        for_d: for_parser.clone().boxed(),
+        while_d: while_parser.clone().boxed(),
+        do_while_d: do_while_parser.clone().boxed(),
+        if_d: if_else_parser.clone().boxed(),
+        method_decl: method_decl_parser.clone().boxed(),
+    };
+
     let class_decl = class_decl_parser.map(|cd| Stmt::ClassDecl(cd));
     let fn_decl = fn_decl_parser.map(|fd| Stmt::FnDecl(fd));
     let for_d = for_parser.map(|f| Stmt::For(f));
@@ -291,7 +313,7 @@ pub fn top_block_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSp
             .map(|stmts| Block { stmts }),
     );
 
-    top_block
+    (rec_parser_struct, top_block)
 }
 
 pub fn parse(input: &str) {
