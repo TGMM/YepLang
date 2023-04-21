@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BoolUnaryOp, CmpOp, ExpOp, Id, ScopeSpecifier, TermOp, VarType},
+    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -15,9 +15,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::BoolVal(b) => write!(f, "{}", b),
             Token::VarType(vt) => write!(f, "{}", vt),
             Token::ScopeSpecifier(ss) => ss.fmt(f),
-            Token::ExpOp(exp_op) => exp_op.fmt(f),
-            Token::TermOp(term_op) => term_op.fmt(f),
-            Token::CmpOp(cmp_op) => cmp_op.fmt(f),
+            Token::BOp(bop) => bop.fmt(f),
             Token::AssignmentEq => write!(f, "="),
             Token::StmtEnd => write!(f, ";"),
             Token::Colon => write!(f, ":"),
@@ -46,34 +44,22 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-impl fmt::Display for CmpOp {
+impl fmt::Display for BOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use BOp::*;
         match self {
-            CmpOp::Lt => write!(f, "<"),
-            CmpOp::Lte => write!(f, "<="),
-            CmpOp::Gt => write!(f, ">"),
-            CmpOp::Gte => write!(f, ">="),
-            CmpOp::Ne => write!(f, "!="),
-            CmpOp::Eq => write!(f, "=="),
-        }
-    }
-}
-
-impl fmt::Display for ExpOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExpOp::Add => write!(f, "+"),
-            ExpOp::Sub => write!(f, "-"),
-        }
-    }
-}
-
-impl fmt::Display for TermOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TermOp::Mul => write!(f, "*"),
-            TermOp::Div => write!(f, "/"),
-            TermOp::Mod => write!(f, "%"),
+            Add => write!(f, "+"),
+            Sub => write!(f, "-"),
+            Mul => write!(f, "*"),
+            Div => write!(f, "/"),
+            Mod => write!(f, "%"),
+            Pow => write!(f, "**"),
+            Gt => write!(f, ">"),
+            Gte => write!(f, ">="),
+            Lt => write!(f, "<"),
+            Lte => write!(f, "<="),
+            Ne => write!(f, "!="),
+            Eq => write!(f, "=="),
         }
     }
 }

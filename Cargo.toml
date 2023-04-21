@@ -7,6 +7,5 @@ edition = "2021"
 
 [dependencies]
 ariadne = "0.2.0"
-chumsky = { git = "https://github.com/zesterer/chumsky", features = ["label", "nightly"] }
 logos = "0.13.0"
-snailquote = "0.3.1"
+nom = { git = "https://github.com/rust-bakery/nom" }

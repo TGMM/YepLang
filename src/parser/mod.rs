@@ -1,6 +1,6 @@
-mod class_parser;
-pub mod control_flow_parser;
-pub mod expr_parser;
+mod error;
+pub(crate) mod expr_parser;
 mod helpers;
-pub mod main_parser;
-pub mod value_parser;
+pub(crate) mod main_parser;
+pub(crate) mod primitive_parser;
+pub(crate) mod token;

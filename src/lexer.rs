@@ -1,8 +1,5 @@
-use crate::ast::{
-    str_to_bool_uop, str_to_cmp_op, str_to_exp_op, str_to_scope_spec, str_to_term_op,
-    str_to_var_type, BoolUnaryOp,
-};
-use crate::ast::{CmpOp, ExpOp, ScopeSpecifier, TermOp, VarType};
+use crate::ast::{str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp};
+use crate::ast::{BOp, ScopeSpecifier, VarType};
 use logos::Logos;
 
 #[derive(Logos, Clone, Debug, PartialEq)]
@@ -12,8 +9,6 @@ pub enum Token<'input> {
     Id(&'input str),
     #[regex(r#""(?:[^"\\]|\\t|\\u|\\n|\\")*""#)]
     Str(&'input str),
-    // This should be '(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)' but the regex
-    // engine does not support it.
     #[regex(r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)'"#)]
     Char(&'input str),
     #[regex(r#"[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?"#)]
@@ -37,20 +32,18 @@ pub enum Token<'input> {
     ScopeSpecifier(ScopeSpecifier),
     #[token("!", str_to_bool_uop)]
     BoolUnaryOp(BoolUnaryOp),
-    #[token("+", str_to_exp_op)]
-    #[token("-", str_to_exp_op)]
-    ExpOp(ExpOp),
-    #[token("*", str_to_term_op)]
-    #[token("/", str_to_term_op)]
-    #[token("%", str_to_term_op)]
-    TermOp(TermOp),
-    #[token(">", str_to_cmp_op)]
-    #[token(">=", str_to_cmp_op)]
-    #[token("<", str_to_cmp_op)]
-    #[token("<=", str_to_cmp_op)]
-    #[token("!=", str_to_cmp_op)]
-    #[token("==", str_to_cmp_op)]
-    CmpOp(CmpOp),
+    #[token("+", str_to_bop)]
+    #[token("-", str_to_bop)]
+    #[token("*", str_to_bop)]
+    #[token("/", str_to_bop)]
+    #[token("%", str_to_bop)]
+    #[token(">", str_to_bop)]
+    #[token(">=", str_to_bop)]
+    #[token("<", str_to_bop)]
+    #[token("<=", str_to_bop)]
+    #[token("!=", str_to_bop)]
+    #[token("==", str_to_bop)]
+    BOp(BOp),
     #[token("=")]
     AssignmentEq,
     #[token(";")]
@@ -98,7 +91,7 @@ pub enum Token<'input> {
 #[cfg(test)]
 mod test {
     use super::Token;
-    use crate::lexer::{CmpOp, ExpOp, ScopeSpecifier, TermOp, VarType};
+    use crate::lexer::{BOp, ScopeSpecifier, VarType};
     use logos::Logos;
     use Token::*;
 
@@ -128,6 +121,8 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
+        let test = Token::lexer(input).spanned().next().unwrap();
+
         assert_eq!(
             &tokens,
             &[
@@ -144,7 +139,7 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        assert_eq!(&tokens, &[Ok(ExpOp(ExpOp::Add)), Ok(ExpOp(ExpOp::Sub)),]);
+        assert_eq!(&tokens, &[Ok(BOp(BOp::Add)), Ok(BOp(BOp::Sub)),]);
     }
 
     #[test]
@@ -155,11 +150,7 @@ mod test {
 
         assert_eq!(
             &tokens,
-            &[
-                Ok(TermOp(TermOp::Mul)),
-                Ok(TermOp(TermOp::Div)),
-                Ok(TermOp(TermOp::Mod)),
-            ]
+            &[Ok(BOp(BOp::Mul)), Ok(BOp(BOp::Div)), Ok(BOp(BOp::Mod)),]
         );
     }
 
@@ -172,12 +163,12 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Ok(CmpOp(CmpOp::Lt)),
-                Ok(CmpOp(CmpOp::Lte)),
-                Ok(CmpOp(CmpOp::Gt)),
-                Ok(CmpOp(CmpOp::Gte)),
-                Ok(CmpOp(CmpOp::Ne)),
-                Ok(CmpOp(CmpOp::Eq)),
+                Ok(BOp(BOp::Gt)),
+                Ok(BOp(BOp::Gte)),
+                Ok(BOp(BOp::Lt)),
+                Ok(BOp(BOp::Lte)),
+                Ok(BOp(BOp::Ne)),
+                Ok(BOp(BOp::Eq)),
             ]
         );
     }

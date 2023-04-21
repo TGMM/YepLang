@@ -30,17 +30,19 @@ pub enum NumericUnaryOp {
     Plus,
     Minus,
 }
-impl From<ExpOp> for NumericUnaryOp {
-    fn from(value: ExpOp) -> Self {
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoolLiteral(pub bool);
+impl From<&str> for BoolLiteral {
+    fn from(value: &str) -> Self {
         match value {
-            ExpOp::Add => NumericUnaryOp::Plus,
-            ExpOp::Sub => NumericUnaryOp::Minus,
+            "true" => BoolLiteral(true),
+            "false" => BoolLiteral(false),
+            _ => panic!("Invalid value for bool"),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct BoolLiteral(pub bool);
 #[derive(Debug, Clone, PartialEq)]
 pub enum BoolUnaryOp {
     Not,
@@ -71,10 +73,7 @@ pub enum PrimitiveVal<'input> {
 }
 impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
     fn from(value: PrimitiveVal<'input>) -> Self {
-        Expr {
-            lhs: Exp::Term(Term::Factor(Factor::PrimitiveVal(value))),
-            rhs: None,
-        }
+        Expr::PrimitiveVal(value)
     }
 }
 
@@ -116,61 +115,6 @@ pub fn str_to_scope_spec<'input>(lex: &Lexer<'input, Token<'input>>) -> ScopeSpe
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExpOp {
-    Add,
-    Sub,
-}
-
-pub fn str_to_exp_op<'input>(lex: &Lexer<'input, Token<'input>>) -> ExpOp {
-    let exp_op_str = lex.slice();
-    match exp_op_str {
-        "+" => ExpOp::Add,
-        "-" => ExpOp::Sub,
-        _ => unreachable!(),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TermOp {
-    Mul,
-    Div,
-    Mod,
-}
-
-pub fn str_to_term_op<'input>(lex: &Lexer<'input, Token<'input>>) -> TermOp {
-    let term_op_str = lex.slice();
-    match term_op_str {
-        "*" => TermOp::Mul,
-        "/" => TermOp::Div,
-        "%" => TermOp::Mod,
-        _ => unreachable!(),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CmpOp {
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    Ne,
-    Eq,
-}
-
-pub fn str_to_cmp_op<'input>(lex: &Lexer<'input, Token<'input>>) -> CmpOp {
-    let cmp_op_str = lex.slice();
-    match cmp_op_str {
-        ">" => CmpOp::Lt,
-        ">=" => CmpOp::Lte,
-        "<" => CmpOp::Gt,
-        "<=" => CmpOp::Gte,
-        "!=" => CmpOp::Ne,
-        "==" => CmpOp::Eq,
-        _ => unreachable!(),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Id(pub String);
 impl From<&str> for Id {
     fn from(value: &str) -> Self {
@@ -179,10 +123,7 @@ impl From<&str> for Id {
 }
 impl<'a> From<Id> for Expr<'a> {
     fn from(value: Id) -> Self {
-        Expr {
-            lhs: Exp::Term(Term::Factor(Factor::Id(value))),
-            rhs: None,
-        }
+        Expr::Id(value)
     }
 }
 
@@ -214,14 +155,11 @@ pub enum PropertyName {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PropertyDestructureName<'input> {
-    PropName(PropertyName),
-    Destructure(Destructure<'input>),
-}
-#[derive(Debug, Clone, PartialEq)]
 pub struct PropertyDestructure<'input> {
-    pub name: PropertyDestructureName<'input>,
-    pub alias: Option<Id>,
+    /// Left hand side
+    pub name: PropertyName,
+    /// Right hand side
+    pub alias: Option<Destructure<'input>>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Destructure<'input> {
@@ -245,38 +183,82 @@ pub struct VarDecl<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Expr<'input> {
-    pub lhs: Exp<'input>,
-    pub rhs: Option<(CmpOp, Exp<'input>)>,
+pub enum BOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Ne,
+    Eq,
+}
+impl BOp {
+    fn infix_binding_power(&self) -> u8 {
+        match self {
+            BOp::Add => 1,
+            BOp::Sub => 1,
+            BOp::Mul => 3,
+            BOp::Div => 3,
+            BOp::Mod => 3,
+            BOp::Pow => 5,
+            BOp::Gt => 7,
+            BOp::Gte => 7,
+            BOp::Lt => 7,
+            BOp::Lte => 7,
+            BOp::Ne => 7,
+            BOp::Eq => 7,
+        }
+    }
+}
+impl From<&str> for BOp {
+    fn from(value: &str) -> Self {
+        match value {
+            "+" => BOp::Add,
+            "-" => BOp::Sub,
+            "*" => BOp::Mul,
+            "/" => BOp::Div,
+            "%" => BOp::Mod,
+            "**" => BOp::Pow,
+            ">" => BOp::Gt,
+            ">=" => BOp::Gte,
+            "<" => BOp::Lt,
+            "<=" => BOp::Lte,
+            "!=" => BOp::Ne,
+            "==" => BOp::Eq,
+            _ => todo!(),
+        }
+    }
+}
+pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> BOp {
+    let op = lex.slice();
+    op.into()
+}
+
+impl From<BOp> for NumericUnaryOp {
+    fn from(value: BOp) -> Self {
+        match value {
+            BOp::Add => NumericUnaryOp::Plus,
+            BOp::Sub => NumericUnaryOp::Minus,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExpBOp<'input> {
-    pub lhs: Exp<'input>,
-    pub op: ExpOp,
-    pub rhs: Exp<'input>,
+pub struct BExpr<'input> {
+    pub lhs: Expr<'input>,
+    pub op: BOp,
+    pub rhs: Expr<'input>,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum Exp<'input> {
-    Term(Term<'input>),
-    BOp(Box<ExpBOp<'input>>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TermBOp<'input> {
-    pub lhs: Term<'input>,
-    pub op: TermOp,
-    pub rhs: Term<'input>,
-}
-#[derive(Debug, Clone, PartialEq)]
-pub enum Term<'input> {
-    Factor(Factor<'input>),
-    BOp(Box<TermBOp<'input>>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Factor<'input> {
+pub enum Expr<'input> {
     ParenExpr(Option<UnaryOp>, Box<Expr<'input>>),
+    BinaryExpr(Box<BExpr<'input>>),
     PrimitiveVal(PrimitiveVal<'input>),
     FnCall(Box<FnCall<'input>>),
     Id(Id),
