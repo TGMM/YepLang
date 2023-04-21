@@ -317,7 +317,10 @@ pub fn master_parser<'a, I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>
 }
 
 pub fn parse(input: &str) {
-    let tokens = Token::lexer(input).spanned().collect::<Vec<_>>();
+    let tokens = Token::lexer(input)
+        .spanned()
+        .map(|(tok_res, span)| (tok_res.unwrap(), span))
+        .collect::<Vec<_>>();
     let token_iter = tokens
         .into_iter()
         .map::<(Token, SimpleSpan), _>(|(tok, span)| (tok, span.into()));

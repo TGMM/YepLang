@@ -264,7 +264,7 @@ mod test {
         let input = "10 + 20 + 50 + 7 + 68 + 5";
         let token_iter = Token::lexer(input)
             .spanned()
-            .map::<(Token, SimpleSpan), _>(|(tok, span)| (tok, span.into()));
+            .map::<(Token, SimpleSpan), _>(|(tok, span)| (tok.unwrap(), span.into()));
 
         let token_stream = Stream::from_iter(token_iter).spanned((input.len()..input.len()).into());
 

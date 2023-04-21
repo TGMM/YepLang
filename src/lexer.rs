@@ -6,6 +6,7 @@ use crate::ast::{CmpOp, ExpOp, ScopeSpecifier, TermOp, VarType};
 use logos::Logos;
 
 #[derive(Logos, Clone, Debug, PartialEq)]
+#[logos(skip r"[\s\f\r]+")]
 pub enum Token<'input> {
     #[regex(r#"[\p{L}_][\p{L}\d_]*"#)]
     Id(&'input str),
@@ -13,9 +14,7 @@ pub enum Token<'input> {
     Str(&'input str),
     // This should be '(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)' but the regex
     // engine does not support it.
-    #[regex(
-        r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|\\n|\\r|\\'|\\\\)'"#
-    )]
+    #[regex(r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)'"#)]
     Char(&'input str),
     #[regex(r#"[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?"#)]
     FloatVal(&'input str),
@@ -94,9 +93,6 @@ pub enum Token<'input> {
     Function,
     #[token("extends")]
     Extends,
-    #[error]
-    #[regex(r"[\s\f\r]+", logos::skip)]
-    Error,
 }
 
 #[cfg(test)]
@@ -104,6 +100,7 @@ mod test {
     use super::Token;
     use crate::lexer::{CmpOp, ExpOp, ScopeSpecifier, TermOp, VarType};
     use logos::Logos;
+    use Token::*;
 
     #[test]
     fn type_lexing() {
@@ -114,13 +111,13 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Token::VarType(VarType::I32),
-                Token::VarType(VarType::I64),
-                Token::VarType(VarType::F32),
-                Token::VarType(VarType::F64),
-                Token::VarType(VarType::Boolean),
-                Token::VarType(VarType::Char),
-                Token::VarType(VarType::String),
+                Ok(VarType(VarType::I32)),
+                Ok(VarType(VarType::I64)),
+                Ok(VarType(VarType::F32)),
+                Ok(VarType(VarType::F64)),
+                Ok(VarType(VarType::Boolean)),
+                Ok(VarType(VarType::Char)),
+                Ok(VarType(VarType::String)),
             ]
         );
     }
@@ -134,9 +131,9 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Token::ScopeSpecifier(ScopeSpecifier::Var),
-                Token::ScopeSpecifier(ScopeSpecifier::Const),
-                Token::ScopeSpecifier(ScopeSpecifier::Let),
+                Ok(ScopeSpecifier(ScopeSpecifier::Var)),
+                Ok(ScopeSpecifier(ScopeSpecifier::Const)),
+                Ok(ScopeSpecifier(ScopeSpecifier::Let)),
             ]
         );
     }
@@ -147,10 +144,7 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        assert_eq!(
-            &tokens,
-            &[Token::ExpOp(ExpOp::Add), Token::ExpOp(ExpOp::Sub),]
-        );
+        assert_eq!(&tokens, &[Ok(ExpOp(ExpOp::Add)), Ok(ExpOp(ExpOp::Sub)),]);
     }
 
     #[test]
@@ -162,9 +156,9 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Token::TermOp(TermOp::Mul),
-                Token::TermOp(TermOp::Div),
-                Token::TermOp(TermOp::Mod),
+                Ok(TermOp(TermOp::Mul)),
+                Ok(TermOp(TermOp::Div)),
+                Ok(TermOp(TermOp::Mod)),
             ]
         );
     }
@@ -178,12 +172,12 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Token::CmpOp(CmpOp::Lt),
-                Token::CmpOp(CmpOp::Lte),
-                Token::CmpOp(CmpOp::Gt),
-                Token::CmpOp(CmpOp::Gte),
-                Token::CmpOp(CmpOp::Ne),
-                Token::CmpOp(CmpOp::Eq),
+                Ok(CmpOp(CmpOp::Lt)),
+                Ok(CmpOp(CmpOp::Lte)),
+                Ok(CmpOp(CmpOp::Gt)),
+                Ok(CmpOp(CmpOp::Gte)),
+                Ok(CmpOp(CmpOp::Ne)),
+                Ok(CmpOp(CmpOp::Eq)),
             ]
         );
     }
@@ -197,25 +191,25 @@ mod test {
         assert_eq!(
             &tokens,
             &[
-                Token::If,
-                Token::Else,
-                Token::Do,
-                Token::While,
-                Token::For,
-                Token::Break,
-                Token::Continue,
-                Token::Function,
-                Token::Class,
-                Token::Extends,
-                Token::StmtEnd,
-                Token::Colon,
-                Token::Comma,
-                Token::LParen,
-                Token::RParen,
-                Token::LBracket,
-                Token::RBracket,
-                Token::LSqBracket,
-                Token::RSqBracket
+                Ok(If),
+                Ok(Else),
+                Ok(Do),
+                Ok(While),
+                Ok(For),
+                Ok(Break),
+                Ok(Continue),
+                Ok(Function),
+                Ok(Class),
+                Ok(Extends),
+                Ok(StmtEnd),
+                Ok(Colon),
+                Ok(Comma),
+                Ok(LParen),
+                Ok(RParen),
+                Ok(LBracket),
+                Ok(RBracket),
+                Ok(LSqBracket),
+                Ok(RSqBracket)
             ]
         );
     }
@@ -224,21 +218,21 @@ mod test {
     fn number_lexing() {
         let input = "1 2.0 3.1 4.234 5 123456789 9223372036854775807 1.7976931348623157E+308";
         let lex = Token::lexer(input);
-        let tokens: Vec<Token> = lex.into_iter().collect();
+        let tokens: Vec<_> = lex.into_iter().collect();
 
         let i64_max_str = i64::MAX.to_string();
 
         assert_eq!(
             tokens,
             vec![
-                Token::IntVal("1"),
-                Token::FloatVal("2.0"),
-                Token::FloatVal("3.1"),
-                Token::FloatVal("4.234"),
-                Token::IntVal("5"),
-                Token::IntVal("123456789"),
-                Token::IntVal(i64_max_str.as_str()),
-                Token::FloatVal("1.7976931348623157E+308"),
+                Ok(IntVal("1")),
+                Ok(FloatVal("2.0")),
+                Ok(FloatVal("3.1")),
+                Ok(FloatVal("4.234")),
+                Ok(IntVal("5")),
+                Ok(IntVal("123456789")),
+                Ok(IntVal(i64_max_str.as_str())),
+                Ok(FloatVal("1.7976931348623157E+308")),
             ]
         );
     }
@@ -247,13 +241,13 @@ mod test {
     fn string_val_parser_test() {
         let input = r#""This is a test string\n" "This is another test string\t""#;
         let lex = Token::lexer(input);
-        let tokens: Vec<Token> = lex.into_iter().collect();
+        let tokens: Vec<_> = lex.into_iter().collect();
 
         assert_eq!(
             tokens,
             vec![
-                Token::Str("\"This is a test string\\n\""),
-                Token::Str("\"This is another test string\\t\"")
+                Ok(Str("\"This is a test string\\n\"")),
+                Ok(Str("\"This is another test string\\t\""))
             ]
         );
     }
@@ -262,16 +256,16 @@ mod test {
     fn id_parser_test() {
         let input = "x y z my_var my_super_long_var_name";
         let lex = Token::lexer(input);
-        let tokens: Vec<Token> = lex.into_iter().collect();
+        let tokens: Vec<_> = lex.into_iter().collect();
 
         assert_eq!(
             tokens,
             vec![
-                Token::Id("x".into()),
-                Token::Id("y".into()),
-                Token::Id("z".into()),
-                Token::Id("my_var".into()),
-                Token::Id("my_super_long_var_name".into()),
+                Ok(Id("x".into())),
+                Ok(Id("y".into())),
+                Ok(Id("z".into())),
+                Ok(Id("my_var".into())),
+                Ok(Id("my_super_long_var_name".into())),
             ]
         );
     }

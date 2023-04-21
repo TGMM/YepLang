@@ -38,7 +38,6 @@ impl<'a> fmt::Display for Token<'a> {
             Token::While => write!(f, "while"),
             Token::Function => write!(f, "function"),
             Token::Extends => write!(f, "extends"),
-            Token::Error => write!(f, "unknown token"),
             Token::BoolUnaryOp(op) => match op {
                 BoolUnaryOp::Not => write!(f, "!"),
             },

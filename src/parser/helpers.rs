@@ -1,3 +1,4 @@
+#[cfg(test)]
 #[macro_export]
 macro_rules! span_token {
     ($token:expr) => {
