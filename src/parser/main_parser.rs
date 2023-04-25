@@ -1,21 +1,22 @@
+use super::expr_parser::expr_parser;
+use super::primitive_parser::stmt_end_tag;
 use super::primitive_parser::{
     as_eq_tag, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag, number_parser,
     rbracket_tag, rsqbracket_tag, string_parser,
 };
 use super::token::Tokens;
-use super::{error::ParseError, primitive_parser::stmt_end_tag};
 use crate::ast::{
-    Assignment, Block, Destructure, Expr, PrimitiveVal, PropertyDestructure, PropertyName,
+    Assignment, Block, Destructure, Expr, PrimitiveVal, PropertyDestructure, PropertyName, Stmt,
 };
 use nom::branch::alt;
 use nom::combinator::{map, opt};
-use nom::multi::separated_list0;
+use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded};
 use nom::IResult;
 
 pub(crate) type ParseRes<'a, T> = IResult<Tokens<'a>, T>;
 
-pub(crate) fn stmt_end_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, ()> {
+pub(crate) fn stmt_end_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ()> {
     let res = stmt_end_tag(input);
 
     if res.is_err() {
@@ -27,8 +28,7 @@ pub(crate) fn stmt_end_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, ()> 
     Ok((remaining, ()))
 }
 
-// TODO: This is not complete yet
-pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, Destructure<'i>> {
+pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destructure<'i>> {
     let id = map(id_parser, |r| r.into());
     let arr = map(
         delimited(
@@ -42,7 +42,7 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, D
         let str_prop_name = map(string_parser, |s| PropertyName::String(s.to_string()));
         let id_prop_name = map(id_parser, |id| PropertyName::Id(id));
 
-        fn alias<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, Destructure> {
+        fn alias<'i>(input: Tokens<'i>) -> ParseRes<'i, Destructure<'i>> {
             preceded(colon_tag, destructure_parser)(input)
         }
 
@@ -66,7 +66,7 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, D
     alt((id, arr, obj))(input)
 }
 
-pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, Assignment<'i>> {
+pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
     let (input, destructure) = destructure_parser(input)?;
     let (input, _) = as_eq_tag(input)?;
     let (input, number) = number_parser(input)?;
@@ -81,10 +81,19 @@ pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> IResult<Tokens<'i>, As
     ))
 }
 
-pub(crate) fn top_block_parser<'i>(
-    input: Tokens<'i>,
-) -> IResult<Tokens<'i>, Block<'i>, ParseError> {
-    todo!()
+pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
+    let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
+    let expr = map(expr_parser, |e| Stmt::Expr(e));
+
+    alt((assignment, expr))(input)
+}
+
+pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
+    map(many0(stmt_parser), |stmts| Block { stmts })(input)
+}
+
+pub(crate) fn block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
+    delimited(lbracket_tag, top_block_parser, rbracket_tag)(input)
 }
 
 pub fn parse(input: &str) {
@@ -93,10 +102,12 @@ pub fn parse(input: &str) {
 
 #[cfg(test)]
 mod test {
-    use super::assignment_parser;
     use crate::{
         lexer::Token,
-        parser::token::{TokenSpan, Tokens},
+        parser::{
+            main_parser::top_block_parser,
+            token::{TokenSpan, Tokens},
+        },
     };
     use logos::Logos;
 
@@ -109,7 +120,7 @@ mod test {
             .collect::<Vec<_>>();
         let tokens = Tokens::new(&token_iter);
 
-        let res = assignment_parser(tokens);
+        let res = top_block_parser(tokens);
         assert!(res.is_ok());
     }
 }
