@@ -1,12 +1,15 @@
+use super::expr_parser::unary_op_parser;
 use super::main_parser::ParseRes;
 use super::token::Tokens;
-use crate::ast::{ArrayVal, BoolLiteral, Id, NumericLiteral, PropertyName, StructVal};
+use crate::ast::{
+    ArrayVal, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, StructVal,
+};
 use crate::lexer::Token;
 use crate::parser::expr_parser::expr_parser;
 use crate::tag_token;
 use nom::branch::alt;
 use nom::bytes::complete::take;
-use nom::combinator::{map, verify};
+use nom::combinator::{map, opt, verify};
 use nom::error::{Error, ErrorKind};
 use nom::multi::separated_list0;
 use nom::sequence::{delimited, pair, terminated};
@@ -49,6 +52,12 @@ pub(crate) fn number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericLitera
             _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
         }
     }
+}
+
+pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
+    map(pair(opt(unary_op_parser), number_parser), |(op, num)| {
+        PrimitiveVal::Number(op, num)
+    })(input)
 }
 
 pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, &str> {
@@ -118,4 +127,17 @@ pub(crate) fn struct_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, StructVal
         delimited(lbracket_tag, separated_list0(comma_tag, prop), rbracket_tag),
         |props| StructVal(props),
     )(input)
+}
+
+pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
+    let num = signed_number_parser;
+    // TODO: Make a boolean with an unary operator
+    let bool = map(bool_parser, |b| PrimitiveVal::Boolean(None, b));
+    let char = map(char_parser, |c| PrimitiveVal::Char(c));
+    // TODO: Check if we can make this zero-copy
+    let string = map(string_parser, |s| PrimitiveVal::String(s.to_string()));
+    let arr = map(array_val_parser, |a| PrimitiveVal::Array(a));
+    let struct_v = map(struct_val_parser, |s| PrimitiveVal::Struct(s));
+
+    alt((num, bool, char, string, arr, struct_v))(input)
 }
