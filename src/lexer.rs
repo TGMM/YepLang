@@ -35,6 +35,7 @@ pub enum Token<'input> {
     #[token("+", str_to_bop)]
     #[token("-", str_to_bop)]
     #[token("*", str_to_bop)]
+    #[token("**", str_to_bop)]
     #[token("/", str_to_bop)]
     #[token("%", str_to_bop)]
     #[token(">", str_to_bop)]
@@ -91,7 +92,10 @@ pub enum Token<'input> {
 #[cfg(test)]
 mod test {
     use super::Token;
-    use crate::lexer::{BOp, ScopeSpecifier, VarType};
+    use crate::{
+        ast::BoolUnaryOp,
+        lexer::{BOp, ScopeSpecifier, VarType},
+    };
     use logos::Logos;
     use Token::*;
 
@@ -121,8 +125,6 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        let test = Token::lexer(input).spanned().next().unwrap();
-
         assert_eq!(
             &tokens,
             &[
@@ -144,13 +146,18 @@ mod test {
 
     #[test]
     fn term_op_lexing() {
-        let input = "* / %";
+        let input = "* / % **";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
         assert_eq!(
             &tokens,
-            &[Ok(BOp(BOp::Mul)), Ok(BOp(BOp::Div)), Ok(BOp(BOp::Mod)),]
+            &[
+                Ok(BOp(BOp::Mul)),
+                Ok(BOp(BOp::Div)),
+                Ok(BOp(BOp::Mod)),
+                Ok(BOp(BOp::Pow))
+            ]
         );
     }
 
@@ -171,6 +178,15 @@ mod test {
                 Ok(BOp(BOp::Eq)),
             ]
         );
+    }
+
+    #[test]
+    fn bool_unary_op_lexing() {
+        let input = "!";
+        let lex = Token::lexer(input);
+        let tokens: Vec<_> = lex.collect();
+
+        assert_eq!(&tokens, &[Ok(BoolUnaryOp(BoolUnaryOp::Not)),]);
     }
 
     #[test]
@@ -244,6 +260,31 @@ mod test {
     }
 
     #[test]
+    fn bool_val_parser_test() {
+        let input = r#"true false"#;
+        let lex = Token::lexer(input);
+        let tokens: Vec<_> = lex.into_iter().collect();
+
+        assert_eq!(tokens, vec![Ok(BoolVal("true")), Ok(BoolVal("false"))]);
+    }
+
+    #[test]
+    fn char_val_parser_test() {
+        let input = r#"'a' '\u0041' '\u004A'"#;
+        let lex = Token::lexer(input);
+        let tokens: Vec<_> = lex.into_iter().collect();
+
+        assert_eq!(
+            tokens,
+            vec![
+                Ok(Char("'a'")),
+                Ok(Char("'\\u0041'")),
+                Ok(Char("'\\u004A'"))
+            ]
+        );
+    }
+
+    #[test]
     fn id_parser_test() {
         let input = "x y z my_var my_super_long_var_name";
         let lex = Token::lexer(input);
@@ -259,5 +300,24 @@ mod test {
                 Ok(Id("my_super_long_var_name".into())),
             ]
         );
+    }
+
+    #[test]
+    // Included to increase code coverage
+    fn debug_test() {
+        let input = "x ! 10 10.5 > \\";
+        let lex = Token::lexer(input);
+        let tokens: Vec<_> = lex.into_iter().collect();
+
+        for tok in tokens {
+            match tok {
+                Ok(t) => {
+                    dbg!(t);
+                }
+                Err(err) => {
+                    dbg!(err);
+                }
+            }
+        }
     }
 }
