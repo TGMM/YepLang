@@ -9,3 +9,4 @@ edition = "2021"
 ariadne = "0.2.0"
 logos = "0.13.0"
 nom = { git = "https://github.com/rust-bakery/nom" }
+snailquote = "0.3.1"

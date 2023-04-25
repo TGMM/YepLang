@@ -15,6 +15,7 @@ use nom::multi::separated_list0;
 use nom::sequence::{delimited, pair, terminated};
 use nom::Err;
 use nom::IResult;
+use snailquote::unescape;
 
 tag_token!(as_eq_tag, Ok(Token::AssignmentEq));
 tag_token!(stmt_end_tag, Ok(Token::StmtEnd));
@@ -60,14 +61,17 @@ pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primit
     })(input)
 }
 
-pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, &str> {
+pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, String> {
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
         Err(Err::Error(Error::new(input, ErrorKind::Tag)))
     } else {
         match tok_id.tok_span[0].token.clone() {
-            Ok(Token::Str(string)) => Ok((remaining, string.trim_matches('"'))),
+            Ok(Token::Str(string)) => {
+                let unescaped = unescape(string).expect("Invalid string");
+                Ok((remaining, unescaped))
+            }
             _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
         }
     }
@@ -94,8 +98,13 @@ pub(crate) fn char_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, char> {
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::Char(c)) => {
-                let c = c
-                    .trim_matches('\'')
+                // TODO: Find if there's a better way to do this
+                let c_hack = format!(
+                    "\"{}\"",
+                    c.strip_suffix("'").unwrap().strip_prefix("'").unwrap()
+                );
+                let unescaped_ch = unescape(&c_hack).expect("Invalid escaped char");
+                let c = unescaped_ch
                     .chars()
                     .next()
                     .expect("Invalid empty char literal");
@@ -140,4 +149,253 @@ pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primit
     let struct_v = map(struct_val_parser, |s| PrimitiveVal::Struct(s));
 
     alt((num, bool, char, string, arr, struct_v))(input)
+}
+
+#[cfg(test)]
+mod test {
+    use nom::multi::many1;
+
+    use crate::{
+        ast::{
+            ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
+            PrimitiveVal, PropertyName, StructVal,
+        },
+        lexer::Token,
+        parser::{
+            helpers::test::span_token_vec,
+            primitive_parser::{
+                array_val_parser, bool_parser, char_parser, id_parser, number_parser,
+                primitive_val_parser, signed_number_parser, string_parser, struct_val_parser,
+            },
+            token::Tokens,
+        },
+    };
+
+    #[test]
+    fn id_test() {
+        let token_iter = span_token_vec(vec![Token::Id("アイヂ")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = id_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, id) = res.unwrap();
+        assert_eq!(id, Id("アイヂ".to_string()))
+    }
+
+    #[test]
+    fn int_test() {
+        let token_iter = span_token_vec(vec![Token::IntVal("10")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = number_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, int_val) = res.unwrap();
+        assert_eq!(int_val, NumericLiteral::Int("10"))
+    }
+
+    #[test]
+    fn float_test() {
+        let token_iter = span_token_vec(vec![Token::FloatVal("10.0")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = number_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, float_val) = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("10.0"))
+    }
+
+    #[test]
+    fn float_scientific_notation_test() {
+        let token_iter = span_token_vec(vec![Token::FloatVal("1e+10")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = number_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, float_val) = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("1e+10"))
+    }
+
+    #[test]
+    fn signed_number_test() {
+        let token_iter = span_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = signed_number_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, primitive_val) = res.unwrap();
+        assert_eq!(
+            primitive_val,
+            PrimitiveVal::Number(Some(NumericUnaryOp::Plus), NumericLiteral::Int("10"))
+        )
+    }
+
+    #[test]
+    fn string_test() {
+        let token_iter = span_token_vec(vec![Token::Str("\"This is a string\"")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = string_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, str_val) = res.unwrap();
+        assert_eq!(str_val, "This is a string")
+    }
+
+    #[test]
+    fn string_unicode_test() {
+        let token_iter = span_token_vec(vec![Token::Str("\"Japanese: アイヂ and Emoji: 😀\"")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = string_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, str_val) = res.unwrap();
+        assert_eq!(str_val, "Japanese: アイヂ and Emoji: 😀")
+    }
+
+    #[test]
+    fn bool_test() {
+        let token_iter = span_token_vec(vec![Token::BoolVal("true")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = bool_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, bool_val) = res.unwrap();
+        assert_eq!(bool_val, BoolLiteral(true))
+    }
+
+    #[test]
+    fn char_test() {
+        let token_iter = span_token_vec(vec![Token::Char("'\''")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = char_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, char_val) = res.unwrap();
+        assert_eq!(char_val, '\'')
+    }
+
+    #[test]
+    fn array_test() {
+        let token_iter = span_token_vec(vec![
+            Token::LSqBracket,
+            Token::Id("x"),
+            Token::Comma,
+            Token::IntVal("10"),
+            Token::BOp(BOp::Add),
+            Token::IntVal("10"),
+            Token::RSqBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = array_val_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, arr_val) = res.unwrap();
+        assert_eq!(
+            arr_val,
+            ArrayVal(vec![
+                Expr::Id("x".into()),
+                Expr::BinaryExpr(
+                    BExpr {
+                        lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            None,
+                            NumericLiteral::Int("10")
+                        )),
+                        op: BOp::Add,
+                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            None,
+                            NumericLiteral::Int("10")
+                        ))
+                    }
+                    .into()
+                )
+            ])
+        )
+    }
+
+    #[test]
+    fn struct_test() {
+        let token_iter = span_token_vec(vec![
+            Token::LBracket,
+            Token::Id("x".into()),
+            Token::Colon,
+            Token::IntVal("10"),
+            Token::Comma,
+            Token::Str("this is a str id".into()),
+            Token::Colon,
+            Token::FloatVal("10"),
+            Token::BOp(BOp::Add),
+            Token::FloatVal("10"),
+            Token::RBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = struct_val_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, bool_val) = res.unwrap();
+        assert_eq!(
+            bool_val,
+            StructVal(vec![
+                (
+                    PropertyName::Id("x".into()),
+                    Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                ),
+                (
+                    PropertyName::String("this is a str id".to_string()),
+                    Expr::BinaryExpr(
+                        BExpr {
+                            lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                                None,
+                                NumericLiteral::Float("10")
+                            )),
+                            op: BOp::Add,
+                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                                None,
+                                NumericLiteral::Float("10")
+                            ))
+                        }
+                        .into()
+                    )
+                )
+            ])
+        )
+    }
+
+    #[test]
+    fn primitive_val_test() {
+        let token_iter = span_token_vec(vec![
+            Token::BoolVal("true"),
+            Token::Char("'a'"),
+            Token::Str("\"String!\""),
+            Token::LSqBracket,
+            Token::RSqBracket,
+            Token::LBracket,
+            Token::RBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = many1(primitive_val_parser)(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, primitive_vals) = res.unwrap();
+        assert_eq!(
+            primitive_vals,
+            vec![
+                PrimitiveVal::Boolean(None, BoolLiteral(true)),
+                PrimitiveVal::Char('a'),
+                PrimitiveVal::String("String!".to_string()),
+                PrimitiveVal::Array(ArrayVal(vec![])),
+                PrimitiveVal::Struct(StructVal(vec![])),
+            ]
+        )
+    }
 }
