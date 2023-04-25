@@ -68,6 +68,10 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destruct
     alt((id, arr, obj))(input)
 }
 
+// TODO: Make this chainable with a right-associative operator
+// Ex. x = y = z
+// TODO: Make this be able to have an operator before eq
+// Ex. x += 10
 pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
     let (input, destructure) = destructure_parser(input)?;
     let (input, _) = as_eq_tag(input)?;

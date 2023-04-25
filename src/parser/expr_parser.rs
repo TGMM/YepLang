@@ -282,6 +282,41 @@ mod test {
     }
 
     #[test]
+    fn expr_cmp_precedence_test() {
+        let token_iter = span_token_vec(vec![
+            Token::IntVal("10"),
+            Token::BOp(BOp::Add),
+            Token::IntVal("5"),
+            Token::BOp(BOp::Gt),
+            Token::IntVal("10"),
+            Token::BOp(BOp::Add),
+            Token::IntVal("5"),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = expr_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, expr) = res.unwrap();
+        assert_eq!(
+            expr,
+            Expr::BinaryExpr(Box::new(BExpr {
+                lhs: Expr::BinaryExpr(Box::new(BExpr {
+                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                    op: BOp::Add,
+                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                })),
+                op: BOp::Gt,
+                rhs: Expr::BinaryExpr(Box::new(BExpr {
+                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                    op: BOp::Add,
+                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                })),
+            }))
+        )
+    }
+
+    #[test]
     fn expr_paren_precedence_test() {
         let token_iter = span_token_vec(vec![
             Token::LParen,
