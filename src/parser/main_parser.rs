@@ -1,15 +1,14 @@
 use super::expr_parser::expr_parser;
 use super::primitive_parser::stmt_end_tag;
 use super::primitive_parser::{
-    as_eq_tag, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag, number_parser,
-    rbracket_tag, rsqbracket_tag, string_parser,
+    as_eq_tag, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag, rbracket_tag,
+    rsqbracket_tag, string_parser,
 };
 use super::token::Tokens;
-use crate::ast::{
-    Assignment, Block, Destructure, Expr, PrimitiveVal, PropertyDestructure, PropertyName, Stmt,
-};
+use crate::ast::{Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt};
 use nom::branch::alt;
 use nom::combinator::{map, opt};
+use nom::error::ErrorKind;
 use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded};
 use nom::IResult;
@@ -20,7 +19,10 @@ pub(crate) fn stmt_end_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ()> {
     let res = stmt_end_tag(input);
 
     if res.is_err() {
-        // TODO: Add an error to the error list
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: ErrorKind::Tag,
+        }));
     }
 
     let (remaining, _) = res.unwrap();
@@ -69,14 +71,14 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destruct
 pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
     let (input, destructure) = destructure_parser(input)?;
     let (input, _) = as_eq_tag(input)?;
-    let (input, number) = number_parser(input)?;
+    let (input, expr) = expr_parser(input)?;
     let (input, _) = stmt_end_parser(input)?;
 
     Ok((
         input,
         Assignment {
             destructure,
-            assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, number)),
+            assigned_expr: expr,
         },
     ))
 }
@@ -94,10 +96,6 @@ pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>>
 
 pub(crate) fn block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
     delimited(lbracket_tag, top_block_parser, rbracket_tag)(input)
-}
-
-pub fn parse(input: &str) {
-    todo!()
 }
 
 #[cfg(test)]

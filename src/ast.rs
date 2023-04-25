@@ -182,7 +182,7 @@ pub struct VarDecl<'input> {
     pub expr: Expr<'input>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BOp {
     Add,
     Sub,
@@ -198,20 +198,20 @@ pub enum BOp {
     Eq,
 }
 impl BOp {
-    fn infix_binding_power(&self) -> u8 {
+    pub fn infix_binding_power(&self) -> u8 {
         match self {
-            BOp::Add => 1,
-            BOp::Sub => 1,
-            BOp::Mul => 3,
-            BOp::Div => 3,
-            BOp::Mod => 3,
-            BOp::Pow => 5,
-            BOp::Gt => 7,
-            BOp::Gte => 7,
-            BOp::Lt => 7,
-            BOp::Lte => 7,
-            BOp::Ne => 7,
-            BOp::Eq => 7,
+            BOp::Add => 3,
+            BOp::Sub => 3,
+            BOp::Mul => 5,
+            BOp::Div => 5,
+            BOp::Mod => 5,
+            BOp::Pow => 7,
+            BOp::Gt => 1,
+            BOp::Gte => 1,
+            BOp::Lt => 1,
+            BOp::Lte => 1,
+            BOp::Ne => 1,
+            BOp::Eq => 1,
         }
     }
 }

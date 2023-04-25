@@ -3,44 +3,28 @@ mod ast_display;
 mod lexer;
 mod parser;
 
-use parser::main_parser::parse;
+use lexer::Token;
+use logos::Logos;
+use parser::{
+    main_parser::top_block_parser,
+    token::{TokenSpan, Tokens},
+};
 
 fn main() {
     let input = r#"
-    const x = -1e+10;
-    let y = 9223372036854775808;
-    var z = 10;
-
-    function test(x: i32) {
-
-    }
-
-    if(z > y) {
-        print("Test");
-    }
-
-    for(;;) {
-
-    }
-
-    while(true) {
-
-    }
-
-    do {
-
-    } while(false);
-
-    class MyClass extends MyOtherClass {
-        test_func() {
-
-        }
-    }
-
-    let c = 10;
-    c.my_prop = 10;
-    let [x, y] = x;
-    let {"lol xd": x, y: alias} = y;
+    x = 5 + - 5;
     "#;
-    parse(input);
+    let token_vec = Token::lexer(input)
+        .spanned()
+        .map(|(token, span)| TokenSpan { span, token })
+        .collect::<Vec<_>>();
+    let tokens = Tokens::new(&token_vec);
+
+    let result = top_block_parser(tokens);
+    match result {
+        Ok((_remaining, block)) => {
+            dbg!(block);
+        }
+        Err(err) => println!("{err}"),
+    }
 }
