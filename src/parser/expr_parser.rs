@@ -4,7 +4,7 @@ use super::{
     primitive_parser::{id_parser, lparen_tag, rparen_tag},
     token::Tokens,
 };
-use crate::ast::{BExpr, BOp, Expr, NumericUnaryOp};
+use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, NumericUnaryOp};
 use crate::lexer::Token;
 use nom::bytes::complete::take;
 use nom::combinator::peek;
@@ -64,11 +64,26 @@ pub(crate) fn expr_parser_helper<'i>(input: Tokens<'i>, min_bp: u8) -> ParseRes<
     Ok((remaining, lhs))
 }
 
-pub(crate) fn unary_op_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericUnaryOp> {
+pub(crate) fn numeric_unary_op_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericUnaryOp> {
     let (remaining, op) = take(1usize)(input)?;
     let op = match &op.tok_span[0].token {
         Ok(Token::BOp(BOp::Add)) => NumericUnaryOp::Plus,
         Ok(Token::BOp(BOp::Sub)) => NumericUnaryOp::Minus,
+        _unexpected => {
+            return Err(Err::Error(nom::error::Error {
+                input,
+                code: ErrorKind::Tag,
+            }));
+        }
+    };
+
+    Ok((remaining, op))
+}
+
+pub(crate) fn boolean_unary_op_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BoolUnaryOp> {
+    let (remaining, op) = take(1usize)(input)?;
+    let op = match &op.tok_span[0].token {
+        Ok(Token::BoolUnaryOp(buop)) => *buop,
         _unexpected => {
             return Err(Err::Error(nom::error::Error {
                 input,

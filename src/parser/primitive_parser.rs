@@ -1,4 +1,4 @@
-use super::expr_parser::unary_op_parser;
+use super::expr_parser::{boolean_unary_op_parser, numeric_unary_op_parser};
 use super::main_parser::ParseRes;
 use super::token::Tokens;
 use crate::ast::{
@@ -61,9 +61,10 @@ pub(crate) fn number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericLitera
 }
 
 pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
-    map(pair(opt(unary_op_parser), number_parser), |(op, num)| {
-        PrimitiveVal::Number(op, num)
-    })(input)
+    map(
+        pair(opt(numeric_unary_op_parser), number_parser),
+        |(op, num)| PrimitiveVal::Number(op, num),
+    )(input)
 }
 
 pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, String> {
@@ -93,6 +94,13 @@ pub(crate) fn bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BoolLiteral> {
             _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
         }
     }
+}
+
+pub(crate) fn negated_bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
+    map(
+        pair(opt(boolean_unary_op_parser), bool_parser),
+        |(op, num)| PrimitiveVal::Boolean(op, num),
+    )(input)
 }
 
 pub(crate) fn char_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, char> {
@@ -146,7 +154,7 @@ pub(crate) fn struct_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, StructVal
 pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
     let num = signed_number_parser;
     // TODO: Make a boolean with an unary operator
-    let bool = map(bool_parser, |b| PrimitiveVal::Boolean(None, b));
+    let bool = negated_bool_parser;
     let char = map(char_parser, |c| PrimitiveVal::Char(c));
     // TODO: Check if we can make this zero-copy
     let string = map(string_parser, |s| PrimitiveVal::String(s.to_string()));

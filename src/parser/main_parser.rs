@@ -1,3 +1,4 @@
+use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
 use super::expr_parser::expr_parser;
 use super::primitive_parser::stmt_end_tag;
 use super::primitive_parser::{
@@ -88,9 +89,18 @@ pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignmen
 
 pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
+    let fn_call = {}; // TODO
     let expr = map(expr_parser, |e| Stmt::Expr(e));
+    let class_decl = {}; // TODO
+    let fn_decl = {}; // TODO
+    let for_ = map(for_parser, |f| Stmt::For(f));
+    let while_ = map(while_parser, |w| Stmt::While(w));
+    let do_while = map(do_while_parser, |dw| Stmt::DoWhile(dw));
+    let if_ = map(if_parser, |i| Stmt::If(i));
+    let block = map(block_parser, |b| Stmt::Block(b));
+    let var_decl = {}; // TODO
 
-    let (input, stmt) = alt((assignment, expr))(input)?;
+    let (input, stmt) = alt((assignment, expr, for_, while_, do_while, if_, block))(input)?;
 
     Ok((input, stmt))
 }

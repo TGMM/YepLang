@@ -1,6 +1,6 @@
 use super::{
     expr_parser::{expr_parser, paren_expr_parser},
-    main_parser::{block_parser, for_stmt_parser, stmt_end_parser, stmt_parser, ParseRes},
+    main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParseRes},
     primitive_parser::{
         do_tag, else_tag, for_tag, if_tag, lparen_tag, rparen_tag, stmt_end_tag, while_tag,
     },
