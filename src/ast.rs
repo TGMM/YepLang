@@ -71,6 +71,11 @@ pub enum PrimitiveVal<'input> {
     Array(ArrayVal<'input>),
     Struct(StructVal<'input>),
 }
+impl<'input> From<NumericLiteral<'input>> for PrimitiveVal<'input> {
+    fn from(value: NumericLiteral<'input>) -> Self {
+        PrimitiveVal::Number(None, value)
+    }
+}
 impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
     fn from(value: PrimitiveVal<'input>) -> Self {
         Expr::PrimitiveVal(value)

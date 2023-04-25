@@ -191,7 +191,8 @@ mod test {
 
     #[test]
     fn keyword_lexing() {
-        let input = "if else do while for break continue function class extends ; : , ( ) { } [ ]";
+        let input =
+            "if else do while for break continue function class extends ; : , ( ) { } [ ] =";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
@@ -216,7 +217,8 @@ mod test {
                 Ok(LBracket),
                 Ok(RBracket),
                 Ok(LSqBracket),
-                Ok(RSqBracket)
+                Ok(RSqBracket),
+                Ok(AssignmentEq)
             ]
         );
     }
@@ -308,6 +310,8 @@ mod test {
         let input = "x ! 10 10.5 > \\";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.into_iter().collect();
+
+        let _tok_clone = tokens[0].clone();
 
         for tok in tokens {
             match tok {

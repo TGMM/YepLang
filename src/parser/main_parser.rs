@@ -101,24 +101,179 @@ pub(crate) fn block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
 #[cfg(test)]
 mod test {
     use crate::{
+        ast::{
+            Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
+            PropertyDestructure, PropertyName, Stmt,
+        },
         lexer::Token,
         parser::{
-            main_parser::top_block_parser,
-            token::{TokenSpan, Tokens},
+            helpers::test::span_token_vec,
+            main_parser::{
+                assignment_parser, block_parser, destructure_parser, stmt_end_parser,
+                top_block_parser,
+            },
+            token::Tokens,
         },
     };
-    use logos::Logos;
 
     #[test]
-    fn test() {
-        let input = r#"{test: {"a": a1, b: b1}} = 10;"#;
-        let token_iter = Token::lexer(input)
-            .spanned()
-            .map(|(token, span)| TokenSpan { span, token })
-            .collect::<Vec<_>>();
+    fn stmt_end_parser_test() {
+        let token_iter = span_token_vec(vec![Token::StmtEnd]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = stmt_end_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, stmt_end) = res.unwrap();
+        assert_eq!(stmt_end, ())
+    }
+
+    #[test]
+    fn stmt_end_parser_err_test() {
+        let token_iter = span_token_vec(vec![]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = stmt_end_parser(tokens);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn destructure_arr_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::LSqBracket,
+            Token::Id("x".into()),
+            Token::RSqBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = destructure_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, destructure) = res.unwrap();
+        assert_eq!(
+            destructure,
+            Destructure::Array(vec![Destructure::Id("x".into())])
+        )
+    }
+
+    #[test]
+    fn destructure_id_parser_test() {
+        let token_iter: Vec<crate::parser::token::TokenSpan> =
+            span_token_vec(vec![Token::Id("x".into())]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = destructure_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, destructure) = res.unwrap();
+        assert_eq!(destructure, Destructure::Id("x".into()))
+    }
+
+    #[test]
+    fn destructure_obj_parser_test() {
+        let token_iter: Vec<crate::parser::token::TokenSpan> = span_token_vec(vec![
+            Token::LBracket,
+            Token::Str(r#""x""#),
+            Token::Colon,
+            Token::Id("x".into()),
+            Token::Comma,
+            Token::Id("y".into()),
+            Token::Colon,
+            Token::Id("z".into()),
+            Token::RBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = destructure_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, destructure) = res.unwrap();
+        assert_eq!(
+            destructure,
+            Destructure::Object(vec![
+                PropertyDestructure {
+                    name: PropertyName::String("x".to_string()),
+                    alias: Some(Destructure::Id("x".into()))
+                },
+                PropertyDestructure {
+                    name: PropertyName::Id("y".into()),
+                    alias: Some(Destructure::Id("z".into()))
+                }
+            ])
+        )
+    }
+
+    #[test]
+    fn assignment_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("10"),
+            Token::StmtEnd,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = assignment_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, assignment) = res.unwrap();
+        assert_eq!(
+            assignment,
+            Assignment {
+                destructure: Destructure::Id("x".into()),
+                assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
+            }
+        )
+    }
+
+    #[test]
+    fn top_block_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("10"),
+            Token::StmtEnd,
+            Token::Id("y".into()),
+            Token::BOp(BOp::Add),
+            Token::IntVal("10"),
+            Token::StmtEnd,
+        ]);
         let tokens = Tokens::new(&token_iter);
 
         let res = top_block_parser(tokens);
         assert!(res.is_ok());
+
+        let (_remaining, block) = res.unwrap();
+        assert_eq!(
+            block,
+            Block {
+                stmts: vec![
+                    Stmt::Assignment(Assignment {
+                        destructure: Destructure::Id("x".into()),
+                        assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
+                    }),
+                    Stmt::Expr(Expr::BinaryExpr(Box::new(BExpr {
+                        lhs: Expr::Id("y".into()),
+                        op: BOp::Add,
+                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            None,
+                            NumericLiteral::Int("10")
+                        )),
+                    })))
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn empty_block_parser_test() {
+        let token_iter = span_token_vec(vec![Token::LBracket, Token::RBracket]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = block_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, block) = res.unwrap();
+        assert_eq!(block, Block { stmts: vec![] });
     }
 }
