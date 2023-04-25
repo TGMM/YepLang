@@ -295,9 +295,9 @@ pub struct While<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct For<'a> {
-    pub decl_expr: Option<Expr<'a>>,
+    pub decl_stmt: Option<Box<Stmt<'a>>>,
     pub cmp_expr: Option<Expr<'a>>,
-    pub postfix_expr: Option<Expr<'a>>,
+    pub postfix_stmt: Option<Box<Stmt<'a>>>,
     pub block: Block<'a>,
 }
 

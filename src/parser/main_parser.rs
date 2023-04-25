@@ -76,7 +76,6 @@ pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignmen
     let (input, destructure) = destructure_parser(input)?;
     let (input, _) = as_eq_tag(input)?;
     let (input, expr) = expr_parser(input)?;
-    let (input, _) = stmt_end_parser(input)?;
 
     Ok((
         input,
@@ -87,11 +86,20 @@ pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignmen
     ))
 }
 
-pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
+pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
     let expr = map(expr_parser, |e| Stmt::Expr(e));
 
-    alt((assignment, expr))(input)
+    let (input, stmt) = alt((assignment, expr))(input)?;
+
+    Ok((input, stmt))
+}
+
+pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
+    let (input, stmt) = for_stmt_parser(input)?;
+    let (input, _) = stmt_end_parser(input)?;
+
+    Ok((input, stmt))
 }
 
 pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {

@@ -29,6 +29,9 @@ tag_token!(comma_tag, Ok(Token::Comma));
 tag_token!(colon_tag, Ok(Token::Colon));
 tag_token!(if_tag, Ok(Token::If));
 tag_token!(else_tag, Ok(Token::Else));
+tag_token!(while_tag, Ok(Token::While));
+tag_token!(do_tag, Ok(Token::Do));
+tag_token!(for_tag, Ok(Token::For));
 
 pub(crate) fn id_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
     let (remaining, tok_id) = take(1usize)(input)?;
