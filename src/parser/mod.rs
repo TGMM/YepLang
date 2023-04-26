@@ -1,3 +1,4 @@
+pub(crate) mod class_parser;
 pub(crate) mod control_flow_parser;
 mod error;
 pub(crate) mod expr_parser;

@@ -340,13 +340,22 @@ pub struct FnDecl<'a> {
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethodDecl<'a> {
     pub method_id: Id,
     pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
+}
+impl<'a> From<MethodDecl<'a>> for FnDecl<'a> {
+    fn from(method_decl: MethodDecl<'a>) -> Self {
+        FnDecl {
+            fn_id: method_decl.method_id,
+            args: method_decl.args,
+            ret_type: method_decl.ret_type,
+            block: method_decl.block,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
