@@ -30,6 +30,7 @@ pub enum Token<'input> {
     #[token("u128", str_to_var_type)]
     #[token("f32", str_to_var_type)]
     #[token("f64", str_to_var_type)]
+    #[token("void", str_to_var_type)]
     #[token("boolean", str_to_var_type)]
     #[token("char", str_to_var_type)]
     #[token("string", str_to_var_type)]
@@ -97,6 +98,10 @@ pub enum Token<'input> {
     Extends,
     #[token("return")]
     Return,
+    #[token("extern")]
+    Extern,
+    #[token("...")]
+    Spread,
 }
 
 #[cfg(test)]
@@ -111,7 +116,7 @@ mod test {
 
     #[test]
     fn type_lexing() {
-        let input = "i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 f32 f64 boolean char string";
+        let input = "i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 f32 f64 void boolean char string";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
@@ -130,6 +135,7 @@ mod test {
                 Ok(VarType(VarType::U128)),
                 Ok(VarType(VarType::F32)),
                 Ok(VarType(VarType::F64)),
+                Ok(VarType(VarType::Void)),
                 Ok(VarType(VarType::Boolean)),
                 Ok(VarType(VarType::Char)),
                 Ok(VarType(VarType::String)),
@@ -210,7 +216,7 @@ mod test {
     #[test]
     fn keyword_lexing() {
         let input =
-            "if else do while for break continue function class extends return ; : , ( ) { } [ ] =";
+            "if else do while for break continue function class extends return extern ; : , ( ) { } [ ] = ...";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
@@ -228,6 +234,7 @@ mod test {
                 Ok(Class),
                 Ok(Extends),
                 Ok(Return),
+                Ok(Extern),
                 Ok(StmtEnd),
                 Ok(Colon),
                 Ok(Comma),
@@ -237,7 +244,8 @@ mod test {
                 Ok(RBracket),
                 Ok(LSqBracket),
                 Ok(RSqBracket),
-                Ok(AssignmentEq)
+                Ok(AssignmentEq),
+                Ok(Spread),
             ]
         );
     }

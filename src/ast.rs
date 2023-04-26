@@ -15,6 +15,7 @@ pub enum VarType {
     U128,
     F32,
     F64,
+    Void,
     Boolean,
     Char,
     String,
@@ -114,6 +115,7 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
         "u128" => VarType::U128,
         "f32" => VarType::F32,
         "f64" => VarType::F64,
+        "void" => VarType::Void,
         "boolean" => VarType::Boolean,
         "char" => VarType::Char,
         "string" => VarType::String,
@@ -399,4 +401,17 @@ pub struct Assignment<'a> {
     pub assignee_expr: Expr<'a>,
     pub bop: Option<BOp>,
     pub assigned_expr: Expr<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExternType {
+    Type(ValueVarType),
+    Spread,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternDecl {
+    pub ret_type: ValueVarType,
+    pub fn_id: Id,
+    pub arg_types: Vec<ExternType>,
 }

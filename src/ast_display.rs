@@ -41,6 +41,8 @@ impl<'a> fmt::Display for Token<'a> {
                 BoolUnaryOp::Not => write!(f, "!"),
             },
             Token::Dot => write!(f, "."),
+            Token::Extern => write!(f, "extern"),
+            Token::Spread => write!(f, "..."),
         }
     }
 }
@@ -80,6 +82,7 @@ impl fmt::Display for VarType {
             VarType::U128 => write!(f, "u128"),
             VarType::F32 => write!(f, "f32"),
             VarType::F64 => write!(f, "f64"),
+            VarType::Void => write!(f, "void"),
             VarType::Boolean => write!(f, "boolean"),
             VarType::Char => write!(f, "char"),
             VarType::String => write!(f, "string"),
