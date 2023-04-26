@@ -154,7 +154,6 @@ pub(crate) fn struct_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, StructVal
 
 pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
     let num = signed_number_parser;
-    // TODO: Make a boolean with an unary operator
     let bool = negated_bool_parser;
     let char = map(char_parser, |c| PrimitiveVal::Char(c));
     // TODO: Check if we can make this zero-copy

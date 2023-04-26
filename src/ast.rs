@@ -102,7 +102,7 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScopeSpecifier {
     Var,
     Const,
@@ -180,11 +180,16 @@ impl<'input> From<Id> for Destructure<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarDecl<'input> {
-    pub scope_spec: ScopeSpecifier,
+pub struct VarDeclAssignment<'input> {
     pub destructure: Destructure<'input>,
     pub var_type: Option<ValueVarType>,
     pub expr: Expr<'input>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarDecl<'input> {
+    pub scope_spec: ScopeSpecifier,
+    pub decl_assignments: Vec<VarDeclAssignment<'input>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -7,12 +7,13 @@ use super::primitive_parser::{
 use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
 use super::token::Tokens;
 use crate::ast::{
-    Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt, ValueVarType, VarDecl,
+    Assignment, Block, Destructure, Expr, PropertyDestructure, PropertyName, ScopeSpecifier, Stmt,
+    ValueVarType, VarDecl, VarDeclAssignment,
 };
 use nom::branch::alt;
 use nom::combinator::{map, opt};
 use nom::error::ErrorKind;
-use nom::multi::{many0, separated_list0};
+use nom::multi::{many0, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded};
 use nom::IResult;
 
@@ -71,8 +72,9 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destruct
     alt((id, arr, obj))(input)
 }
 
-pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>> {
-    let (input, scope_spec) = scope_specifier_parser(input)?;
+pub(crate) fn var_decl_assignment_parser<'i>(
+    input: Tokens<'i>,
+) -> ParseRes<'i, VarDeclAssignment<'i>> {
     let (input, destructure) = destructure_parser(input)?;
     let (input, var_type) = opt(type_specifier_parser)(input)?;
     let (input, _) = as_eq_tag(input)?;
@@ -80,11 +82,23 @@ pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>
 
     Ok((
         input,
-        VarDecl {
-            scope_spec,
+        VarDeclAssignment {
             destructure,
             var_type,
             expr,
+        },
+    ))
+}
+
+pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>> {
+    let (input, scope_spec) = scope_specifier_parser(input)?;
+    let (input, decl_assignments) = separated_list1(comma_tag, var_decl_assignment_parser)(input)?;
+
+    Ok((
+        input,
+        VarDecl {
+            scope_spec,
+            decl_assignments,
         },
     ))
 }
@@ -147,7 +161,7 @@ mod test {
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
-            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, VarDecl,
+            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment,
         },
         lexer::Token,
         parser::{
@@ -289,9 +303,11 @@ mod test {
             assignment,
             VarDecl {
                 scope_spec: ScopeSpecifier::Let,
-                destructure: Destructure::Id("x".into()),
-                var_type: None,
-                expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                decl_assignments: vec![VarDeclAssignment {
+                    destructure: Destructure::Id("x".into()),
+                    var_type: None,
+                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                }]
             }
         )
     }
