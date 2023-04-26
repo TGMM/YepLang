@@ -271,6 +271,7 @@ pub enum Expr<'input> {
     BinaryExpr(Box<BExpr<'input>>),
     PrimitiveVal(PrimitiveVal<'input>),
     FnCall(Box<FnCall<'input>>),
+    Indexing(Box<Indexing<'input>>),
     Id(Id),
 }
 

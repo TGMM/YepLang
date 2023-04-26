@@ -1,4 +1,4 @@
-use super::class_parser::{class_decl_parser, fn_decl_parser, method_decl_parser};
+use super::class_parser::{class_decl_parser, fn_decl_parser};
 use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
 use super::expr_parser::expr_parser;
 use super::primitive_parser::{
@@ -124,7 +124,6 @@ pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignmen
 
 pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
-    let fn_call = {}; // TODO
     let expr = map(expr_parser, |e| Stmt::Expr(e));
     let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
 
@@ -134,10 +133,9 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
 
 pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
-    let fn_call = {}; // TODO
+    let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
     let expr = map(expr_parser, |e| Stmt::Expr(e));
     let class_decl = map(class_decl_parser, |c| Stmt::ClassDecl(c));
-    let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
     let for_ = map(for_parser, |f| Stmt::For(f));
     let while_ = map(while_parser, |w| Stmt::While(w));
     let do_while = map(do_while_parser, |dw| Stmt::DoWhile(dw));
@@ -146,7 +144,7 @@ pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
 
     let stmt_p = alt((
-        assignment, expr, class_decl, fn_decl, for_, while_, do_while, if_, block, var_decl,
+        assignment, fn_decl, expr, class_decl, for_, while_, do_while, if_, block, var_decl,
     ));
     let (input, stmt) = terminated(stmt_p, stmt_end_parser)(input)?;
     Ok((input, stmt))

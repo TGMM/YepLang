@@ -1,14 +1,16 @@
-use super::primitive_parser::primitive_val_parser;
+use super::primitive_parser::{comma_tag, lsqbracket_tag, primitive_val_parser, rsqbracket_tag};
 use super::{
     main_parser::ParseRes,
     primitive_parser::{id_parser, lparen_tag, rparen_tag},
     token::Tokens,
 };
-use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, NumericUnaryOp};
+use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, FnCall, Indexing, NumericUnaryOp};
 use crate::lexer::Token;
 use nom::bytes::complete::take;
 use nom::combinator::peek;
 use nom::error::ErrorKind;
+use nom::multi::separated_list0;
+use nom::sequence::{pair, terminated};
 use nom::Err;
 use nom::{branch::alt, combinator::map, sequence::delimited};
 
@@ -100,7 +102,49 @@ pub(crate) fn primary_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i
     let primitive = map(primitive_val_parser, |pv| Expr::PrimitiveVal(pv));
     let paren_expr = paren_expr_parser;
 
-    alt((id, primitive, paren_expr))(input)
+    let (mut input, mut primary_expr) = alt((id, primitive, paren_expr))(input)?;
+
+    loop {
+        let indexer_result = delimited(lsqbracket_tag, expr_parser, rsqbracket_tag)(input);
+        let fn_call_args_result = delimited(
+            lparen_tag,
+            separated_list0(comma_tag, expr_parser),
+            rparen_tag,
+        )(input);
+
+        if indexer_result.is_err() && fn_call_args_result.is_err() {
+            break;
+        }
+
+        // id[]
+        // fn()[]
+        // arr[0][]
+        // [0, 1, 2][]
+        if let Ok((idx_input, indexer_expr)) = indexer_result {
+            input = idx_input;
+            primary_expr = Expr::Indexing(
+                Indexing {
+                    indexed: primary_expr,
+                    indexer: indexer_expr,
+                }
+                .into(),
+            );
+        }
+
+        // let x: () => void = fn;
+        if let Ok((fn_call_input, fn_call_args)) = fn_call_args_result {
+            input = fn_call_input;
+            primary_expr = Expr::FnCall(
+                FnCall {
+                    fn_expr: primary_expr,
+                    args: fn_call_args,
+                }
+                .into(),
+            );
+        }
+    }
+
+    Ok((input, primary_expr))
 }
 
 pub(crate) fn paren_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>> {
@@ -110,7 +154,10 @@ pub(crate) fn paren_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>>
 #[cfg(test)]
 mod test {
     use crate::{
-        ast::{BExpr, BOp, Expr, NumericLiteral, NumericUnaryOp, PrimitiveVal},
+        ast::{
+            BExpr, BOp, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, NumericLiteral,
+            NumericUnaryOp, PrimitiveVal,
+        },
         lexer::Token,
         parser::{
             expr_parser::{expr_parser, primary_expr_parser},
@@ -328,6 +375,85 @@ mod test {
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
             }))
+        )
+    }
+
+    #[test]
+    fn expr_fn_call_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("fn"),
+            Token::LParen,
+            Token::IntVal("10"),
+            Token::RParen,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = expr_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, expr) = res.unwrap();
+        assert_eq!(
+            expr,
+            Expr::FnCall(
+                FnCall {
+                    fn_expr: Expr::Id("fn".into()),
+                    args: vec![Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    ))]
+                }
+                .into()
+            )
+        )
+    }
+
+    #[test]
+    fn expr_indexing_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("arr"),
+            Token::LSqBracket,
+            Token::IntVal("10"),
+            Token::RSqBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = expr_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, expr) = res.unwrap();
+        assert_eq!(
+            expr,
+            Expr::Indexing(
+                Indexing {
+                    indexed: Expr::Id("arr".into()),
+                    indexer: Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    ))
+                }
+                .into()
+            )
+        )
+    }
+
+    #[test]
+    fn expr_bool_unary_test() {
+        let token_iter = span_token_vec(vec![
+            Token::BoolUnaryOp(BoolUnaryOp::Not),
+            Token::BoolVal("true"),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = expr_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, expr) = res.unwrap();
+        assert_eq!(
+            expr,
+            Expr::PrimitiveVal(PrimitiveVal::Boolean(
+                Some(BoolUnaryOp::Not),
+                BoolLiteral(true)
+            ))
         )
     }
 

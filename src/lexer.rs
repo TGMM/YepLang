@@ -87,6 +87,8 @@ pub enum Token<'input> {
     Function,
     #[token("extends")]
     Extends,
+    #[token("return")]
+    Return,
 }
 
 #[cfg(test)]
@@ -192,7 +194,7 @@ mod test {
     #[test]
     fn keyword_lexing() {
         let input =
-            "if else do while for break continue function class extends ; : , ( ) { } [ ] =";
+            "if else do while for break continue function class extends return ; : , ( ) { } [ ] =";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
@@ -209,6 +211,7 @@ mod test {
                 Ok(Function),
                 Ok(Class),
                 Ok(Extends),
+                Ok(Return),
                 Ok(StmtEnd),
                 Ok(Colon),
                 Ok(Comma),
