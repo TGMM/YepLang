@@ -324,7 +324,24 @@ pub struct ElseIf<'a> {
 pub struct ClassDecl<'a> {
     pub class_id: Id,
     pub extended_class_id: Option<Id>,
-    pub block: Block<'a>,
+    pub block: ClassBlock<'a>,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassBlock<'a> {
+    pub class_stmts: Vec<ClassStmt<'a>>,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyDecl<'a> {
+    pub id: Id,
+    pub vtype: Option<ValueVarType>,
+    pub assigned_expr: Expr<'a>,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClassStmt<'a> {
+    // This includes the constructor
+    Method(MethodDecl<'a>),
+    Accessor,
+    Property(PropertyDecl<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
