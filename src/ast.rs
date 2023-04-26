@@ -17,7 +17,10 @@ pub struct ValueVarType {
     pub vtype: VarType,
     // TODO: This should give the nesting level
     // instead of just saying if it's an array or not
+    // TODO: In case this is an array, it should specify quantity and
+    // type (Ex. arr[i32; 10])
     pub is_array: bool,
+    // TODO: It should be possible to specify a pointer here
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -140,11 +143,9 @@ pub struct Block<'input> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'input> {
     Assignment(Assignment<'input>),
-    FnCall(FnCall<'input>),
     Expr(Expr<'input>),
     ClassDecl(ClassDecl<'input>),
     FnDecl(FnDecl<'input>),
-    MethodDecl(MethodDecl<'input>),
     For(For<'input>),
     While(While<'input>),
     DoWhile(DoWhile<'input>),

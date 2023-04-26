@@ -100,7 +100,7 @@ mod test {
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
-            NumericLiteral, PrimitiveVal, Stmt, While,
+            NumericLiteral, PrimitiveVal, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment, While,
         },
         lexer::Token,
         parser::{
@@ -392,13 +392,16 @@ mod test {
         )
     }
 
-    // TODO: Change this test to use variable declaration
     #[test]
     fn for_test() {
         // for(; x>10; x=x+1){}
         let token_iter = span_token_vec(vec![
             Token::For,
             Token::LParen,
+            Token::ScopeSpecifier(ScopeSpecifier::Let),
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("0"),
             Token::StmtEnd,
             Token::Id("x".into()),
             Token::BOp(BOp::Lt),
@@ -408,7 +411,7 @@ mod test {
             Token::AssignmentEq,
             Token::Id("x".into()),
             Token::BOp(BOp::Add),
-            Token::IntVal("10"),
+            Token::IntVal("1"),
             Token::RParen,
             Token::LBracket,
             Token::RBracket,
@@ -422,7 +425,20 @@ mod test {
         assert_eq!(
             primitive_vals,
             For {
-                decl_stmt: None,
+                decl_stmt: Some(
+                    Stmt::VarDecl(VarDecl {
+                        scope_spec: ScopeSpecifier::Let,
+                        decl_assignments: vec![VarDeclAssignment {
+                            destructure: Destructure::Id("x".into()),
+                            var_type: None,
+                            expr: Expr::PrimitiveVal(PrimitiveVal::Number(
+                                None,
+                                NumericLiteral::Int("0")
+                            ))
+                        }]
+                    })
+                    .into()
+                ),
                 cmp_expr: Some(Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
@@ -442,7 +458,7 @@ mod test {
                             op: BOp::Add,
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
-                                NumericLiteral::Int("10")
+                                NumericLiteral::Int("1")
                             ))
                         }
                         .into()
