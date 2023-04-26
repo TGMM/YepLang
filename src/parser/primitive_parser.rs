@@ -36,6 +36,7 @@ tag_token!(for_tag, Ok(Token::For));
 tag_token!(fn_tag, Ok(Token::Function));
 tag_token!(class_tag, Ok(Token::Class));
 tag_token!(extends_tag, Ok(Token::Extends));
+tag_token!(dot_tag, Ok(Token::Dot));
 
 pub(crate) fn id_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
     let (remaining, tok_id) = take(1usize)(input)?;

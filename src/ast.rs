@@ -272,6 +272,7 @@ pub enum Expr<'input> {
     PrimitiveVal(PrimitiveVal<'input>),
     FnCall(Box<FnCall<'input>>),
     Indexing(Box<Indexing<'input>>),
+    MemberAccess(Box<MemberAcess<'input>>),
     Id(Id),
 }
 

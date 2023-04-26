@@ -1,16 +1,18 @@
-use super::primitive_parser::{comma_tag, lsqbracket_tag, primitive_val_parser, rsqbracket_tag};
+use super::primitive_parser::{
+    comma_tag, dot_tag, lsqbracket_tag, primitive_val_parser, rsqbracket_tag,
+};
 use super::{
     main_parser::ParseRes,
     primitive_parser::{id_parser, lparen_tag, rparen_tag},
     token::Tokens,
 };
-use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, FnCall, Indexing, NumericUnaryOp};
+use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess, NumericUnaryOp};
 use crate::lexer::Token;
 use nom::bytes::complete::take;
 use nom::combinator::peek;
 use nom::error::ErrorKind;
 use nom::multi::separated_list0;
-use nom::sequence::{pair, terminated};
+use nom::sequence::preceded;
 use nom::Err;
 use nom::{branch::alt, combinator::map, sequence::delimited};
 
@@ -111,8 +113,10 @@ pub(crate) fn primary_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i
             separated_list0(comma_tag, expr_parser),
             rparen_tag,
         )(input);
+        let member_access_result = preceded(dot_tag, id_parser)(input);
 
-        if indexer_result.is_err() && fn_call_args_result.is_err() {
+        if indexer_result.is_err() && fn_call_args_result.is_err() && member_access_result.is_err()
+        {
             break;
         }
 
@@ -142,6 +146,17 @@ pub(crate) fn primary_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i
                 .into(),
             );
         }
+
+        if let Ok((member_access_input, member_access)) = member_access_result {
+            input = member_access_input;
+            primary_expr = Expr::MemberAccess(
+                MemberAcess {
+                    accessed: primary_expr,
+                    property: member_access,
+                }
+                .into(),
+            );
+        }
     }
 
     Ok((input, primary_expr))
@@ -155,8 +170,8 @@ pub(crate) fn paren_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>>
 mod test {
     use crate::{
         ast::{
-            BExpr, BOp, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, NumericLiteral,
-            NumericUnaryOp, PrimitiveVal,
+            BExpr, BOp, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess,
+            NumericLiteral, NumericUnaryOp, PrimitiveVal,
         },
         lexer::Token,
         parser::{
@@ -430,6 +445,27 @@ mod test {
                         None,
                         NumericLiteral::Int("10")
                     ))
+                }
+                .into()
+            )
+        )
+    }
+
+    #[test]
+    fn expr_member_access_test() {
+        let token_iter = span_token_vec(vec![Token::Id("obj"), Token::Dot, Token::Id("prop")]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = expr_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, expr) = res.unwrap();
+        assert_eq!(
+            expr,
+            Expr::MemberAccess(
+                MemberAcess {
+                    accessed: Expr::Id("obj".into()),
+                    property: "prop".into()
                 }
                 .into()
             )
