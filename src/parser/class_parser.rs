@@ -7,7 +7,7 @@ use super::{
     },
     token::Tokens,
 };
-use crate::ast::{ClassBlock, ClassDecl, ClassStmt, Destructure, FnDecl, MethodDecl, PropertyDecl};
+use crate::ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl};
 use nom::{
     branch::alt,
     combinator::{map, opt},

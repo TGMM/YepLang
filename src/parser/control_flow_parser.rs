@@ -76,6 +76,7 @@ pub(crate) fn do_while_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, DoWhile<'i>
 pub(crate) fn for_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, For<'i>> {
     let (input, _) = for_tag(input)?;
     let (input, _) = lparen_tag(input)?;
+    // TODO: This should be a special type of stmt
     let (input, decl_stmt) = opt(for_stmt_parser)(input)?;
     let (input, _) = stmt_end_tag(input)?;
     let (input, cmp_expr) = opt(expr_parser)(input)?;

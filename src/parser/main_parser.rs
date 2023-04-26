@@ -8,14 +8,14 @@ use super::primitive_parser::{
 use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
 use super::token::Tokens;
 use crate::ast::{
-    Assignment, Block, Destructure, Expr, PropertyDestructure, PropertyName, ScopeSpecifier, Stmt,
-    ValueVarType, VarDecl, VarDeclAssignment,
+    Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt, VarDecl,
+    VarDeclAssignment,
 };
 use nom::branch::alt;
 use nom::combinator::{map, opt};
 use nom::error::ErrorKind;
 use nom::multi::{many0, separated_list0, separated_list1};
-use nom::sequence::{delimited, pair, preceded};
+use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::IResult;
 
 pub(crate) type ParseRes<'a, T> = IResult<Tokens<'a>, T>;
@@ -126,6 +126,16 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
     let fn_call = {}; // TODO
     let expr = map(expr_parser, |e| Stmt::Expr(e));
+    let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
+
+    let (input, stmt) = alt((assignment, expr, var_decl))(input)?;
+    Ok((input, stmt))
+}
+
+pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
+    let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
+    let fn_call = {}; // TODO
+    let expr = map(expr_parser, |e| Stmt::Expr(e));
     let class_decl = map(class_decl_parser, |c| Stmt::ClassDecl(c));
     let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
     let for_ = map(for_parser, |f| Stmt::For(f));
@@ -135,17 +145,10 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let block = map(block_parser, |b| Stmt::Block(b));
     let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
 
-    let (input, stmt) = alt((
+    let stmt_p = alt((
         assignment, expr, class_decl, fn_decl, for_, while_, do_while, if_, block, var_decl,
-    ))(input)?;
-
-    Ok((input, stmt))
-}
-
-pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
-    let (input, stmt) = for_stmt_parser(input)?;
-    let (input, _) = stmt_end_parser(input)?;
-
+    ));
+    let (input, stmt) = terminated(stmt_p, stmt_end_parser)(input)?;
     Ok((input, stmt))
 }
 
@@ -168,8 +171,8 @@ mod test {
         parser::{
             helpers::test::span_token_vec,
             main_parser::{
-                assignment_parser, block_parser, destructure_parser, stmt_end_parser,
-                top_block_parser, var_decl_parser,
+                assignment_parser, block_parser, destructure_parser, for_stmt_parser,
+                stmt_end_parser, top_block_parser, var_decl_parser,
             },
             token::Tokens,
         },
@@ -362,5 +365,83 @@ mod test {
 
         let (_remaining, block) = res.unwrap();
         assert_eq!(block, Block { stmts: vec![] });
+    }
+
+    #[test]
+    fn for_stmt_assignment_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("10"),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = for_stmt_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, block) = res.unwrap();
+        assert_eq!(
+            block,
+            Stmt::Assignment(Assignment {
+                destructure: Destructure::Id("x".into()),
+                assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
+                    None,
+                    NumericLiteral::Int("10")
+                ))
+            })
+        )
+    }
+
+    #[test]
+    fn for_stmt_var_decl_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::ScopeSpecifier(ScopeSpecifier::Let),
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("10"),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = for_stmt_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, block) = res.unwrap();
+        assert_eq!(
+            block,
+            Stmt::VarDecl(VarDecl {
+                scope_spec: ScopeSpecifier::Let,
+                decl_assignments: vec![VarDeclAssignment {
+                    destructure: Destructure::Id("x".into()),
+                    var_type: None,
+                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                }],
+            })
+        )
+    }
+
+    #[test]
+    fn for_stmt_expr_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Id("x".into()),
+            Token::BOp(BOp::Add),
+            Token::IntVal("10"),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = for_stmt_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, block) = res.unwrap();
+        assert_eq!(
+            block,
+            Stmt::Expr(Expr::BinaryExpr(
+                BExpr {
+                    lhs: Expr::Id("x".into()),
+                    op: BOp::Add,
+                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                }
+                .into()
+            ))
+        )
     }
 }
