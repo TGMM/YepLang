@@ -1,12 +1,14 @@
 use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
 use super::expr_parser::expr_parser;
-use super::primitive_parser::stmt_end_tag;
 use super::primitive_parser::{
     as_eq_tag, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag, rbracket_tag,
-    rsqbracket_tag, string_parser,
+    rsqbracket_tag, string_parser, type_specifier_parser,
 };
+use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
 use super::token::Tokens;
-use crate::ast::{Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt};
+use crate::ast::{
+    Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt, ValueVarType, VarDecl,
+};
 use nom::branch::alt;
 use nom::combinator::{map, opt};
 use nom::error::ErrorKind;
@@ -69,6 +71,24 @@ pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destruct
     alt((id, arr, obj))(input)
 }
 
+pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>> {
+    let (input, scope_spec) = scope_specifier_parser(input)?;
+    let (input, destructure) = destructure_parser(input)?;
+    let (input, var_type) = opt(type_specifier_parser)(input)?;
+    let (input, _) = as_eq_tag(input)?;
+    let (input, expr) = expr_parser(input)?;
+
+    Ok((
+        input,
+        VarDecl {
+            scope_spec,
+            destructure,
+            var_type,
+            expr,
+        },
+    ))
+}
+
 // TODO: Make this chainable with a right-associative operator
 // Ex. x = y = z
 // TODO: Make this be able to have an operator before eq
@@ -98,9 +118,11 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let do_while = map(do_while_parser, |dw| Stmt::DoWhile(dw));
     let if_ = map(if_parser, |i| Stmt::If(i));
     let block = map(block_parser, |b| Stmt::Block(b));
-    let var_decl = {}; // TODO
+    let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
 
-    let (input, stmt) = alt((assignment, expr, for_, while_, do_while, if_, block))(input)?;
+    let (input, stmt) = alt((
+        assignment, expr, for_, while_, do_while, if_, block, var_decl,
+    ))(input)?;
 
     Ok((input, stmt))
 }
@@ -125,14 +147,14 @@ mod test {
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
-            PropertyDestructure, PropertyName, Stmt,
+            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, VarDecl,
         },
         lexer::Token,
         parser::{
             helpers::test::span_token_vec,
             main_parser::{
                 assignment_parser, block_parser, destructure_parser, stmt_end_parser,
-                top_block_parser,
+                top_block_parser, var_decl_parser,
             },
             token::Tokens,
         },
@@ -244,6 +266,32 @@ mod test {
             Assignment {
                 destructure: Destructure::Id("x".into()),
                 assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
+            }
+        )
+    }
+
+    #[test]
+    fn var_decl_parser_test() {
+        let token_iter = span_token_vec(vec![
+            Token::ScopeSpecifier(ScopeSpecifier::Let),
+            Token::Id("x".into()),
+            Token::AssignmentEq,
+            Token::IntVal("10"),
+            Token::StmtEnd,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = var_decl_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, assignment) = res.unwrap();
+        assert_eq!(
+            assignment,
+            VarDecl {
+                scope_spec: ScopeSpecifier::Let,
+                destructure: Destructure::Id("x".into()),
+                var_type: None,
+                expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
             }
         )
     }

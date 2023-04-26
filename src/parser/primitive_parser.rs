@@ -2,7 +2,8 @@ use super::expr_parser::{boolean_unary_op_parser, numeric_unary_op_parser};
 use super::main_parser::ParseRes;
 use super::token::Tokens;
 use crate::ast::{
-    ArrayVal, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, StructVal,
+    ArrayVal, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
+    StructVal, ValueVarType, VarType,
 };
 use crate::lexer::Token;
 use crate::parser::expr_parser::expr_parser;
@@ -12,7 +13,7 @@ use nom::bytes::complete::take;
 use nom::combinator::{map, opt, verify};
 use nom::error::{Error, ErrorKind};
 use nom::multi::separated_list0;
-use nom::sequence::{delimited, pair, terminated};
+use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::Err;
 use nom::IResult;
 use snailquote::unescape;
@@ -37,7 +38,7 @@ pub(crate) fn id_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Tag)))
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::Id(id)) => Ok((remaining, id.into())),
@@ -50,7 +51,7 @@ pub(crate) fn number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericLitera
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Tag)))
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::IntVal(val)) => Ok((remaining, NumericLiteral::Int(val))),
@@ -71,7 +72,7 @@ pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, String> {
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Tag)))
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::Str(string)) => {
@@ -87,7 +88,7 @@ pub(crate) fn bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BoolLiteral> {
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Tag)))
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::BoolVal(b)) => Ok((remaining, b.into())),
@@ -107,7 +108,7 @@ pub(crate) fn char_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, char> {
     let (remaining, tok_id) = take(1usize)(input)?;
 
     if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Tag)))
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
     } else {
         match tok_id.tok_span[0].token.clone() {
             Ok(Token::Char(c)) => {
@@ -164,6 +165,50 @@ pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primit
     alt((num, bool, char, string, arr, struct_v))(input)
 }
 
+pub(crate) fn scope_specifier_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ScopeSpecifier> {
+    let (remaining, tok_id) = take(1usize)(input)?;
+
+    if tok_id.tok_span.is_empty() {
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
+    } else {
+        match tok_id.tok_span[0].token.clone() {
+            Ok(Token::ScopeSpecifier(ss)) => Ok((remaining, ss)),
+            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
+        }
+    }
+}
+
+pub(crate) fn var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarType> {
+    let (input, tok_id) = take(1usize)(input)?;
+
+    if tok_id.tok_span.is_empty() {
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
+    } else {
+        match tok_id.tok_span[0].token.clone() {
+            Ok(Token::VarType(ss)) => Ok((input, ss)),
+            Ok(Token::Id(id)) => Ok((input, VarType::Custom(id.into()))),
+            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
+        }
+    }
+}
+
+pub(crate) fn value_var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ValueVarType> {
+    let (input, vtype) = var_type_parser(input)?;
+    let (input, is_array) = opt(pair(lsqbracket_tag, rsqbracket_tag))(input)?;
+
+    Ok((
+        input,
+        ValueVarType {
+            vtype,
+            is_array: is_array.is_some(),
+        },
+    ))
+}
+
+pub(crate) fn type_specifier_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ValueVarType> {
+    preceded(colon_tag, value_var_type_parser)(input)
+}
+
 #[cfg(test)]
 mod test {
     use nom::multi::many1;
@@ -171,14 +216,15 @@ mod test {
     use crate::{
         ast::{
             ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
-            PrimitiveVal, PropertyName, StructVal,
+            PrimitiveVal, PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
             helpers::test::span_token_vec,
             primitive_parser::{
                 array_val_parser, bool_parser, char_parser, id_parser, number_parser,
-                primitive_val_parser, signed_number_parser, string_parser, struct_val_parser,
+                primitive_val_parser, scope_specifier_parser, signed_number_parser, string_parser,
+                struct_val_parser, type_specifier_parser,
             },
             token::Tokens,
         },
@@ -409,6 +455,88 @@ mod test {
                 PrimitiveVal::Array(ArrayVal(vec![])),
                 PrimitiveVal::Struct(StructVal(vec![])),
             ]
+        )
+    }
+
+    #[test]
+    fn scope_spec_test() {
+        let token_iter = span_token_vec(vec![
+            Token::ScopeSpecifier(ScopeSpecifier::Const),
+            Token::ScopeSpecifier(ScopeSpecifier::Let),
+            Token::ScopeSpecifier(ScopeSpecifier::Var),
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = many1(scope_specifier_parser)(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, scope_spec) = res.unwrap();
+        assert_eq!(
+            scope_spec,
+            vec![
+                ScopeSpecifier::Const,
+                ScopeSpecifier::Let,
+                ScopeSpecifier::Var,
+            ]
+        )
+    }
+
+    #[test]
+    fn type_spec_test() {
+        let token_iter = span_token_vec(vec![Token::Colon, Token::VarType(VarType::I32)]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = type_specifier_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, var_type) = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::I32,
+                is_array: false
+            }
+        )
+    }
+
+    #[test]
+    fn type_spec_arr_test() {
+        let token_iter = span_token_vec(vec![
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::LSqBracket,
+            Token::RSqBracket,
+        ]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = type_specifier_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, var_type) = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::I32,
+                is_array: true
+            }
+        )
+    }
+
+    #[test]
+    fn type_spec_custom_test() {
+        let token_iter = span_token_vec(vec![Token::Colon, Token::Id("MyClass".into())]);
+        let tokens = Tokens::new(&token_iter);
+
+        let res = type_specifier_parser(tokens);
+        assert!(res.is_ok());
+
+        let (_remaining, var_type) = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::Custom("MyClass".into()),
+                is_array: false
+            }
         )
     }
 }
