@@ -451,7 +451,8 @@ mod test {
                     .into()
                 )),
                 postfix_stmt: Some(Box::new(Stmt::Assignment(Assignment {
-                    destructure: Destructure::Id("x".into()),
+                    assignee_expr: Expr::Id("x".into()),
+                    bop: None,
                     assigned_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),

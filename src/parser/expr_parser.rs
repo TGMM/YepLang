@@ -6,7 +6,9 @@ use super::{
     primitive_parser::{id_parser, lparen_tag, rparen_tag},
     token::Tokens,
 };
-use crate::ast::{BExpr, BOp, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess, NumericUnaryOp};
+use crate::ast::{
+    BExpr, BOp, BoolUnaryOp, Expr, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp,
+};
 use crate::lexer::Token;
 use nom::bytes::complete::take;
 use nom::combinator::peek;
@@ -99,6 +101,85 @@ pub(crate) fn boolean_unary_op_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Boo
     Ok((remaining, op))
 }
 
+pub(crate) fn indexer_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>> {
+    delimited(lsqbracket_tag, expr_parser, rsqbracket_tag)(input)
+}
+
+pub(crate) fn create_indexing_expr<'i>(
+    res: ParseRes<'i, Expr<'i>>,
+    input: Tokens<'i>,
+    primary_expr: Expr<'i>,
+) -> (Tokens<'i>, Expr<'i>) {
+    if let Ok((idx_input, indexer_expr)) = res {
+        return (
+            idx_input,
+            Expr::Indexing(
+                Indexing {
+                    indexed: primary_expr,
+                    indexer: indexer_expr,
+                }
+                .into(),
+            ),
+        );
+    }
+
+    (input, primary_expr)
+}
+
+pub(crate) fn fn_call_args_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Vec<Expr<'i>>> {
+    delimited(
+        lparen_tag,
+        separated_list0(comma_tag, expr_parser),
+        rparen_tag,
+    )(input)
+}
+
+pub(crate) fn create_fn_call_expr<'i>(
+    res: ParseRes<'i, Vec<Expr<'i>>>,
+    input: Tokens<'i>,
+    primary_expr: Expr<'i>,
+) -> (Tokens<'i>, Expr<'i>) {
+    if let Ok((fn_call_input, fn_call_args)) = res {
+        return (
+            fn_call_input,
+            Expr::FnCall(
+                FnCall {
+                    fn_expr: primary_expr,
+                    args: fn_call_args,
+                }
+                .into(),
+            ),
+        );
+    }
+
+    (input, primary_expr)
+}
+
+pub(crate) fn member_access_prop_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
+    preceded(dot_tag, id_parser)(input)
+}
+
+pub(crate) fn create_member_access_expr<'i>(
+    res: ParseRes<'i, Id>,
+    input: Tokens<'i>,
+    primary_expr: Expr<'i>,
+) -> (Tokens<'i>, Expr<'i>) {
+    if let Ok((member_access_input, member_access)) = res {
+        return (
+            member_access_input,
+            Expr::MemberAccess(
+                MemberAcess {
+                    accessed: primary_expr,
+                    property: member_access,
+                }
+                .into(),
+            ),
+        );
+    }
+
+    (input, primary_expr)
+}
+
 pub(crate) fn primary_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>> {
     let id = map(id_parser, |id| Expr::Id(id));
     let primitive = map(primitive_val_parser, |pv| Expr::PrimitiveVal(pv));
@@ -107,56 +188,39 @@ pub(crate) fn primary_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i
     let (mut input, mut primary_expr) = alt((id, primitive, paren_expr))(input)?;
 
     loop {
-        let indexer_result = delimited(lsqbracket_tag, expr_parser, rsqbracket_tag)(input);
-        let fn_call_args_result = delimited(
-            lparen_tag,
-            separated_list0(comma_tag, expr_parser),
-            rparen_tag,
-        )(input);
-        let member_access_result = preceded(dot_tag, id_parser)(input);
+        let indexer_result = indexer_parser(input);
+        let fn_call_args_result = fn_call_args_parser(input);
+        let member_access_result = member_access_prop_parser(input);
 
         if indexer_result.is_err() && fn_call_args_result.is_err() && member_access_result.is_err()
         {
             break;
         }
 
-        // id[]
-        // fn()[]
-        // arr[0][]
-        // [0, 1, 2][]
-        if let Ok((idx_input, indexer_expr)) = indexer_result {
-            input = idx_input;
-            primary_expr = Expr::Indexing(
-                Indexing {
-                    indexed: primary_expr,
-                    indexer: indexer_expr,
-                }
-                .into(),
-            );
+        (input, primary_expr) = create_indexing_expr(indexer_result, input, primary_expr);
+        (input, primary_expr) = create_fn_call_expr(fn_call_args_result, input, primary_expr);
+        (input, primary_expr) =
+            create_member_access_expr(member_access_result, input, primary_expr);
+    }
+
+    Ok((input, primary_expr))
+}
+
+pub(crate) fn assignment_expr_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Expr<'i>> {
+    let mut id = map(id_parser, |id| Expr::Id(id));
+    let (mut input, mut primary_expr) = id(input)?;
+
+    loop {
+        let indexer_result = indexer_parser(input);
+        let member_access_result = member_access_prop_parser(input);
+
+        if indexer_result.is_err() && member_access_result.is_err() {
+            break;
         }
 
-        // let x: () => void = fn;
-        if let Ok((fn_call_input, fn_call_args)) = fn_call_args_result {
-            input = fn_call_input;
-            primary_expr = Expr::FnCall(
-                FnCall {
-                    fn_expr: primary_expr,
-                    args: fn_call_args,
-                }
-                .into(),
-            );
-        }
-
-        if let Ok((member_access_input, member_access)) = member_access_result {
-            input = member_access_input;
-            primary_expr = Expr::MemberAccess(
-                MemberAcess {
-                    accessed: primary_expr,
-                    property: member_access,
-                }
-                .into(),
-            );
-        }
+        (input, primary_expr) = create_indexing_expr(indexer_result, input, primary_expr);
+        (input, primary_expr) =
+            create_member_access_expr(member_access_result, input, primary_expr);
     }
 
     Ok((input, primary_expr))

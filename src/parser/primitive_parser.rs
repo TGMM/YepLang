@@ -2,7 +2,7 @@ use super::expr_parser::{boolean_unary_op_parser, numeric_unary_op_parser};
 use super::main_parser::ParseRes;
 use super::token::Tokens;
 use crate::ast::{
-    ArrayVal, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
+    ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
     StructVal, ValueVarType, VarType,
 };
 use crate::lexer::Token;
@@ -37,6 +37,19 @@ tag_token!(fn_tag, Ok(Token::Function));
 tag_token!(class_tag, Ok(Token::Class));
 tag_token!(extends_tag, Ok(Token::Extends));
 tag_token!(dot_tag, Ok(Token::Dot));
+
+pub(crate) fn bop_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BOp> {
+    let (remaining, tok_id) = take(1usize)(input)?;
+
+    if tok_id.tok_span.is_empty() {
+        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
+    } else {
+        match tok_id.tok_span[0].token.clone() {
+            Ok(Token::BOp(bop)) => Ok((remaining, bop)),
+            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
+        }
+    }
+}
 
 pub(crate) fn id_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
     let (remaining, tok_id) = take(1usize)(input)?;

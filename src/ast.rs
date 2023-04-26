@@ -380,6 +380,7 @@ impl<'a> From<MethodDecl<'a>> for FnDecl<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment<'a> {
-    pub destructure: Destructure<'a>,
+    pub assignee_expr: Expr<'a>,
+    pub bop: Option<BOp>,
     pub assigned_expr: Expr<'a>,
 }

@@ -1,14 +1,14 @@
 use super::class_parser::{class_decl_parser, fn_decl_parser};
 use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
-use super::expr_parser::expr_parser;
+use super::expr_parser::{assignment_expr_parser, expr_parser};
 use super::primitive_parser::{
-    as_eq_tag, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag, rbracket_tag,
-    rsqbracket_tag, string_parser, type_specifier_parser,
+    as_eq_tag, bop_parser, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag,
+    rbracket_tag, rsqbracket_tag, string_parser, type_specifier_parser,
 };
 use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
 use super::token::Tokens;
 use crate::ast::{
-    Assignment, Block, Destructure, PropertyDestructure, PropertyName, Stmt, VarDecl,
+    Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt, VarDecl,
     VarDeclAssignment,
 };
 use nom::branch::alt;
@@ -109,15 +109,42 @@ pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>
 // TODO: Make this be able to have an operator before eq
 // Ex. x += 10
 pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
-    let (input, destructure) = destructure_parser(input)?;
+    let (input, assignee_expr) = assignment_expr_parser(input)?;
+    match assignee_expr {
+        Expr::Id(_) => {}
+        Expr::Indexing(_) => {}
+        Expr::MemberAccess(_) => {}
+        _ => {
+            return Err(nom::Err::Error(nom::error::Error {
+                input,
+                code: ErrorKind::Tag,
+            }))
+        }
+    }
+
+    let (input, bop) = opt(bop_parser)(input)?;
+    if let Some(bop_ref) = bop.as_ref() {
+        match bop_ref {
+            // These are the only operators allowed in operation assignment
+            BOp::Add | BOp::Sub | BOp::Mul | BOp::Div | BOp::Mod | BOp::Pow => {}
+            _ => {
+                return Err(nom::Err::Error(nom::error::Error {
+                    input,
+                    code: ErrorKind::Tag,
+                }))
+            }
+        }
+    }
+
     let (input, _) = as_eq_tag(input)?;
-    let (input, expr) = expr_parser(input)?;
+    let (input, assigned_expr) = expr_parser(input)?;
 
     Ok((
         input,
         Assignment {
-            destructure,
-            assigned_expr: expr,
+            assignee_expr,
+            bop,
+            assigned_expr,
         },
     ))
 }
@@ -280,7 +307,8 @@ mod test {
         assert_eq!(
             assignment,
             Assignment {
-                destructure: Destructure::Id("x".into()),
+                assignee_expr: Expr::Id("x".into()),
+                bop: None,
                 assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
             }
         )
@@ -337,7 +365,8 @@ mod test {
             Block {
                 stmts: vec![
                     Stmt::Assignment(Assignment {
-                        destructure: Destructure::Id("x".into()),
+                        assignee_expr: Expr::Id("x".into()),
+                        bop: None,
                         assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
                     }),
                     Stmt::Expr(Expr::BinaryExpr(Box::new(BExpr {
@@ -381,7 +410,8 @@ mod test {
         assert_eq!(
             block,
             Stmt::Assignment(Assignment {
-                destructure: Destructure::Id("x".into()),
+                assignee_expr: Expr::Id("x".into()),
+                bop: None,
                 assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
                     None,
                     NumericLiteral::Int("10")
