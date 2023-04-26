@@ -18,8 +18,16 @@ pub enum Token<'input> {
     #[token("true")]
     #[token("false")]
     BoolVal(&'input str),
+    #[token("i8", str_to_var_type)]
+    #[token("u8", str_to_var_type)]
+    #[token("i16", str_to_var_type)]
+    #[token("u16", str_to_var_type)]
     #[token("i32", str_to_var_type)]
+    #[token("u32", str_to_var_type)]
     #[token("i64", str_to_var_type)]
+    #[token("u64", str_to_var_type)]
+    #[token("i128", str_to_var_type)]
+    #[token("u128", str_to_var_type)]
     #[token("f32", str_to_var_type)]
     #[token("f64", str_to_var_type)]
     #[token("boolean", str_to_var_type)]
@@ -103,15 +111,23 @@ mod test {
 
     #[test]
     fn type_lexing() {
-        let input = "i32 i64 f32 f64 boolean char string";
+        let input = "i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 f32 f64 boolean char string";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
         assert_eq!(
             &tokens,
             &[
+                Ok(VarType(VarType::I8)),
+                Ok(VarType(VarType::U8)),
+                Ok(VarType(VarType::I16)),
+                Ok(VarType(VarType::U16)),
                 Ok(VarType(VarType::I32)),
+                Ok(VarType(VarType::U32)),
                 Ok(VarType(VarType::I64)),
+                Ok(VarType(VarType::U64)),
+                Ok(VarType(VarType::I128)),
+                Ok(VarType(VarType::U128)),
                 Ok(VarType(VarType::F32)),
                 Ok(VarType(VarType::F64)),
                 Ok(VarType(VarType::Boolean)),

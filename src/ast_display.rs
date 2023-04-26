@@ -68,8 +68,16 @@ impl fmt::Display for BOp {
 impl fmt::Display for VarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            VarType::I8 => write!(f, "i8"),
+            VarType::U8 => write!(f, "u8"),
+            VarType::I16 => write!(f, "i16"),
+            VarType::U16 => write!(f, "u16"),
             VarType::I32 => write!(f, "i32"),
+            VarType::U32 => write!(f, "u32"),
             VarType::I64 => write!(f, "i64"),
+            VarType::U64 => write!(f, "u64"),
+            VarType::I128 => write!(f, "i128"),
+            VarType::U128 => write!(f, "u128"),
             VarType::F32 => write!(f, "f32"),
             VarType::F64 => write!(f, "f64"),
             VarType::Boolean => write!(f, "boolean"),

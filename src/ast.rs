@@ -3,8 +3,16 @@ use logos::Lexer;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VarType {
+    I8,
+    U8,
+    I16,
+    U16,
     I32,
+    U32,
     I64,
+    U64,
+    I128,
+    U128,
     F32,
     F64,
     Boolean,
@@ -94,8 +102,16 @@ pub struct StructVal<'input>(pub Vec<(PropertyName, Expr<'input>)>);
 pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
     let type_str = lex.slice();
     match type_str {
+        "i8" => VarType::I8,
+        "u8" => VarType::U8,
+        "i16" => VarType::I16,
+        "u16" => VarType::U16,
         "i32" => VarType::I32,
+        "u32" => VarType::U32,
         "i64" => VarType::I64,
+        "u64" => VarType::U64,
+        "i128" => VarType::I128,
+        "u128" => VarType::U128,
         "f32" => VarType::F32,
         "f64" => VarType::F64,
         "boolean" => VarType::Boolean,
