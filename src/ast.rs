@@ -172,6 +172,7 @@ pub enum Stmt<'input> {
     If(If<'input>),
     Block(Block<'input>),
     VarDecl(VarDecl<'input>),
+    ExternDecl(ExternDecl),
 }
 
 #[derive(Debug, Clone, PartialEq)]

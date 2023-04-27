@@ -1,6 +1,7 @@
 use super::class_parser::{class_decl_parser, fn_decl_parser};
 use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
 use super::expr_parser::{assignment_expr_parser, expr_parser};
+use super::ffi_parser::extern_decl_parser;
 use super::primitive_parser::{
     as_eq_tag, bop_parser, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag,
     rbracket_tag, rsqbracket_tag, string_parser, type_specifier_parser,
@@ -111,9 +112,7 @@ pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>
 pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
     let (input, assignee_expr) = assignment_expr_parser(input)?;
     match assignee_expr {
-        Expr::Id(_) => {}
-        Expr::Indexing(_) => {}
-        Expr::MemberAccess(_) => {}
+        Expr::Id(_) | Expr::Indexing(_) | Expr::MemberAccess(_) => {}
         _ => {
             return Err(nom::Err::Error(nom::error::Error {
                 input,
@@ -159,19 +158,25 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
 }
 
 pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
-    let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
     let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
-    let expr = map(expr_parser, |e| Stmt::Expr(e));
     let class_decl = map(class_decl_parser, |c| Stmt::ClassDecl(c));
     let for_ = map(for_parser, |f| Stmt::For(f));
     let while_ = map(while_parser, |w| Stmt::While(w));
     let do_while = map(do_while_parser, |dw| Stmt::DoWhile(dw));
     let if_ = map(if_parser, |i| Stmt::If(i));
     let block = map(block_parser, |b| Stmt::Block(b));
-    let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
+    let extern_decl = map(extern_decl_parser, |ed| Stmt::ExternDecl(ed));
 
     let stmt_p = alt((
-        assignment, fn_decl, expr, class_decl, for_, while_, do_while, if_, block, var_decl,
+        for_stmt_parser,
+        fn_decl,
+        class_decl,
+        for_,
+        while_,
+        do_while,
+        if_,
+        block,
+        extern_decl,
     ));
     let (input, stmt) = terminated(stmt_p, stmt_end_parser)(input)?;
     Ok((input, stmt))
