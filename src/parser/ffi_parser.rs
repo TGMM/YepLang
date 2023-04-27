@@ -41,7 +41,7 @@ pub(crate) fn extern_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ExternDe
 #[cfg(test)]
 mod test {
     use crate::{
-        ast::{ExternDecl, ExternType, ValueVarType, VarType},
+        ast::{BOp, ExternDecl, ExternType, ValueVarType, VarType},
         lexer::Token,
         parser::{ffi_parser::extern_decl_parser, helpers::test::span_token_vec, token::Tokens},
     };
@@ -54,6 +54,7 @@ mod test {
             Token::VarType(VarType::I32),
             Token::Id("printf"),
             Token::LParen,
+            Token::BOp(BOp::Mul),
             Token::VarType(VarType::U8),
             Token::Comma,
             Token::Spread,
@@ -70,13 +71,15 @@ mod test {
             ExternDecl {
                 ret_type: ValueVarType {
                     vtype: VarType::I32,
-                    is_array: false
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0
                 },
                 fn_id: "printf".into(),
                 arg_types: vec![
                     ExternType::Type(ValueVarType {
                         vtype: VarType::U8,
-                        is_array: false
+                        array_nesting_level: 0,
+                        pointer_nesting_level: 1
                     }),
                     ExternType::Spread
                 ]

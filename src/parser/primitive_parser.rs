@@ -12,7 +12,7 @@ use nom::branch::alt;
 use nom::bytes::complete::take;
 use nom::combinator::{map, opt, verify};
 use nom::error::{Error, ErrorKind};
-use nom::multi::separated_list0;
+use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::Err;
 use nom::IResult;
@@ -210,15 +210,36 @@ pub(crate) fn var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarType> {
     }
 }
 
+pub(crate) fn pointer_symbol_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BOp> {
+    let (input, bop) = bop_parser(input)?;
+    match bop {
+        BOp::Mul => return Ok((input, bop)),
+        _ => {
+            return Err(Err::Error(Error {
+                input,
+                code: ErrorKind::Tag,
+            }))
+        }
+    }
+}
+
 pub(crate) fn value_var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ValueVarType> {
+    let (input, pointer_nesting) = many0(pointer_symbol_parser)(input)?;
     let (input, vtype) = var_type_parser(input)?;
-    let (input, is_array) = opt(pair(lsqbracket_tag, rsqbracket_tag))(input)?;
+    let (input, array_nesting) = many0(pair(lsqbracket_tag, rsqbracket_tag))(input)?;
 
     Ok((
         input,
         ValueVarType {
             vtype,
-            is_array: is_array.is_some(),
+            array_nesting_level: array_nesting
+                .len()
+                .try_into()
+                .expect("Array nesting too deep"),
+            pointer_nesting_level: pointer_nesting
+                .len()
+                .try_into()
+                .expect("Pointer nesting too deep"),
         },
     ))
 }
@@ -512,7 +533,8 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::I32,
-                is_array: false
+                array_nesting_level: 0,
+                pointer_nesting_level: 0
             }
         )
     }
@@ -535,7 +557,8 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::I32,
-                is_array: true
+                array_nesting_level: 1,
+                pointer_nesting_level: 0
             }
         )
     }
@@ -553,7 +576,8 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::Custom("MyClass".into()),
-                is_array: false
+                array_nesting_level: 0,
+                pointer_nesting_level: 0
             }
         )
     }

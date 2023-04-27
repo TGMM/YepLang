@@ -24,12 +24,14 @@ pub enum VarType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueVarType {
     pub vtype: VarType,
-    // TODO: This should give the nesting level
-    // instead of just saying if it's an array or not
     // TODO: In case this is an array, it should specify quantity and
-    // type (Ex. arr[i32; 10])
-    pub is_array: bool,
-    // TODO: It should be possible to specify a pointer here
+    // type (Ex. arr: i32[10])
+    /// This is the nesting level of the array.
+    /// 0 means the type is not an array
+    pub array_nesting_level: u8,
+    /// This is the nesting level of the pointer.
+    /// 0 means the type is not a pointer
+    pub pointer_nesting_level: u8,
 }
 
 #[derive(Debug, Clone, PartialEq)]
