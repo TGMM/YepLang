@@ -1,5 +1,5 @@
 use crate::{
-    ast::{CmpOp, ExpOp, Id, ScopeSpecifier, TermOp, VarType},
+    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -15,9 +15,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::BoolVal(b) => write!(f, "{}", b),
             Token::VarType(vt) => write!(f, "{}", vt),
             Token::ScopeSpecifier(ss) => ss.fmt(f),
-            Token::ExpOp(exp_op) => exp_op.fmt(f),
-            Token::TermOp(term_op) => term_op.fmt(f),
-            Token::CmpOp(cmp_op) => cmp_op.fmt(f),
+            Token::BOp(bop) => bop.fmt(f),
             Token::AssignmentEq => write!(f, "="),
             Token::StmtEnd => write!(f, ";"),
             Token::Colon => write!(f, ":"),
@@ -38,39 +36,33 @@ impl<'a> fmt::Display for Token<'a> {
             Token::While => write!(f, "while"),
             Token::Function => write!(f, "function"),
             Token::Extends => write!(f, "extends"),
-            Token::Error => write!(f, "unknown token"),
+            Token::Return => write!(f, "return"),
+            Token::BoolUnaryOp(op) => match op {
+                BoolUnaryOp::Not => write!(f, "!"),
+            },
+            Token::Dot => write!(f, "."),
+            Token::Extern => write!(f, "extern"),
+            Token::Spread => write!(f, "..."),
         }
     }
 }
 
-impl fmt::Display for CmpOp {
+impl fmt::Display for BOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use BOp::*;
         match self {
-            CmpOp::Lt => write!(f, "<"),
-            CmpOp::Lte => write!(f, "<="),
-            CmpOp::Gt => write!(f, ">"),
-            CmpOp::Gte => write!(f, ">="),
-            CmpOp::Ne => write!(f, "!="),
-            CmpOp::Eq => write!(f, "=="),
-        }
-    }
-}
-
-impl fmt::Display for ExpOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExpOp::Add => write!(f, "+"),
-            ExpOp::Sub => write!(f, "-"),
-        }
-    }
-}
-
-impl fmt::Display for TermOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TermOp::Mul => write!(f, "*"),
-            TermOp::Div => write!(f, "/"),
-            TermOp::Mod => write!(f, "%"),
+            Add => write!(f, "+"),
+            Sub => write!(f, "-"),
+            Mul => write!(f, "*"),
+            Div => write!(f, "/"),
+            Mod => write!(f, "%"),
+            Pow => write!(f, "**"),
+            Gt => write!(f, ">"),
+            Gte => write!(f, ">="),
+            Lt => write!(f, "<"),
+            Lte => write!(f, "<="),
+            Ne => write!(f, "!="),
+            Eq => write!(f, "=="),
         }
     }
 }
@@ -78,10 +70,19 @@ impl fmt::Display for TermOp {
 impl fmt::Display for VarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            VarType::I8 => write!(f, "i8"),
+            VarType::U8 => write!(f, "u8"),
+            VarType::I16 => write!(f, "i16"),
+            VarType::U16 => write!(f, "u16"),
             VarType::I32 => write!(f, "i32"),
+            VarType::U32 => write!(f, "u32"),
             VarType::I64 => write!(f, "i64"),
+            VarType::U64 => write!(f, "u64"),
+            VarType::I128 => write!(f, "i128"),
+            VarType::U128 => write!(f, "u128"),
             VarType::F32 => write!(f, "f32"),
             VarType::F64 => write!(f, "f64"),
+            VarType::Void => write!(f, "void"),
             VarType::Boolean => write!(f, "boolean"),
             VarType::Char => write!(f, "char"),
             VarType::String => write!(f, "string"),
