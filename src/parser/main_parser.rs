@@ -9,8 +9,8 @@ use super::primitive_parser::{
 use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
 use super::token::Tokens;
 use crate::ast::{
-    Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt, VarDecl,
-    VarDeclAssignment,
+    Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt, TopBlock,
+    VarDecl, VarDeclAssignment,
 };
 use nom::branch::alt;
 use nom::combinator::{map, opt};
@@ -182,12 +182,16 @@ pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     Ok((input, stmt))
 }
 
-pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
-    map(many0(stmt_parser), |stmts| Block { stmts })(input)
+pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, TopBlock<'i>> {
+    map(many0(stmt_parser), |stmts| TopBlock(Block { stmts }))(input)
 }
 
 pub(crate) fn block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
-    delimited(lbracket_tag, top_block_parser, rbracket_tag)(input)
+    delimited(
+        lbracket_tag,
+        map(many0(stmt_parser), |stmts| Block { stmts }),
+        rbracket_tag,
+    )(input)
 }
 
 #[cfg(test)]
@@ -195,7 +199,8 @@ mod test {
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
-            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment,
+            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock, VarDecl,
+            VarDeclAssignment,
         },
         lexer::Token,
         parser::{
@@ -367,7 +372,7 @@ mod test {
         let (_remaining, block) = res.unwrap();
         assert_eq!(
             block,
-            Block {
+            TopBlock(Block {
                 stmts: vec![
                     Stmt::Assignment(Assignment {
                         assignee_expr: Expr::Id("x".into()),
@@ -383,7 +388,7 @@ mod test {
                         )),
                     })))
                 ]
-            }
+            })
         )
     }
 

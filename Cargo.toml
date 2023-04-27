@@ -3,10 +3,9 @@ name = "yep_lang"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 ariadne = "0.2.0"
 logos = "0.13.0"
 nom = { git = "https://github.com/rust-bakery/nom" }
 snailquote = "0.3.1"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"] }
