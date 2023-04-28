@@ -40,45 +40,37 @@ tag_token!(dot_tag, Ok(Token::Dot));
 tag_token!(extern_tag, Ok(Token::Extern));
 tag_token!(spread_tag, Ok(Token::Spread));
 
-pub(crate) fn bop_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BOp> {
-    let (remaining, tok_id) = take(1usize)(input)?;
+macro_rules! data_token_parser {
+    ($id:ident, $input:ident, $ret_type:ty, {
+        $($matcher:pat $(if $pred:expr)* => $result:expr),*
+    }) => {
+        pub(crate) fn $id<'i>($input: Tokens<'i>) -> ParseRes<'i, $ret_type> {
+            let ($input, tok_id) = take(1usize)($input)?;
 
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::BOp(bop)) => Ok((remaining, bop)),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
+            if tok_id.tok_span.is_empty() {
+                Err(Err::Error(Error::new($input, ErrorKind::Eof)))
+            } else {
+                match tok_id.tok_span[0].token.clone() {
+                    $($matcher $(if $pred)* => $result),*,
+                    _ => Err(Err::Error(Error::new($input, ErrorKind::Tag))),
+                }
+            }
         }
-    }
+    };
 }
 
-pub(crate) fn id_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Id> {
-    let (remaining, tok_id) = take(1usize)(input)?;
+data_token_parser!(bop_parser, input, BOp, {
+    Ok(Token::BOp(bop)) => Ok((input, bop))
+});
 
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::Id(id)) => Ok((remaining, id.into())),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
-    }
-}
+data_token_parser!(id_parser, input, Id, {
+    Ok(Token::Id(id)) => Ok((input, id.into()))
+});
 
-pub(crate) fn number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, NumericLiteral> {
-    let (remaining, tok_id) = take(1usize)(input)?;
-
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::IntVal(val)) => Ok((remaining, NumericLiteral::Int(val))),
-            Ok(Token::FloatVal(val)) => Ok((remaining, NumericLiteral::Float(val))),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
-    }
-}
+data_token_parser!(number_parser, input, NumericLiteral, {
+    Ok(Token::IntVal(val)) => Ok((input, NumericLiteral::Int(val))),
+    Ok(Token::FloatVal(val)) => Ok((input, NumericLiteral::Float(val)))
+});
 
 pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
     map(
@@ -87,34 +79,16 @@ pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primit
     )(input)
 }
 
-pub(crate) fn string_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, String> {
-    let (remaining, tok_id) = take(1usize)(input)?;
-
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::Str(string)) => {
-                let unescaped = unescape(string).expect("Invalid string");
-                Ok((remaining, unescaped))
-            }
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
+data_token_parser!(string_parser, input, String, {
+    Ok(Token::Str(string)) => {
+        let unescaped = unescape(string).expect("Invalid string");
+        Ok((input, unescaped))
     }
-}
+});
 
-pub(crate) fn bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BoolLiteral> {
-    let (remaining, tok_id) = take(1usize)(input)?;
-
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::BoolVal(b)) => Ok((remaining, b.into())),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
-    }
-}
+data_token_parser!(bool_parser, input, BoolLiteral, {
+    Ok(Token::BoolVal(b)) => Ok((input, b.into()))
+});
 
 pub(crate) fn negated_bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
     map(
@@ -123,30 +97,21 @@ pub(crate) fn negated_bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primiti
     )(input)
 }
 
-pub(crate) fn char_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, char> {
-    let (remaining, tok_id) = take(1usize)(input)?;
-
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::Char(c)) => {
-                // TODO: Find if there's a better way to do this
-                let c_hack = format!(
-                    "\"{}\"",
-                    c.strip_suffix("'").unwrap().strip_prefix("'").unwrap()
-                );
-                let unescaped_ch = unescape(&c_hack).expect("Invalid escaped char");
-                let c = unescaped_ch
-                    .chars()
-                    .next()
-                    .expect("Invalid empty char literal");
-                Ok((remaining, c))
-            }
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
+data_token_parser!(char_parser, input, char, {
+    Ok(Token::Char(c)) => {
+        // TODO: Find if there's a better way to do this
+        let c_hack = format!(
+            "\"{}\"",
+            c.strip_suffix("'").unwrap().strip_prefix("'").unwrap()
+        );
+        let unescaped_ch = unescape(&c_hack).expect("Invalid escaped char");
+        let c = unescaped_ch
+            .chars()
+            .next()
+            .expect("Invalid empty char literal");
+        Ok((input, c))
     }
-}
+});
 
 pub(crate) fn array_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ArrayVal> {
     map(
@@ -183,32 +148,14 @@ pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Primit
     alt((num, bool, char, string, arr, struct_v))(input)
 }
 
-pub(crate) fn scope_specifier_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ScopeSpecifier> {
-    let (remaining, tok_id) = take(1usize)(input)?;
+data_token_parser!(scope_specifier_parser, input, ScopeSpecifier, {
+    Ok(Token::ScopeSpecifier(ss)) => Ok((input, ss))
+});
 
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::ScopeSpecifier(ss)) => Ok((remaining, ss)),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
-    }
-}
-
-pub(crate) fn var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarType> {
-    let (input, tok_id) = take(1usize)(input)?;
-
-    if tok_id.tok_span.is_empty() {
-        Err(Err::Error(Error::new(input, ErrorKind::Eof)))
-    } else {
-        match tok_id.tok_span[0].token.clone() {
-            Ok(Token::VarType(ss)) => Ok((input, ss)),
-            Ok(Token::Id(id)) => Ok((input, VarType::Custom(id.into()))),
-            _ => Err(Err::Error(Error::new(input, ErrorKind::Tag))),
-        }
-    }
-}
+data_token_parser!(var_type_parser, input, VarType, {
+    Ok(Token::VarType(ss)) => Ok((input, ss)),
+    Ok(Token::Id(id)) => Ok((input, VarType::Custom(id.into())))
+});
 
 pub(crate) fn pointer_symbol_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BOp> {
     let (input, bop) = bop_parser(input)?;
