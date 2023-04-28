@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! tag_token (
     ($func_name:ident, $tag: expr) => (
-        pub(crate) fn $func_name(tokens: Tokens) -> IResult<Tokens, Tokens> {
+        pub(crate) fn $func_name<'i>(tokens: Tokens<'i>) -> ParseRes<'i, Tokens<'i>> {
             verify(take(1usize), |t: &Tokens| t.tok_span[0].token == $tag)(tokens)
         }
     )
