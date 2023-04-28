@@ -157,6 +157,8 @@ pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     Ok((input, stmt))
 }
 
+// TODO: Write tests for the statement parser
+// checking that the stmt end is correct for each one
 pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
     let class_decl = map(class_decl_parser, |c| Stmt::ClassDecl(c));
@@ -167,18 +169,14 @@ pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
     let block = map(block_parser, |b| Stmt::Block(b));
     let extern_decl = map(extern_decl_parser, |ed| Stmt::ExternDecl(ed));
 
-    let stmt_p = alt((
-        for_stmt_parser,
-        fn_decl,
-        class_decl,
-        for_,
-        while_,
-        do_while,
-        if_,
-        block,
-        extern_decl,
-    ));
-    let (input, stmt) = terminated(stmt_p, stmt_end_parser)(input)?;
+    // Non-Terminated statements
+    let stmt_nt = alt((fn_decl, class_decl, for_, while_, if_, block));
+    // Terminated statements
+    let stmt_t = alt((do_while, extern_decl, for_stmt_parser));
+    // Statement parser
+    let mut stmt_p = alt((stmt_nt, terminated(stmt_t, stmt_end_parser)));
+
+    let (input, stmt) = stmt_p(input)?;
     Ok((input, stmt))
 }
 

@@ -40,8 +40,8 @@ impl<'a> Input for Tokens<'a> {
     fn take(&self, count: usize) -> Self {
         Tokens {
             tok_span: &self.tok_span[0..count],
-            start: 0,
-            end: count,
+            start: self.start,
+            end: self.end + count,
         }
     }
 
@@ -50,13 +50,13 @@ impl<'a> Input for Tokens<'a> {
         let (prefix, suffix) = self.tok_span.split_at(count);
         let first = Tokens {
             tok_span: prefix,
-            start: 0,
-            end: prefix.len(),
+            start: self.start,
+            end: self.start + count - 1,
         };
         let second = Tokens {
             tok_span: suffix,
-            start: 0,
-            end: suffix.len(),
+            start: self.start + count,
+            end: self.end,
         };
         (second, first)
     }
@@ -64,7 +64,7 @@ impl<'a> Input for Tokens<'a> {
     // InputLength
     #[inline]
     fn input_len(&self) -> usize {
-        1
+        self.tok_span.len()
     }
 
     // InputIter
@@ -101,8 +101,8 @@ impl<'a> Input for Tokens<'a> {
         let tok = &self.tok_span[index..];
         Tokens {
             tok_span: tok,
-            start: 0,
-            end: tok.len(),
+            start: self.start + index,
+            end: self.end,
         }
     }
 }
