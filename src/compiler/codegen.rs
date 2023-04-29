@@ -1,8 +1,10 @@
 use crate::ast::{
-    Assignment, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, NumericLiteral,
-    NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
+    Assignment, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl, NumericLiteral,
+    NumericUnaryOp, PrimitiveVal, ScopeSpecifier, Stmt, TopBlock, ValueVarType, VarDecl,
+    VarDeclAssignment, VarType,
 };
 use inkwell::{
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
@@ -27,6 +29,7 @@ pub struct Compiler<'input, 'ctx> {
     pub module: &'input Module<'ctx>,
     pub curr_scope_vars: HashMap<String, PointerValue<'ctx>>,
     pub scope_stack: Vec<ScopeMarker<'ctx>>,
+    pub basic_block_stack: Vec<BasicBlock<'ctx>>,
 }
 
 const MAIN_FN_NAME: &str = "main";
@@ -81,6 +84,22 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         final_type
     }
 
+    pub fn declare_variable(&mut self, var_name: String, value: PointerValue<'ctx>) {
+        if let Some(redeclared_var) = self.curr_scope_vars.remove(&var_name) {
+            // Var was already declared so we push it to the stack
+            // to recover it later
+            self.scope_stack
+                .push(ScopeMarker::Var(var_name.clone(), Some(redeclared_var)))
+        } else {
+            // Var was not declared so we push it to the stack
+            // to delete it later
+            self.scope_stack
+                .push(ScopeMarker::Var(var_name.clone(), None))
+        }
+
+        self.curr_scope_vars.insert(var_name, value);
+    }
+
     pub fn codegen_top_block(&mut self, top_block: TopBlock) {
         let fn_type = self.context.i32_type().fn_type(&[], false);
         let fun = self
@@ -88,16 +107,19 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .add_function(MAIN_FN_NAME, fn_type, Some(Linkage::External));
         let entry_basic_block = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(entry_basic_block);
+        self.basic_block_stack.push(entry_basic_block);
 
         // Codegen all statements
-        self.codegen_block(top_block.0, true);
+        self.codegen_block(top_block.0, true, false);
 
         let int_zero = self.context.i32_type().const_zero();
         self.builder.build_return(Some(&int_zero));
     }
 
-    fn codegen_block(&mut self, block: Block, is_global: bool) {
-        self.scope_stack.push(ScopeMarker::ScopeBegin);
+    fn codegen_block(&mut self, block: Block, is_global: bool, func_block: bool) {
+        if !func_block {
+            self.scope_stack.push(ScopeMarker::ScopeBegin);
+        }
 
         for stmt in block.stmts {
             self.codegen_stmt(stmt, is_global);
@@ -126,15 +148,65 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Stmt::Assignment(assignment) => self.codegen_assignment(assignment),
             Stmt::Expr(expr) => _ = self.codegen_rhs_expr(expr, None),
             Stmt::ClassDecl(_) => todo!(),
-            Stmt::FnDecl(_) => todo!(),
+            Stmt::FnDecl(fn_decl) => self.codegen_fn_decl(fn_decl, is_global),
             Stmt::For(_) => todo!(),
             Stmt::While(_) => todo!(),
             Stmt::DoWhile(_) => todo!(),
             Stmt::If(_) => todo!(),
-            Stmt::Block(block) => self.codegen_block(block, false),
-            Stmt::VarDecl(var_decl) => self.var_decl_codegen(var_decl, is_global),
+            Stmt::Block(block) => self.codegen_block(block, false, false),
+            Stmt::VarDecl(var_decl) => self.codegen_var_decl(var_decl, is_global),
             Stmt::ExternDecl(extern_decl) => self.codegen_extern_decl(extern_decl),
         }
+    }
+
+    pub fn codegen_fn_decl(&mut self, fn_decl: FnDecl, is_global: bool) {
+        let fn_name = fn_decl.fn_id.0;
+
+        let fn_type = self.context.void_type().fn_type(
+            &[BasicMetadataTypeEnum::IntType(self.context.i32_type())],
+            false,
+        );
+        let linkage = if is_global {
+            Linkage::External
+        } else {
+            Linkage::Internal
+        };
+        let fun = self.module.add_function(&fn_name, fn_type, Some(linkage));
+
+        assert_eq!(fun.count_params() as usize, fn_decl.args.len());
+
+        let basic_block_name = format!("{}_bb", fn_name);
+        let fn_basic_block = self.context.append_basic_block(fun, &basic_block_name);
+        self.builder.position_at_end(fn_basic_block);
+        self.basic_block_stack.push(fn_basic_block);
+
+        self.scope_stack.push(ScopeMarker::ScopeBegin);
+        for ((arg_destructure, arg_type), arg_val) in
+            fn_decl.args.into_iter().zip(fun.get_param_iter())
+        {
+            let ty = self.convert_to_type_enum(arg_type);
+            match arg_destructure {
+                Destructure::Id(id) => {
+                    let arg_ptr = self.builder.build_alloca(ty, &id.0);
+                    println!("Assigning {} to {}", arg_val, &id.0);
+                    self.builder.build_store(arg_ptr, arg_val);
+                    self.declare_variable(id.0, arg_ptr);
+
+                    arg_ptr
+                }
+                _ => todo!(),
+            };
+        }
+
+        self.codegen_block(fn_decl.block, false, true);
+        self.builder.build_return(None);
+
+        self.basic_block_stack.pop();
+        let prev_basic_block = self
+            .basic_block_stack
+            .last()
+            .expect("Unexpected error: Basic block stack is empty");
+        self.builder.position_at_end(*prev_basic_block);
     }
 
     pub fn codegen_extern_decl(&self, extern_decl: ExternDecl) {
@@ -162,7 +234,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
     pub fn codegen_assignment(&self, assignment: Assignment) {
         let assignee_ptr = self.codegen_lhs_expr(assignment.assignee_expr, None);
-        let new_val = self.codegen_rhs_expr(assignment.assigned_expr, None);
+        let new_val = self
+            .codegen_rhs_expr(assignment.assigned_expr, None)
+            .expect("Void function can't be on the right-hand side of an expression");
 
         self.builder.build_store(assignee_ptr, new_val);
     }
@@ -199,17 +273,16 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         expr: Expr,
         expected_type: Option<&ValueVarType>,
-    ) -> BasicValueEnum {
+    ) -> Option<BasicValueEnum> {
         match expr {
             Expr::ParenExpr(_, _) => todo!(),
             Expr::BinaryExpr(_) => todo!(),
             Expr::PrimitiveVal(primitive_val) => {
-                self.codegen_primitive_val(primitive_val, expected_type)
+                Some(self.codegen_primitive_val(primitive_val, expected_type))
             }
             Expr::FnCall(fn_call) => {
                 // TODO: Handle error user-side
                 self.codegen_fn_call(*fn_call)
-                    .expect("Void function can't be on the right-hand side of an expression")
             }
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
@@ -224,7 +297,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 let instruction_name = format!("load_{}", var_id.0);
                 let var_val = self.builder.build_load(*var_ptr, &instruction_name);
 
-                var_val
+                Some(var_val)
             }
         }
     }
@@ -242,7 +315,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
-            let arg_val = self.codegen_rhs_expr(arg_expr, None);
+            let arg_val = self
+                .codegen_rhs_expr(arg_expr, None)
+                .expect("Void function can't be on the right-hand side of an expression");
             let arg_metadata: BasicMetadataValueEnum = Compiler::convert_value_to_metadata(arg_val);
             args.push(arg_metadata);
         }
@@ -293,7 +368,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
     }
 
-    fn var_decl_codegen(&mut self, var_decl: VarDecl, is_global: bool) {
+    fn codegen_var_decl(&mut self, var_decl: VarDecl, is_global: bool) {
         // TODO: Handle var scope
         for decl_as in var_decl.decl_assignments {
             // TODO: Handle destructures instead of only ids
@@ -301,7 +376,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 Destructure::Id(id) => id,
                 _ => todo!(),
             };
-            let initial_val = self.codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref());
+            let initial_val = self
+                .codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref())
+                .expect("Void function can't be on the right-hand side of an expression");
             let type_ = decl_as
                 .var_type
                 .map(|vvt| self.convert_to_type_enum(vvt))
@@ -317,19 +394,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             }
 
             let new_local = self.builder.build_alloca(type_, &id.0);
-            self.builder.build_store(new_local, initial_val);
-            if let Some(redeclared_var) = self.curr_scope_vars.remove(&id.0) {
-                // Var was already declared so we push it to the stack
-                // to recover it later
-                self.scope_stack
-                    .push(ScopeMarker::Var(id.0.clone(), Some(redeclared_var)))
-            } else {
-                // Var was not declared so we push it to the stack
-                // to delete it later
-                self.scope_stack.push(ScopeMarker::Var(id.0.clone(), None))
-            }
-
-            self.curr_scope_vars.insert(id.0, new_local);
+            self.declare_variable(id.0, new_local);
         }
     }
 
