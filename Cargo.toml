@@ -9,3 +9,4 @@ logos = "0.13.0"
 nom = { git = "https://github.com/rust-bakery/nom" }
 snailquote = "0.3.1"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"] }
+enum-as-inner = "0.5.1"

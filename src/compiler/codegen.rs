@@ -2,6 +2,7 @@ use crate::ast::{
     Assignment, BExpr, BOp, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl,
     NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
 };
+use enum_as_inner::EnumAsInner;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -18,14 +19,25 @@ use std::{collections::HashMap, mem::transmute, path::Path};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeMarker<'ctx> {
     ScopeBegin,
-    Var(String, Option<ScopedVar<'ctx>>),
+    Var(String, Option<ScopedVal<'ctx>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopedVar<'ctx> {
     ptr_val: PointerValue<'ctx>,
     var_type: ValueVarType,
-    is_function: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopedFunc<'ctx> {
+    ptr_val: FunctionValue<'ctx>,
+    ret_type: ValueVarType,
+}
+
+#[derive(Debug, Clone, PartialEq, EnumAsInner)]
+pub enum ScopedVal<'ctx> {
+    Var(ScopedVar<'ctx>),
+    Fn(ScopedFunc<'ctx>),
 }
 
 pub struct Compiler<'input, 'ctx> {
@@ -33,7 +45,7 @@ pub struct Compiler<'input, 'ctx> {
     pub builder: &'input Builder<'ctx>,
     pub fpm: &'input PassManager<FunctionValue<'ctx>>,
     pub module: &'input Module<'ctx>,
-    pub curr_scope_vars: HashMap<String, ScopedVar<'ctx>>,
+    pub curr_scope_vars: HashMap<String, ScopedVal<'ctx>>,
     pub scope_stack: Vec<ScopeMarker<'ctx>>,
     pub basic_block_stack: Vec<BasicBlock<'ctx>>,
 }
@@ -103,7 +115,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 .push(ScopeMarker::Var(var_name.clone(), None))
         }
 
-        self.curr_scope_vars.insert(var_name, value);
+        self.curr_scope_vars.insert(var_name, ScopedVal::Var(value));
     }
 
     pub fn codegen_top_block(&mut self, top_block: TopBlock) {
@@ -195,11 +207,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         // the module instead of the var map
         self.curr_scope_vars.insert(
             fn_name,
-            ScopedVar {
-                is_function: true,
-                var_type: ret_type,
-                ptr_val: fun.as_global_value().as_pointer_value(),
-            },
+            ScopedVal::Fn(ScopedFunc {
+                ptr_val: fun,
+                ret_type,
+            }),
         );
 
         self.scope_stack.push(ScopeMarker::ScopeBegin);
@@ -216,7 +227,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                         ScopedVar {
                             ptr_val: arg_ptr,
                             var_type: arg_type,
-                            is_function: false,
                         },
                     );
 
@@ -237,9 +247,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.builder.position_at_end(*prev_basic_block);
     }
 
-    pub fn codegen_extern_decl(&self, extern_decl: ExternDecl) {
+    pub fn codegen_extern_decl(&mut self, extern_decl: ExternDecl) {
         let fn_name = &extern_decl.fn_id.0;
-        let ret_type = self.convert_to_type_enum(extern_decl.ret_type);
+        let ret_type = self.convert_to_type_enum(extern_decl.ret_type.clone());
 
         let mut is_var_args = false;
         let mut param_types = vec![];
@@ -256,8 +266,17 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
 
         let fn_type = ret_type.fn_type(&param_types, is_var_args);
-        self.module
+        let fun = self
+            .module
             .add_function(fn_name, fn_type, Some(Linkage::External));
+
+        self.curr_scope_vars.insert(
+            fn_name.to_string(),
+            ScopedVal::Fn(ScopedFunc {
+                ptr_val: fun,
+                ret_type: extern_decl.ret_type,
+            }),
+        );
     }
 
     pub fn codegen_assignment(&self, assignment: Assignment) {
@@ -285,9 +304,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     .get(&var_id.0)
                     // TODO: This should be an user facing error
                     // and not a panic
-                    .expect("Undeclared variable");
+                    .expect("Undeclared variable or function");
 
-                var_ptr.ptr_val
+                match var_ptr {
+                    ScopedVal::Var(v) => v.ptr_val,
+                    ScopedVal::Fn(_) => todo!(),
+                }
             }
             _ => panic!("Left-hand side of assignment can't be ..."),
         }
@@ -351,12 +373,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
-                let scoped_var = self
+                let scoped_val = self
                     .curr_scope_vars
                     .get(&var_id.0)
                     // TODO: This should be an user facing error
                     // and not a panic
                     .expect("Undeclared variable");
+                let scoped_var = scoped_val.clone().into_var().unwrap();
 
                 let instruction_name = format!("load_{}", var_id.0);
                 let var_val = self
@@ -375,9 +398,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         };
         // TODO: Handle this error user-side
         let function = self
-            .module
-            .get_function(&fn_name)
-            .expect("Function does not exist");
+            .curr_scope_vars
+            .get(&fn_name)
+            .expect("Function does not exist")
+            .clone()
+            .into_fn()
+            .unwrap()
+            .ptr_val;
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
@@ -526,7 +553,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         expected_type: Option<&ValueVarType>,
     ) -> (BasicValueEnum, ValueVarType) {
         match primitive_val {
-            // TODO: Handle unary operator
             PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
                 NumericLiteral::Int(i) => self.codegen_int_val(i, uop, expected_type),
                 NumericLiteral::Float(_) => todo!(),
@@ -575,11 +601,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 let global_ptr = new_global.as_pointer_value();
                 self.curr_scope_vars.insert(
                     id.0,
-                    ScopedVar {
+                    ScopedVal::Var(ScopedVar {
                         ptr_val: global_ptr,
                         var_type,
-                        is_function: false,
-                    },
+                    }),
                 );
 
                 return;
@@ -592,7 +617,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 ScopedVar {
                     ptr_val: new_local,
                     var_type,
-                    is_function: false,
                 },
             );
         }
