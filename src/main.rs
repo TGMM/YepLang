@@ -4,6 +4,8 @@ mod compiler;
 mod lexer;
 mod parser;
 
+use std::collections::HashMap;
+
 use compiler::codegen::Compiler;
 use inkwell::{context::Context, passes::PassManager};
 use lexer::Token;
@@ -14,7 +16,27 @@ use parser::{
 };
 
 fn main() {
-    let input = r#"let x: i32 = 10;"#;
+    let input = r#"
+    extern i32 printf(*u8, ...);
+    let x: i32 = 10;
+    {
+        let y: i32 = 20;
+        let x: i32 = 30;
+        x = 50;
+
+        printf("X is %d and y is %y\n", x, y);
+        printf("Some text\n");
+    }
+
+    function test_func(arg: i64) {
+        printf("Test func: %d\n", arg);
+    }
+
+    test_func(10);
+    test_func(20);
+    test_func(30);
+
+    printf("Out again\n");"#;
     let token_vec = Token::lexer(input)
         .spanned()
         .map(|(token, span)| TokenSpan { span, token })
@@ -39,12 +61,16 @@ fn main() {
     fpm.add_reassociate_pass();
     fpm.initialize();
 
-    let compiler = Compiler {
+    let mut compiler = Compiler {
         builder: &builder,
         module: &module,
         context: &context,
         fpm: &fpm,
+        curr_scope_vars: HashMap::new(),
+        basic_block_stack: Vec::new(),
+        scope_stack: Vec::new(),
     };
+
     compiler.codegen_top_block(top_block);
     Compiler::compile_to_x86(
         &compiler,

@@ -1,7 +1,6 @@
 use crate::ast::{
     Assignment, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl, NumericLiteral,
-    NumericUnaryOp, PrimitiveVal, ScopeSpecifier, Stmt, TopBlock, ValueVarType, VarDecl,
-    VarDeclAssignment, VarType,
+    NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
 };
 use inkwell::{
     basic_block::BasicBlock,
