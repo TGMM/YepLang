@@ -18,13 +18,13 @@ use parser::{
 fn main() {
     let input = r#"
     extern i32 printf(*u8, ...);
-    let x: i32 = 10;
+    let x: i64 = 10;
     {
-        let y: i32 = 20;
+        let y: i64 = 20;
         let x: i32 = 30;
         x = 50;
 
-        printf("X is %d and y is %y\n", x, y);
+        printf("X is %d and y is %d\n", x, y);
         printf("Some text\n");
     }
 

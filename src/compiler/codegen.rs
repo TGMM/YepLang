@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assignment, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl, NumericLiteral,
-    NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
+    Assignment, BExpr, BOp, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl,
+    NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
 };
 use inkwell::{
     basic_block::BasicBlock,
@@ -18,7 +18,14 @@ use std::{collections::HashMap, mem::transmute, path::Path};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeMarker<'ctx> {
     ScopeBegin,
-    Var(String, Option<PointerValue<'ctx>>),
+    Var(String, Option<ScopedVar<'ctx>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopedVar<'ctx> {
+    ptr_val: PointerValue<'ctx>,
+    var_type: ValueVarType,
+    is_function: bool,
 }
 
 pub struct Compiler<'input, 'ctx> {
@@ -26,7 +33,7 @@ pub struct Compiler<'input, 'ctx> {
     pub builder: &'input Builder<'ctx>,
     pub fpm: &'input PassManager<FunctionValue<'ctx>>,
     pub module: &'input Module<'ctx>,
-    pub curr_scope_vars: HashMap<String, PointerValue<'ctx>>,
+    pub curr_scope_vars: HashMap<String, ScopedVar<'ctx>>,
     pub scope_stack: Vec<ScopeMarker<'ctx>>,
     pub basic_block_stack: Vec<BasicBlock<'ctx>>,
 }
@@ -83,7 +90,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         final_type
     }
 
-    pub fn declare_variable(&mut self, var_name: String, value: PointerValue<'ctx>) {
+    pub fn declare_variable(&mut self, var_name: String, value: ScopedVar<'ctx>) {
         if let Some(redeclared_var) = self.curr_scope_vars.remove(&var_name) {
             // Var was already declared so we push it to the stack
             // to recover it later
@@ -179,17 +186,39 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.builder.position_at_end(fn_basic_block);
         self.basic_block_stack.push(fn_basic_block);
 
+        let ret_type = fn_decl.ret_type.unwrap_or(ValueVarType {
+            vtype: VarType::Void,
+            array_nesting_level: 0,
+            pointer_nesting_level: 0,
+        });
+        // TODO: The current function call searches for it on
+        // the module instead of the var map
+        self.curr_scope_vars.insert(
+            fn_name,
+            ScopedVar {
+                is_function: true,
+                var_type: ret_type,
+                ptr_val: fun.as_global_value().as_pointer_value(),
+            },
+        );
+
         self.scope_stack.push(ScopeMarker::ScopeBegin);
         for ((arg_destructure, arg_type), arg_val) in
             fn_decl.args.into_iter().zip(fun.get_param_iter())
         {
-            let ty = self.convert_to_type_enum(arg_type);
+            let ty = self.convert_to_type_enum(arg_type.clone());
             match arg_destructure {
                 Destructure::Id(id) => {
                     let arg_ptr = self.builder.build_alloca(ty, &id.0);
-                    println!("Assigning {} to {}", arg_val, &id.0);
                     self.builder.build_store(arg_ptr, arg_val);
-                    self.declare_variable(id.0, arg_ptr);
+                    self.declare_variable(
+                        id.0,
+                        ScopedVar {
+                            ptr_val: arg_ptr,
+                            var_type: arg_type,
+                            is_function: false,
+                        },
+                    );
 
                     arg_ptr
                 }
@@ -237,7 +266,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .codegen_rhs_expr(assignment.assigned_expr, None)
             .expect("Void function can't be on the right-hand side of an expression");
 
-        self.builder.build_store(assignee_ptr, new_val);
+        self.builder.build_store(assignee_ptr, new_val.0);
     }
 
     /// Codegen an expression when it's used on the left-hand side of an operation.
@@ -258,10 +287,46 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     // and not a panic
                     .expect("Undeclared variable");
 
-                *var_ptr
+                var_ptr.ptr_val
             }
             _ => panic!("Left-hand side of assignment can't be ..."),
         }
+    }
+
+    pub fn codegen_bexpr(
+        &self,
+        bexpr: BExpr,
+        expected_type: Option<&ValueVarType>,
+    ) -> (BasicValueEnum, ValueVarType) {
+        let BExpr { lhs, op, rhs } = bexpr;
+        let lhs = self
+            .codegen_rhs_expr(lhs, expected_type)
+            .expect("Invalid LHS");
+        let rhs = self
+            .codegen_rhs_expr(rhs, expected_type)
+            .expect("Invalid RHS");
+
+        let (lhs_type, rhs_type) = (lhs.1, rhs.1);
+        if lhs_type != rhs_type {
+            panic!("Invalid operation between two different types");
+        }
+
+        match op {
+            BOp::Add => {}
+            BOp::Sub => todo!(),
+            BOp::Mul => todo!(),
+            BOp::Div => todo!(),
+            BOp::Mod => todo!(),
+            BOp::Pow => todo!(),
+            BOp::Gt => todo!(),
+            BOp::Gte => todo!(),
+            BOp::Lt => todo!(),
+            BOp::Lte => todo!(),
+            BOp::Ne => todo!(),
+            BOp::Eq => todo!(),
+        }
+
+        todo!()
     }
 
     /// Codegen an expression when it's used on the right-hand side of an operation.
@@ -272,10 +337,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         expr: Expr,
         expected_type: Option<&ValueVarType>,
-    ) -> Option<BasicValueEnum> {
+    ) -> Option<(BasicValueEnum, ValueVarType)> {
         match expr {
             Expr::ParenExpr(_, _) => todo!(),
-            Expr::BinaryExpr(_) => todo!(),
+            Expr::BinaryExpr(bexpr) => Some(self.codegen_bexpr(*bexpr, expected_type)),
             Expr::PrimitiveVal(primitive_val) => {
                 Some(self.codegen_primitive_val(primitive_val, expected_type))
             }
@@ -286,7 +351,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
-                let var_ptr = self
+                let scoped_var = self
                     .curr_scope_vars
                     .get(&var_id.0)
                     // TODO: This should be an user facing error
@@ -294,14 +359,16 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     .expect("Undeclared variable");
 
                 let instruction_name = format!("load_{}", var_id.0);
-                let var_val = self.builder.build_load(*var_ptr, &instruction_name);
+                let var_val = self
+                    .builder
+                    .build_load(scoped_var.ptr_val, &instruction_name);
 
-                Some(var_val)
+                Some((var_val, scoped_var.var_type.clone()))
             }
         }
     }
 
-    pub fn codegen_fn_call(&self, fn_call: FnCall) -> Option<BasicValueEnum> {
+    pub fn codegen_fn_call(&self, fn_call: FnCall) -> Option<(BasicValueEnum, ValueVarType)> {
         let fn_name = match fn_call.fn_expr {
             Expr::Id(id) => id.0,
             _ => panic!("TODO: Functions as values are not yet supported"),
@@ -317,50 +384,169 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             let arg_val = self
                 .codegen_rhs_expr(arg_expr, None)
                 .expect("Void function can't be on the right-hand side of an expression");
-            let arg_metadata: BasicMetadataValueEnum = Compiler::convert_value_to_metadata(arg_val);
+            let arg_metadata: BasicMetadataValueEnum =
+                Compiler::convert_value_to_metadata(arg_val.0);
             args.push(arg_metadata);
         }
 
         let instruction_name = format!("call_{}", fn_name);
         let call = self.builder.build_call(function, &args, &instruction_name);
         let ret_val = call.try_as_basic_value();
-        ret_val.left()
+
+        let vvt = if ret_val.left().is_none() {
+            ValueVarType {
+                array_nesting_level: 0,
+                pointer_nesting_level: 0,
+                vtype: VarType::Void,
+            }
+        } else {
+            ValueVarType {
+                array_nesting_level: 0,
+                pointer_nesting_level: 0,
+                vtype: VarType::Void,
+            }
+        };
+
+        ret_val.left().map(|rv| (rv, vvt))
+    }
+
+    pub fn codegen_int_val(
+        &self,
+        int_str: &str,
+        uop: Option<NumericUnaryOp>,
+        expected_type: Option<&ValueVarType>,
+    ) -> (BasicValueEnum, ValueVarType) {
+        let int_type;
+        let mut u64_val_res: u64;
+        let mut unsigned = false;
+
+        if let Some(expected_type) = expected_type {
+            if expected_type.array_nesting_level > 0 {
+                panic!("Unexpected assignment of number to array type");
+            }
+            if expected_type.pointer_nesting_level > 0 {
+                panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            }
+
+            match &expected_type.vtype {
+                VarType::I8 => {
+                    int_type = self.context.i8_type();
+                    let int_val = int_str.parse::<i8>().unwrap();
+                    let i64_val: i64 = int_val.into();
+                    u64_val_res = unsafe { transmute(i64_val) }
+                }
+                VarType::U8 => {
+                    int_type = self.context.i8_type();
+                    let int_val = int_str.parse::<u8>().unwrap();
+                    let u64_val: u64 = int_val.into();
+                    unsigned = true;
+                    u64_val_res = unsafe { transmute(u64_val) }
+                }
+                VarType::I16 => {
+                    int_type = self.context.i16_type();
+                    let int_val = int_str.parse::<i16>().unwrap();
+                    let i64_val: i64 = int_val.into();
+                    u64_val_res = unsafe { transmute(i64_val) }
+                }
+                VarType::U16 => {
+                    int_type = self.context.i16_type();
+                    let int_val = int_str.parse::<u16>().unwrap();
+                    let u64_val: u64 = int_val.into();
+                    unsigned = true;
+                    u64_val_res = unsafe { transmute(u64_val) }
+                }
+                VarType::I32 => {
+                    int_type = self.context.i32_type();
+                    let int_val = int_str.parse::<i32>().unwrap();
+                    let i64_val: i64 = int_val.into();
+                    u64_val_res = unsafe { transmute(i64_val) }
+                }
+                VarType::U32 => {
+                    int_type = self.context.i32_type();
+                    let int_val = int_str.parse::<u32>().unwrap();
+                    let u64_val: u64 = int_val.into();
+                    unsigned = true;
+                    u64_val_res = unsafe { transmute(u64_val) }
+                }
+                VarType::I64 => {
+                    int_type = self.context.i64_type();
+                    let int_val = int_str.parse::<i64>().unwrap();
+                    u64_val_res = unsafe { transmute(int_val) }
+                }
+                VarType::U64 => {
+                    int_type = self.context.i64_type();
+                    let int_val = int_str.parse::<u64>().unwrap();
+                    unsigned = true;
+                    u64_val_res = int_val;
+                }
+                VarType::I128 | VarType::U128 => {
+                    panic!("128 bit integers are not supported.")
+                }
+                ty => panic!("Invalid int assignment to {}", ty),
+            }
+        } else {
+            // Default value is i32
+            int_type = self.context.i32_type();
+            let int_val = int_str.parse::<i32>().unwrap();
+            let i64_val: i64 = int_val.into();
+            u64_val_res = unsafe { transmute(i64_val) }
+        }
+
+        if let Some(uop) = uop {
+            match uop {
+                NumericUnaryOp::Minus => {
+                    if unsigned {
+                        panic!("Can't apply the minus unary operator to an unsigned integer")
+                    }
+                    let mut i64_val: i64 = unsafe { transmute(u64_val_res) };
+                    i64_val = -i64_val;
+                    u64_val_res = unsafe { transmute(i64_val) }
+                }
+                _ => {}
+            }
+        }
+
+        let basic_val = int_type.const_int(u64_val_res, false).as_basic_value_enum();
+
+        (
+            basic_val,
+            expected_type
+                .unwrap_or(&ValueVarType {
+                    vtype: VarType::I32,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                })
+                .clone(),
+        )
     }
 
     pub fn codegen_primitive_val(
         &self,
         primitive_val: PrimitiveVal,
         expected_type: Option<&ValueVarType>,
-    ) -> BasicValueEnum {
+    ) -> (BasicValueEnum, ValueVarType) {
         match primitive_val {
             // TODO: Handle unary operator
             PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
-                NumericLiteral::Int(i) => {
-                    let i32 = self.context.i32_type();
-                    let i32_val: i32 = i.parse().unwrap();
-                    let mut i64_val: i64 = i32_val.into();
-
-                    if let Some(uop) = uop {
-                        match uop {
-                            NumericUnaryOp::Plus => {}
-                            NumericUnaryOp::Minus => {
-                                i64_val = -i64_val;
-                            }
-                        }
-                    }
-
-                    let u64_val: u64 = unsafe { transmute(i64_val) };
-
-                    i32.const_int(u64_val, false).as_basic_value_enum()
-                }
+                NumericLiteral::Int(i) => self.codegen_int_val(i, uop, expected_type),
                 NumericLiteral::Float(_) => todo!(),
             },
             PrimitiveVal::Boolean(_, _) => todo!(),
             PrimitiveVal::Char(_) => todo!(),
             PrimitiveVal::String(string) => unsafe {
-                self.builder
+                let str_val = self
+                    .builder
                     .build_global_string(&string, "globstr")
-                    .as_basic_value_enum()
+                    .as_basic_value_enum();
+
+                (
+                    str_val,
+                    ValueVarType {
+                        vtype: VarType::String,
+                        array_nesting_level: 0,
+                        pointer_nesting_level: 0,
+                    },
+                )
             },
             PrimitiveVal::Array(_) => todo!(),
             PrimitiveVal::Struct(_) => todo!(),
@@ -375,7 +561,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 Destructure::Id(id) => id,
                 _ => todo!(),
             };
-            let initial_val = self
+            let (initial_val, var_type) = self
                 .codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref())
                 .expect("Void function can't be on the right-hand side of an expression");
             let type_ = decl_as
@@ -386,14 +572,29 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             if is_global {
                 let new_global = self.module.add_global(type_, None, &id.0);
                 new_global.set_initializer(&initial_val);
-                let globa_ptr = new_global.as_pointer_value();
-                self.curr_scope_vars.insert(id.0, globa_ptr);
+                let global_ptr = new_global.as_pointer_value();
+                self.curr_scope_vars.insert(
+                    id.0,
+                    ScopedVar {
+                        ptr_val: global_ptr,
+                        var_type,
+                        is_function: false,
+                    },
+                );
 
                 return;
             }
 
             let new_local = self.builder.build_alloca(type_, &id.0);
-            self.declare_variable(id.0, new_local);
+            self.builder.build_store(new_local, initial_val);
+            self.declare_variable(
+                id.0,
+                ScopedVar {
+                    ptr_val: new_local,
+                    var_type,
+                    is_function: false,
+                },
+            );
         }
     }
 
