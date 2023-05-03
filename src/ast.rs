@@ -1,4 +1,5 @@
 use crate::lexer::Token;
+use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use logos::Lexer;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -232,22 +233,22 @@ pub enum BOp {
     Ne,
     Eq,
 }
-impl BOp {
-    pub fn infix_binding_power(&self) -> u8 {
+impl<'input> InfixOperator<Expr<'input>> for BOp {
+    type Strength = u8;
+
+    fn precedence(&self) -> InfixPrecedence<Self::Strength> {
+        use BOp::*;
         match self {
-            BOp::Add => 3,
-            BOp::Sub => 3,
-            BOp::Mul => 5,
-            BOp::Div => 5,
-            BOp::Mod => 5,
-            BOp::Pow => 7,
-            BOp::Gt => 1,
-            BOp::Gte => 1,
-            BOp::Lt => 1,
-            BOp::Lte => 1,
-            BOp::Ne => 1,
-            BOp::Eq => 1,
+            Add | Sub => InfixPrecedence::new(3, Associativity::Left),
+            Mul | Div | Mod => InfixPrecedence::new(5, Associativity::Left),
+            Pow => InfixPrecedence::new(7, Associativity::Left),
+            Gt | Gte | Lt | Lte | Ne | Eq => InfixPrecedence::new(1, Associativity::Left),
         }
+    }
+
+    fn build_expression(self, lhs: Expr<'input>, rhs: Expr<'input>) -> Expr<'input> {
+        let bexpr = BExpr { lhs, op: self, rhs };
+        Expr::BinaryExpr(Box::new(bexpr))
     }
 }
 impl From<&str> for BOp {

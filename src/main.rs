@@ -1,19 +1,20 @@
+#![feature(lazy_cell)]
+
 mod ast;
 mod ast_display;
 mod compiler;
 mod lexer;
 mod parser;
 
-use std::collections::HashMap;
-
+use crate::parser::main_parser::top_block_parser;
+use chumsky::prelude::SimpleSpan;
+use chumsky::Parser;
+use chumsky::{input::Stream, prelude::Input};
 use compiler::codegen::Compiler;
 use inkwell::{context::Context, passes::PassManager};
 use lexer::Token;
 use logos::Logos;
-use parser::{
-    main_parser::top_block_parser,
-    token::{TokenSpan, Tokens},
-};
+use std::collections::HashMap;
 
 fn main() {
     let input = r#"
@@ -37,14 +38,17 @@ fn main() {
     test_func(30);
 
     printf("Out again\n");"#;
-    let token_vec = Token::lexer(input)
+    let tokens = Token::lexer(input)
         .spanned()
-        .map(|(token, span)| TokenSpan { span, token })
+        .map(|(token, span)| (token.unwrap(), SimpleSpan::from(span)))
         .collect::<Vec<_>>();
-    let tokens = Tokens::new(&token_vec);
+    let length = tokens.len();
+    let tokens_stream = Stream::from_iter(tokens).spanned((length..length).into());
 
-    let (remaining, top_block) = top_block_parser(tokens).unwrap();
-    assert!(remaining.tok_span.is_empty());
+    let top_block = top_block_parser()
+        .parse(tokens_stream)
+        .into_result()
+        .unwrap();
 
     let context = Context::create();
     let module = context.create_module("TODO_file_name");
