@@ -175,3 +175,328 @@ pub fn type_specifier_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
     just(Token::Colon).ignore_then(value_var_type_parser())
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        ast::{
+            ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
+            PrimitiveVal, PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
+        },
+        lexer::Token,
+        parser::{
+            helpers::test::stream_token_vec,
+            primitive_parser::{
+                array_val_parser, bool_parser, char_parser, id_parser, number_parser,
+                primitive_val_parser, scope_specifier_parser, signed_number_parser, string_parser,
+                struct_val_parser, type_specifier_parser,
+            },
+        },
+    };
+    use chumsky::{IterParser, Parser};
+
+    #[test]
+    fn id_test() {
+        let tokens = stream_token_vec(vec![Token::Id("アイヂ")]);
+        let res = id_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let id = res.unwrap();
+        assert_eq!(id, Id("アイヂ".to_string()))
+    }
+
+    #[test]
+    fn int_test() {
+        let tokens = stream_token_vec(vec![Token::IntVal("10")]);
+        let res = number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let int_val = res.unwrap();
+        assert_eq!(int_val, NumericLiteral::Int("10"))
+    }
+
+    #[test]
+    fn float_test() {
+        let tokens = stream_token_vec(vec![Token::FloatVal("10.0")]);
+        let res = number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let float_val = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("10.0"))
+    }
+
+    #[test]
+    fn float_scientific_notation_test() {
+        let tokens = stream_token_vec(vec![Token::FloatVal("1e+10")]);
+
+        let res = number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let float_val = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("1e+10"))
+    }
+
+    #[test]
+    fn signed_number_test() {
+        let tokens = stream_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
+
+        let res = signed_number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let primitive_val = res.unwrap();
+        assert_eq!(
+            primitive_val,
+            PrimitiveVal::Number(Some(NumericUnaryOp::Plus), NumericLiteral::Int("10"))
+        )
+    }
+
+    #[test]
+    fn string_test() {
+        let tokens = stream_token_vec(vec![Token::Str("\"This is a string\"")]);
+
+        let res = string_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let str_val = res.unwrap();
+        assert_eq!(str_val, "This is a string")
+    }
+
+    #[test]
+    fn string_unicode_test() {
+        let tokens = stream_token_vec(vec![Token::Str("\"Japanese: アイヂ and Emoji: 😀\"")]);
+
+        let res = string_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let str_val = res.unwrap();
+        assert_eq!(str_val, "Japanese: アイヂ and Emoji: 😀")
+    }
+
+    #[test]
+    fn bool_test() {
+        let tokens = stream_token_vec(vec![Token::BoolVal("true")]);
+
+        let res = bool_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let bool_val = res.unwrap();
+        assert_eq!(bool_val, BoolLiteral(true))
+    }
+
+    #[test]
+    fn char_test() {
+        let tokens = stream_token_vec(vec![Token::Char("'\''")]);
+
+        let res = char_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let char_val = res.unwrap();
+        assert_eq!(char_val, '\'')
+    }
+
+    // TODO: Finish expr parser
+    // #[test]
+    fn array_test() {
+        let tokens = stream_token_vec(vec![
+            Token::LSqBracket,
+            Token::Id("x"),
+            Token::Comma,
+            Token::IntVal("10"),
+            Token::BOp(BOp::Add),
+            Token::IntVal("10"),
+            Token::RSqBracket,
+        ]);
+
+        let res = array_val_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let arr_val = res.unwrap();
+        assert_eq!(
+            arr_val,
+            ArrayVal(vec![
+                Expr::Id("x".into()),
+                Expr::BinaryExpr(
+                    BExpr {
+                        lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            None,
+                            NumericLiteral::Int("10")
+                        )),
+                        op: BOp::Add,
+                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            None,
+                            NumericLiteral::Int("10")
+                        ))
+                    }
+                    .into()
+                )
+            ])
+        )
+    }
+
+    // TODO: Finish expr parser
+    // #[test]
+    fn struct_test() {
+        let tokens = stream_token_vec(vec![
+            Token::LBracket,
+            Token::Id("x".into()),
+            Token::Colon,
+            Token::IntVal("10"),
+            Token::Comma,
+            Token::Str("this is a str id".into()),
+            Token::Colon,
+            Token::FloatVal("10"),
+            Token::BOp(BOp::Add),
+            Token::FloatVal("10"),
+            Token::RBracket,
+        ]);
+
+        let res = struct_val_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let bool_val = res.unwrap();
+        assert_eq!(
+            bool_val,
+            StructVal(vec![
+                (
+                    PropertyName::Id("x".into()),
+                    Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                ),
+                (
+                    PropertyName::String("this is a str id".to_string()),
+                    Expr::BinaryExpr(
+                        BExpr {
+                            lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                                None,
+                                NumericLiteral::Float("10")
+                            )),
+                            op: BOp::Add,
+                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
+                                None,
+                                NumericLiteral::Float("10")
+                            ))
+                        }
+                        .into()
+                    )
+                )
+            ])
+        )
+    }
+
+    // TODO: Finish expr parser
+    // #[test]
+    fn primitive_val_test() {
+        let tokens = stream_token_vec(vec![
+            Token::BoolVal("true"),
+            Token::Char("'a'"),
+            Token::Str("\"String!\""),
+            Token::LSqBracket,
+            Token::RSqBracket,
+            Token::LBracket,
+            Token::RBracket,
+        ]);
+
+        let res = primitive_val_parser()
+            .repeated()
+            .collect::<Vec<_>>()
+            .parse(tokens)
+            .into_result();
+        assert!(res.is_ok());
+
+        let primitive_vals = res.unwrap();
+        assert_eq!(
+            primitive_vals,
+            vec![
+                PrimitiveVal::Boolean(None, BoolLiteral(true)),
+                PrimitiveVal::Char('a'),
+                PrimitiveVal::String("String!".to_string()),
+                PrimitiveVal::Array(ArrayVal(vec![])),
+                PrimitiveVal::Struct(StructVal(vec![])),
+            ]
+        )
+    }
+
+    #[test]
+    fn scope_spec_test() {
+        let tokens = stream_token_vec(vec![
+            Token::ScopeSpecifier(ScopeSpecifier::Const),
+            Token::ScopeSpecifier(ScopeSpecifier::Let),
+            Token::ScopeSpecifier(ScopeSpecifier::Var),
+        ]);
+
+        let res = scope_specifier_parser()
+            .repeated()
+            .collect::<Vec<_>>()
+            .parse(tokens)
+            .into_result();
+        assert!(res.is_ok());
+
+        let scope_spec = res.unwrap();
+        assert_eq!(
+            scope_spec,
+            vec![
+                ScopeSpecifier::Const,
+                ScopeSpecifier::Let,
+                ScopeSpecifier::Var,
+            ]
+        )
+    }
+
+    #[test]
+    fn type_spec_test() {
+        let tokens = stream_token_vec(vec![Token::Colon, Token::VarType(VarType::I32)]);
+
+        let res = type_specifier_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let var_type = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::I32,
+                array_nesting_level: 0,
+                pointer_nesting_level: 0
+            }
+        )
+    }
+
+    #[test]
+    fn type_spec_arr_test() {
+        let tokens = stream_token_vec(vec![
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::LSqBracket,
+            Token::RSqBracket,
+        ]);
+
+        let res = type_specifier_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let var_type = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::I32,
+                array_nesting_level: 1,
+                pointer_nesting_level: 0
+            }
+        )
+    }
+
+    #[test]
+    fn type_spec_custom_test() {
+        let tokens = stream_token_vec(vec![Token::Colon, Token::Id("MyClass".into())]);
+
+        let res = type_specifier_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let var_type = res.unwrap();
+        assert_eq!(
+            var_type,
+            ValueVarType {
+                vtype: VarType::Custom("MyClass".into()),
+                array_nesting_level: 0,
+                pointer_nesting_level: 0
+            }
+        )
+    }
+}
