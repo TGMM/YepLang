@@ -6,15 +6,17 @@ use crate::{
     lexer::Token,
     recursive_parser,
 };
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
     extra,
     input::{SpannedInput, Stream},
-    prelude::Rich,
+    prelude::{Input, Rich},
     primitive::just,
     recursive::{Indirect, Recursive},
     span::SimpleSpan,
     IterParser, Parser,
 };
+use logos::Logos;
 use std::{
     sync::{Arc, LazyLock, RwLock},
     vec::IntoIter,
@@ -242,6 +244,34 @@ recursive_parser!(
         }
     }
 );
+
+pub fn parse(input: &'static str, file_name: &'static str) -> Option<TopBlock<'static>> {
+    let tokens = Token::lexer(input)
+        .spanned()
+        .map(|(token, span)| (token.unwrap(), SimpleSpan::from(span)))
+        .collect::<Vec<_>>();
+    let length = tokens.len();
+    let tokens_stream = Stream::from_iter(tokens).spanned((length..length).into());
+
+    let top_block = top_block_parser().parse(tokens_stream);
+
+    let errs = top_block.errors();
+    errs.into_iter().for_each(|e| {
+        Report::build(ReportKind::Error, file_name, e.span().start)
+            .with_code(3)
+            .with_message(e.to_string())
+            .with_label(
+                Label::new((file_name, e.span().into_range()))
+                    .with_message(e.reason().to_string())
+                    .with_color(Color::Red),
+            )
+            .finish()
+            .eprint((file_name, Source::from(input)))
+            .unwrap()
+    });
+
+    top_block.into_result().ok()
+}
 
 recursive_parser!(
     BLOCK_PARSER,
