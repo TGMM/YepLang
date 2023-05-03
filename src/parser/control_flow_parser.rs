@@ -1,102 +1,179 @@
 use super::{
-    expr_parser::{expr_parser, paren_expr_parser},
-    main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParseRes},
-    primitive_parser::{
-        do_tag, else_tag, for_tag, if_tag, lparen_tag, rparen_tag, stmt_end_tag, while_tag,
-    },
-    token::Tokens,
+    expr_parser::{expr_parser, paren_expr_parser, EXPR_PARSER, PAREN_EXPR_PARSER},
+    main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParserError, ParserInput},
 };
-use crate::ast::{Block, DoWhile, ElseIf, For, If, While};
-use nom::{combinator::opt, multi::many0};
+use crate::{
+    ast::{Block, ElseIf},
+    parser::main_parser::BLOCK_PARSER,
+};
+use crate::{
+    ast::{DoWhile, For, If, While},
+    lexer::Token,
+};
+use chumsky::{primitive::just, IterParser, Parser};
 
-pub(crate) fn else_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
-    let (input, _) = else_tag(input)?;
-    // Else block
-    block_parser(input)
+pub fn else_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, Block<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+
+    // Main definition
+    let else_block = just(Token::Else).ignore_then(block.clone());
+
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+
+    else_block
 }
 
-pub(crate) fn else_if_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ElseIf<'i>> {
-    let (input, _) = else_tag(input)?;
-    let (input, _) = if_tag(input)?;
+pub fn else_if_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ElseIf<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+    let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
-    let (input, paren_expr) = paren_expr_parser(input)?;
-    let (input, block) = block_parser(input)?;
+    // Main definition
+    let else_if = just(Token::Else)
+        .ignore_then(just(Token::If))
+        .ignore_then(paren_expr.clone())
+        .then(block.clone())
+        .map(|(else_expr, else_block)| ElseIf {
+            else_expr,
+            else_block,
+        });
 
-    Ok((
-        input,
-        ElseIf {
-            else_expr: paren_expr,
-            else_block: block,
-        },
-    ))
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+    if !paren_expr.is_defined() {
+        paren_expr_parser();
+    }
+
+    else_if
 }
 
-pub(crate) fn if_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, If<'i>> {
-    let (input, _) = if_tag(input)?;
-    let (input, if_expr) = paren_expr_parser(input)?;
-    let (input, if_block) = block_parser(input)?;
-    let (input, else_if) = many0(else_if_parser)(input)?;
-    let (input, else_b) = opt(else_parser)(input)?;
+pub fn if_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, If<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+    let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
-    Ok((
-        input,
-        If {
+    // Main definition
+    let if_p = just(Token::If)
+        .ignore_then(paren_expr.clone())
+        .then(block.clone())
+        .then(else_if_parser().repeated().collect::<Vec<_>>())
+        .then(else_parser().or_not())
+        .map(|(((if_expr, if_block), else_if), else_b)| If {
             if_expr,
             if_block,
-            else_b,
             else_if,
-        },
-    ))
+            else_b,
+        });
+
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+    if !paren_expr.is_defined() {
+        paren_expr_parser();
+    }
+
+    if_p
 }
 
-pub(crate) fn while_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, While<'i>> {
-    let (input, _) = while_tag(input)?;
-    let (input, while_cond) = paren_expr_parser(input)?;
-    let (input, block) = block_parser(input)?;
+pub fn while_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, While<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+    let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
-    Ok((input, While { while_cond, block }))
+    // Main definition
+    let while_p = just(Token::While)
+        .ignore_then(paren_expr.clone())
+        .then(block.clone())
+        .map(|(while_cond, block)| While { while_cond, block });
+
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+    if !paren_expr.is_defined() {
+        paren_expr_parser();
+    }
+
+    while_p
 }
 
-pub(crate) fn do_while_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, DoWhile<'i>> {
-    let (input, _) = do_tag(input)?;
-    let (input, do_block) = block_parser(input)?;
-    let (input, _) = while_tag(input)?;
-    let (input, while_cond) = paren_expr_parser(input)?;
-    let (input, _) = stmt_end_parser(input)?;
+pub fn do_while_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, DoWhile<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+    let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
-    Ok((
-        input,
-        DoWhile {
-            while_cond,
+    // Main definition
+    let do_while = just(Token::Do)
+        .ignore_then(block.clone())
+        .then_ignore(just(Token::While))
+        .then(paren_expr.clone())
+        .then_ignore(stmt_end_parser())
+        .map(|(do_block, while_cond)| DoWhile {
             do_block,
-        },
-    ))
+            while_cond,
+        });
+
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+    if !paren_expr.is_defined() {
+        paren_expr_parser();
+    }
+
+    do_while
 }
 
-pub(crate) fn for_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, For<'i>> {
-    let (input, _) = for_tag(input)?;
-    let (input, _) = lparen_tag(input)?;
-    let (input, decl_stmt) = opt(for_stmt_parser)(input)?;
-    let (input, _) = stmt_end_tag(input)?;
-    let (input, cmp_expr) = opt(expr_parser)(input)?;
-    let (input, _) = stmt_end_tag(input)?;
-    let (input, postfix_stmt) = opt(for_stmt_parser)(input)?;
-    let (input, _) = rparen_tag(input)?;
-    let (input, block) = block_parser(input)?;
+pub fn for_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, For<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let expr = EXPR_PARSER.read().unwrap().clone();
+    let block = BLOCK_PARSER.read().unwrap().clone();
 
-    Ok((
-        input,
-        For {
-            decl_stmt: decl_stmt.map(|s| Box::new(s)),
+    // Main definition
+    let for_p = just(Token::For)
+        .ignore_then(just(Token::LParen))
+        .ignore_then(for_stmt_parser().map(Box::new).or_not())
+        .then_ignore(stmt_end_parser())
+        .then(expr.clone().or_not())
+        .then_ignore(stmt_end_parser())
+        .then(for_stmt_parser().map(Box::new).or_not())
+        .then_ignore(just(Token::RParen))
+        .then(block.clone())
+        .map(|(((decl_stmt, cmp_expr), postfix_stmt), block)| For {
+            decl_stmt,
             cmp_expr,
-            postfix_stmt: postfix_stmt.map(|s| Box::new(s)),
+            postfix_stmt,
             block,
-        },
-    ))
+        });
+
+    // Definitions
+    if !block.is_defined() {
+        block_parser();
+    }
+    if !expr.is_defined() {
+        expr_parser();
+    }
+
+    for_p
 }
 
 #[cfg(test)]
 mod test {
+    use chumsky::Parser;
+
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
@@ -105,14 +182,13 @@ mod test {
         lexer::Token,
         parser::{
             control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
-            helpers::test::span_token_vec,
-            token::Tokens,
+            helpers::test::stream_token_vec,
         },
     };
 
     #[test]
     fn if_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
@@ -122,12 +198,15 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = if_parser(tokens);
+        let parse_res = if_parser().parse(tokens);
+        for err in parse_res.errors() {
+            dbg!(err);
+        }
+        let res = parse_res.into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             If {
@@ -151,7 +230,7 @@ mod test {
 
     #[test]
     fn if_else_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
@@ -164,12 +243,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = if_parser(tokens);
+        let res = if_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             If {
@@ -193,7 +271,7 @@ mod test {
 
     #[test]
     fn if_else_if_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
@@ -212,12 +290,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = if_parser(tokens);
+        let res = if_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             If {
@@ -254,7 +331,7 @@ mod test {
 
     #[test]
     fn if_else_if_else_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
@@ -276,12 +353,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = if_parser(tokens);
+        let res = if_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             If {
@@ -318,7 +394,7 @@ mod test {
 
     #[test]
     fn while_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::While,
             Token::LParen,
             Token::Id("x".into()),
@@ -328,12 +404,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = while_parser(tokens);
+        let res = while_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             While {
@@ -355,7 +430,7 @@ mod test {
 
     #[test]
     fn do_while_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Do,
             Token::LBracket,
             Token::RBracket,
@@ -367,12 +442,11 @@ mod test {
             Token::RParen,
             Token::StmtEnd,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = do_while_parser(tokens);
+        let res = do_while_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             DoWhile {
@@ -395,7 +469,7 @@ mod test {
     #[test]
     fn for_test() {
         // for(; x>10; x=x+1){}
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::For,
             Token::LParen,
             Token::ScopeSpecifier(ScopeSpecifier::Let),
@@ -416,12 +490,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = for_parser(tokens);
+        let res = for_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             For {

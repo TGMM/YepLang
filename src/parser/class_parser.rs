@@ -1,101 +1,124 @@
 use super::{
-    expr_parser::expr_parser,
-    main_parser::{block_parser, destructure_parser, stmt_end_parser, ParseRes},
-    primitive_parser::{
-        as_eq_tag, class_tag, comma_tag, extends_tag, fn_tag, id_parser, lbracket_tag, lparen_tag,
-        rbracket_tag, rparen_tag, type_specifier_parser,
+    expr_parser::{expr_parser, EXPR_PARSER},
+    main_parser::{
+        block_parser, destructure_parser, stmt_end_parser, ParserError, ParserInput,
+        DESTRUCTURE_PARSER,
     },
-    token::Tokens,
+    primitive_parser::{id_parser, type_specifier_parser},
 };
-use crate::ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl};
-use nom::{
-    branch::alt,
-    combinator::{map, opt},
-    multi::{many0, separated_list0},
-    sequence::{delimited, pair, preceded, terminated},
+use crate::parser::main_parser::BLOCK_PARSER;
+use crate::{
+    ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl},
+    lexer::Token,
 };
+use chumsky::{primitive::just, IterParser, Parser};
 
-pub(crate) fn method_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, MethodDecl<'i>> {
-    let (input, method_id) = id_parser(input)?;
-    let (input, _) = lparen_tag(input)?;
-    let (input, args) =
-        separated_list0(comma_tag, pair(destructure_parser, type_specifier_parser))(input)?;
-    let (input, _) = rparen_tag(input)?;
-    let (input, ret_type) = opt(type_specifier_parser)(input)?;
-    let (input, block) = block_parser(input)?;
+pub fn method_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, MethodDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
+    let block = BLOCK_PARSER.read().unwrap().clone();
 
-    Ok((
-        input,
-        MethodDecl {
+    // Main definition
+    let args = destructure
+        .clone()
+        .then(type_specifier_parser())
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>();
+    let method_decl = id_parser()
+        .then_ignore(just(Token::LParen))
+        .then(args)
+        .then_ignore(just(Token::RParen))
+        .then(type_specifier_parser().or_not())
+        .then(block.clone())
+        .map(|(((method_id, args), ret_type), block)| MethodDecl {
             method_id,
             args,
             ret_type,
             block,
-        },
-    ))
+        });
+
+    // Definitions
+    if !destructure.is_defined() {
+        destructure_parser();
+    }
+    if !block.is_defined() {
+        block_parser();
+    }
+
+    method_decl
 }
 
-pub(crate) fn fn_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, FnDecl<'i>> {
-    let (input, _) = fn_tag(input)?;
-    let (input, method_decl) = method_decl_parser(input)?;
-
-    Ok((input, method_decl.into()))
+pub fn fn_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    just(Token::Function)
+        .ignore_then(method_decl_parser())
+        .map(|md| md.into())
 }
 
-pub(crate) fn class_prop_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PropertyDecl<'i>> {
-    let (input, id) = id_parser(input)?;
-    let (input, vtype) = opt(type_specifier_parser)(input)?;
-    let (input, _) = as_eq_tag(input)?;
-    let (input, assigned_expr) = expr_parser(input)?;
+pub fn class_prop_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, PropertyDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let expr = EXPR_PARSER.read().unwrap().clone();
 
-    Ok((
-        input,
-        PropertyDecl {
+    // Main definition
+    let class_prop = id_parser()
+        .then(type_specifier_parser().or_not())
+        .then_ignore(just(Token::AssignmentEq))
+        .then(expr.clone())
+        .map(|((id, vtype), assigned_expr)| PropertyDecl {
             id,
             vtype,
             assigned_expr,
-        },
-    ))
+        });
+
+    // Definitions
+    if !expr.is_defined() {
+        expr_parser();
+    }
+
+    class_prop
 }
 
-pub(crate) fn class_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ClassStmt<'i>> {
-    // This includes the constructor too, since it's just a method
-    let method = map(method_decl_parser, |md| ClassStmt::Method(md));
-    let accessor = {}; // TODO?: Maybe won't be doing this
-    let property = map(terminated(class_prop_decl_parser, stmt_end_parser), |pd| {
-        ClassStmt::Property(pd)
-    });
+pub fn class_stmt_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ClassStmt<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let method = method_decl_parser().map(ClassStmt::Method);
+    let _accessor = {}; // TODO?: Maybe won't be doing this
+    let property = class_prop_decl_parser()
+        .then_ignore(stmt_end_parser())
+        .map(ClassStmt::Property);
 
-    let (input, class_stmt) = alt((method, property))(input)?;
-    dbg!(&class_stmt);
-    Ok((input, class_stmt))
+    method.or(property)
 }
 
-pub(crate) fn class_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ClassBlock<'i>> {
-    map(
-        delimited(lbracket_tag, many0(class_stmt_parser), rbracket_tag),
-        |class_stmts| ClassBlock { class_stmts },
-    )(input)
+pub fn class_block_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ClassBlock<'i>, ParserError<'i, Token<'i>>> + Clone {
+    class_stmt_parser()
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBracket), just(Token::RBracket))
+        .map(|class_stmts| ClassBlock { class_stmts })
 }
 
-pub(crate) fn class_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ClassDecl<'i>> {
-    let (input, _) = class_tag(input)?;
-    let (input, class_id) = id_parser(input)?;
-    let (input, extended_class_id) = opt(preceded(extends_tag, id_parser))(input)?;
-    let (input, block) = class_block_parser(input)?;
-
-    Ok((
-        input,
-        ClassDecl {
+pub fn class_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ClassDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let class_decl = just(Token::Class)
+        .ignore_then(id_parser())
+        .then(just(Token::Extends).ignore_then(id_parser()).or_not())
+        .then(class_block_parser())
+        .map(|((class_id, extended_class_id), block)| ClassDecl {
             class_id,
             extended_class_id,
             block,
-        },
-    ))
+        });
+
+    class_decl
 }
 
 #[cfg(test)]
 mod test {
+    use chumsky::Parser;
+
     use crate::{
         ast::{
             Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDecl, MethodDecl,
@@ -106,14 +129,13 @@ mod test {
             class_parser::{
                 class_block_parser, class_decl_parser, fn_decl_parser, method_decl_parser,
             },
-            helpers::test::span_token_vec,
-            token::Tokens,
+            helpers::test::stream_token_vec,
         },
     };
 
     #[test]
     fn method_decl_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Id("myMethod".into()),
             Token::LParen,
             Token::RParen,
@@ -122,12 +144,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = method_decl_parser(tokens);
+        let res = method_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, method_decl) = res.unwrap();
+        let method_decl = res.unwrap();
         assert_eq!(
             method_decl,
             MethodDecl {
@@ -145,7 +166,7 @@ mod test {
 
     #[test]
     fn fn_decl_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
             Token::LParen,
@@ -155,12 +176,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = fn_decl_parser(tokens);
+        let res = fn_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, fn_decl) = res.unwrap();
+        let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
             FnDecl {
@@ -178,7 +198,7 @@ mod test {
 
     #[test]
     fn fn_decl_void_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
             Token::LParen,
@@ -186,12 +206,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = fn_decl_parser(tokens);
+        let res = fn_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, fn_decl) = res.unwrap();
+        let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
             FnDecl {
@@ -205,7 +224,7 @@ mod test {
 
     #[test]
     fn fn_decl_args_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
             Token::LParen,
@@ -218,12 +237,11 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = fn_decl_parser(tokens);
+        let res = fn_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, fn_decl) = res.unwrap();
+        let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
             FnDecl {
@@ -248,7 +266,7 @@ mod test {
 
     #[test]
     fn class_block_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::LBracket,
             Token::Id("myClassMethod".into()),
             Token::LParen,
@@ -265,12 +283,11 @@ mod test {
             Token::StmtEnd,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = class_block_parser(tokens);
+        let res = class_block_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, class_block) = res.unwrap();
+        let class_block = res.unwrap();
         assert_eq!(
             class_block,
             ClassBlock {
@@ -304,7 +321,7 @@ mod test {
 
     #[test]
     fn class_decl_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Class,
             Token::Id("MyClass"),
             Token::LBracket,
@@ -323,12 +340,11 @@ mod test {
             Token::StmtEnd,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = class_decl_parser(tokens);
+        let res = class_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, class_decl) = res.unwrap();
+        let class_decl = res.unwrap();
         assert_eq!(
             class_decl,
             ClassDecl {

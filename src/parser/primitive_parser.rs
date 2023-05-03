@@ -1,104 +1,72 @@
-use super::expr_parser::{boolean_unary_op_parser, numeric_unary_op_parser};
-use super::main_parser::ParseRes;
-use super::token::Tokens;
-use crate::ast::{
-    ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
-    StructVal, ValueVarType, VarType,
+use super::{
+    expr_parser::{boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, EXPR_PARSER},
+    main_parser::{ParserError, ParserInput},
 };
-use crate::lexer::Token;
-use crate::parser::expr_parser::expr_parser;
-use crate::tag_token;
-use nom::branch::alt;
-use nom::bytes::complete::take;
-use nom::combinator::{map, opt, verify};
-use nom::error::{Error, ErrorKind};
-use nom::multi::{many0, separated_list0};
-use nom::sequence::{delimited, pair, preceded, terminated};
-use nom::Err;
-use nom::IResult;
+use crate::parser::main_parser::{GlobalParser, RecursiveParser};
+use crate::{
+    ast::{
+        ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
+        StructVal, ValueVarType, VarType,
+    },
+    lexer::Token,
+    recursive_parser,
+};
+use chumsky::recursive::Recursive;
+use chumsky::{primitive::just, select, IterParser, Parser};
 use snailquote::unescape;
+use std::sync::{Arc, LazyLock, RwLock};
 
-tag_token!(as_eq_tag, Ok(Token::AssignmentEq));
-tag_token!(stmt_end_tag, Ok(Token::StmtEnd));
-tag_token!(lparen_tag, Ok(Token::LParen));
-tag_token!(rparen_tag, Ok(Token::RParen));
-tag_token!(lsqbracket_tag, Ok(Token::LSqBracket));
-tag_token!(rsqbracket_tag, Ok(Token::RSqBracket));
-tag_token!(lbracket_tag, Ok(Token::LBracket));
-tag_token!(rbracket_tag, Ok(Token::RBracket));
-tag_token!(comma_tag, Ok(Token::Comma));
-tag_token!(colon_tag, Ok(Token::Colon));
-tag_token!(if_tag, Ok(Token::If));
-tag_token!(else_tag, Ok(Token::Else));
-tag_token!(while_tag, Ok(Token::While));
-tag_token!(do_tag, Ok(Token::Do));
-tag_token!(for_tag, Ok(Token::For));
-tag_token!(fn_tag, Ok(Token::Function));
-tag_token!(class_tag, Ok(Token::Class));
-tag_token!(extends_tag, Ok(Token::Extends));
-tag_token!(dot_tag, Ok(Token::Dot));
-tag_token!(extern_tag, Ok(Token::Extern));
-tag_token!(spread_tag, Ok(Token::Spread));
-
-macro_rules! data_token_parser {
-    ($id:ident, $input:ident, $ret_type:ty, {
-        $($matcher:pat $(if $pred:expr)* => $result:expr),*
-    }) => {
-        pub(crate) fn $id<'i>($input: Tokens<'i>) -> ParseRes<'i, $ret_type> {
-            let ($input, tok_id) = take(1usize)($input)?;
-
-            if tok_id.tok_span.is_empty() {
-                Err(Err::Error(Error::new($input, ErrorKind::Eof)))
-            } else {
-                match tok_id.tok_span[0].token.clone() {
-                    $($matcher $(if $pred)* => $result),*,
-                    _ => Err(Err::Error(Error::new($input, ErrorKind::Tag))),
-                }
-            }
-        }
-    };
+pub fn bop_parser<'i>() -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone
+{
+    select! { Token::BOp(bop) => bop }
 }
 
-data_token_parser!(bop_parser, input, BOp, {
-    Ok(Token::BOp(bop)) => Ok((input, bop))
-});
-
-data_token_parser!(id_parser, input, Id, {
-    Ok(Token::Id(id)) => Ok((input, id.into()))
-});
-
-data_token_parser!(number_parser, input, NumericLiteral, {
-    Ok(Token::IntVal(val)) => Ok((input, NumericLiteral::Int(val))),
-    Ok(Token::FloatVal(val)) => Ok((input, NumericLiteral::Float(val)))
-});
-
-pub(crate) fn signed_number_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
-    map(
-        pair(opt(numeric_unary_op_parser), number_parser),
-        |(op, num)| PrimitiveVal::Number(op, num),
-    )(input)
+pub fn id_parser<'i>() -> impl Parser<'i, ParserInput<'i>, Id, ParserError<'i, Token<'i>>> + Clone {
+    select! { Token::Id(id) => id.into() }
 }
 
-data_token_parser!(string_parser, input, String, {
-    Ok(Token::Str(string)) => {
+pub fn number_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, NumericLiteral<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let int = select! { Token::IntVal(i) => NumericLiteral::Int(i) };
+    let float = select! { Token::FloatVal(f) => NumericLiteral::Float(f) };
+
+    int.or(float)
+}
+
+pub fn signed_number_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, PrimitiveVal<'i>, ParserError<'i, Token<'i>>> + Clone {
+    numeric_unary_op_parser()
+        .or_not()
+        .then(number_parser())
+        .map(|(op, num)| PrimitiveVal::Number(op, num))
+}
+
+pub fn string_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, String, ParserError<'i, Token<'i>>> + Clone {
+    // TODO: We could try_map the unescape
+    select! { Token::Str(s) => s}.map(|string| {
         let unescaped = unescape(string).expect("Invalid string");
-        Ok((input, unescaped))
-    }
-});
-
-data_token_parser!(bool_parser, input, BoolLiteral, {
-    Ok(Token::BoolVal(b)) => Ok((input, b.into()))
-});
-
-pub(crate) fn negated_bool_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
-    map(
-        pair(opt(boolean_unary_op_parser), bool_parser),
-        |(op, num)| PrimitiveVal::Boolean(op, num),
-    )(input)
+        unescaped
+    })
 }
 
-data_token_parser!(char_parser, input, char, {
-    Ok(Token::Char(c)) => {
+pub fn bool_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, BoolLiteral, ParserError<'i, Token<'i>>> + Clone {
+    select! { Token::BoolVal(b) => b.into() }
+}
+
+pub fn negated_bool_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, PrimitiveVal<'i>, ParserError<'i, Token<'i>>> + Clone {
+    boolean_unary_op_parser()
+        .or_not()
+        .then(bool_parser())
+        .map(|(op, num)| PrimitiveVal::Boolean(op, num))
+}
+
+pub fn char_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, char, ParserError<'i, Token<'i>>> + Clone {
+    // TODO: We could try_map the char unescape
+    select! { Token::Char(c) => c }.map(|c| {
         // TODO: Find if there's a better way to do this
         let c_hack = format!(
             "\"{}\"",
@@ -109,96 +77,137 @@ data_token_parser!(char_parser, input, char, {
             .chars()
             .next()
             .expect("Invalid empty char literal");
-        Ok((input, c))
-    }
-});
-
-pub(crate) fn array_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ArrayVal> {
-    map(
-        delimited(
-            lsqbracket_tag,
-            separated_list0(comma_tag, expr_parser),
-            rsqbracket_tag,
-        ),
-        |exprs| ArrayVal(exprs),
-    )(input)
+        c
+    })
 }
 
-pub(crate) fn struct_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, StructVal> {
-    let id_prop_name = map(id_parser, |id| PropertyName::Id(id));
-    let str_prop_name = map(string_parser, |s| PropertyName::String(s.to_string()));
-    let prop_name = alt((id_prop_name, str_prop_name));
-    let prop = pair(terminated(prop_name, colon_tag), expr_parser);
+recursive_parser!(
+    ARRAY_VAL_PARSER,
+    array_val_parser,
+    ArrayVal<'static>,
+    declarations {
+        let expr = EXPR_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let arr = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
+            .map(ArrayVal);
 
-    map(
-        delimited(lbracket_tag, separated_list0(comma_tag, prop), rbracket_tag),
-        |props| StructVal(props),
-    )(input)
-}
-
-pub(crate) fn primitive_val_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, PrimitiveVal<'i>> {
-    let num = signed_number_parser;
-    let bool = negated_bool_parser;
-    let char = map(char_parser, |c| PrimitiveVal::Char(c));
-    // TODO: Check if we can make this zero-copy
-    let string = map(string_parser, |s| PrimitiveVal::String(s.to_string()));
-    let arr = map(array_val_parser, |a| PrimitiveVal::Array(a));
-    let struct_v = map(struct_val_parser, |s| PrimitiveVal::Struct(s));
-
-    alt((num, bool, char, string, arr, struct_v))(input)
-}
-
-data_token_parser!(scope_specifier_parser, input, ScopeSpecifier, {
-    Ok(Token::ScopeSpecifier(ss)) => Ok((input, ss))
-});
-
-data_token_parser!(var_type_parser, input, VarType, {
-    Ok(Token::VarType(ss)) => Ok((input, ss)),
-    Ok(Token::Id(id)) => Ok((input, VarType::Custom(id.into())))
-});
-
-pub(crate) fn pointer_symbol_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, BOp> {
-    let (input, bop) = bop_parser(input)?;
-    match bop {
-        BOp::Mul => return Ok((input, bop)),
-        _ => {
-            return Err(Err::Error(Error {
-                input,
-                code: ErrorKind::Tag,
-            }))
+        arr
+    },
+    definitions {
+        if !expr.is_defined() {
+            expr_parser();
         }
     }
+);
+
+recursive_parser!(
+    STRUCT_VAL_PARSER,
+    struct_val_parser,
+    StructVal<'static>,
+    declarations {
+        let expr = EXPR_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let id_prop_name = id_parser().map(PropertyName::Id);
+        let str_prop_name = string_parser().map(PropertyName::String);
+        let prop_name = id_prop_name.or(str_prop_name);
+        let prop = prop_name.then_ignore(just(Token::Colon)).then(expr.clone());
+
+        let struct_p = prop
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(StructVal);
+
+        struct_p
+    },
+    definitions {
+        if !expr.is_defined() {
+            expr_parser();
+        }
+    }
+);
+
+recursive_parser!(
+    PRIMITIVE_VAL_PARSER,
+    primitive_val_parser,
+    PrimitiveVal<'static>,
+    declarations {
+        let array_val = ARRAY_VAL_PARSER.read().unwrap().clone()
+        let struct_val = STRUCT_VAL_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let num = signed_number_parser();
+        let bool = negated_bool_parser();
+        let char = char_parser().map(PrimitiveVal::Char);
+        let string = string_parser().map(PrimitiveVal::String);
+        let arr = array_val.clone().map(PrimitiveVal::Array);
+        let struct_v = struct_val.clone().map(PrimitiveVal::Struct);
+
+        let primitive_val = num.or(bool).or(char).or(string).or(arr).or(struct_v);
+
+        primitive_val
+    },
+    definitions {
+        if !array_val.is_defined() {
+            array_val_parser();
+        }
+        if !struct_val.is_defined() {
+            struct_val_parser();
+        }
+    }
+);
+
+pub fn scope_specifier_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, ScopeSpecifier, ParserError<'i, Token<'i>>> + Clone {
+    select! { Token::ScopeSpecifier(ss) => ss }
 }
 
-pub(crate) fn value_var_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ValueVarType> {
-    let (input, pointer_nesting) = many0(pointer_symbol_parser)(input)?;
-    let (input, vtype) = var_type_parser(input)?;
-    let (input, array_nesting) = many0(pair(lsqbracket_tag, rsqbracket_tag))(input)?;
+pub fn var_type_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, VarType, ParserError<'i, Token<'i>>> + Clone {
+    let vt = select! { Token::VarType(vt) => vt };
+    let custom = select! { Token::Id(id) => id }.map(|id| VarType::Custom(id.into()));
 
-    Ok((
-        input,
-        ValueVarType {
+    vt.or(custom)
+}
+
+pub fn pointer_symbol_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone {
+    bop_parser().filter(|b| matches!(b, BOp::Mul))
+}
+
+pub fn value_var_type_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+    // TODO: We could try_map in count to convert usize to u8
+    let ptr_nesting = pointer_symbol_parser().repeated().count();
+    let vtype = var_type_parser();
+    let array_nesting = just(Token::LSqBracket)
+        .then(just(Token::RSqBracket))
+        .repeated()
+        .count();
+
+    ptr_nesting
+        .then(vtype)
+        .then(array_nesting)
+        .map(|((ptr_nl, vtype), arr_nl)| ValueVarType {
+            array_nesting_level: arr_nl.try_into().expect("Array nesting too deep"),
             vtype,
-            array_nesting_level: array_nesting
-                .len()
-                .try_into()
-                .expect("Array nesting too deep"),
-            pointer_nesting_level: pointer_nesting
-                .len()
-                .try_into()
-                .expect("Pointer nesting too deep"),
-        },
-    ))
+            pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
+        })
 }
 
-pub(crate) fn type_specifier_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ValueVarType> {
-    preceded(colon_tag, value_var_type_parser)(input)
+pub fn type_specifier_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+    just(Token::Colon).ignore_then(value_var_type_parser())
 }
 
 #[cfg(test)]
 mod test {
-    use nom::multi::many1;
-
     use crate::{
         ast::{
             ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
@@ -206,73 +215,65 @@ mod test {
         },
         lexer::Token,
         parser::{
-            helpers::test::span_token_vec,
+            helpers::test::stream_token_vec,
             primitive_parser::{
                 array_val_parser, bool_parser, char_parser, id_parser, number_parser,
                 primitive_val_parser, scope_specifier_parser, signed_number_parser, string_parser,
                 struct_val_parser, type_specifier_parser,
             },
-            token::Tokens,
         },
     };
+    use chumsky::{IterParser, Parser};
 
     #[test]
     fn id_test() {
-        let token_iter = span_token_vec(vec![Token::Id("アイヂ")]);
-        let tokens = Tokens::new(&token_iter);
-
-        let res = id_parser(tokens);
+        let tokens = stream_token_vec(vec![Token::Id("アイヂ")]);
+        let res = id_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, id) = res.unwrap();
+        let id = res.unwrap();
         assert_eq!(id, Id("アイヂ".to_string()))
     }
 
     #[test]
     fn int_test() {
-        let token_iter = span_token_vec(vec![Token::IntVal("10")]);
-        let tokens = Tokens::new(&token_iter);
-
-        let res = number_parser(tokens);
+        let tokens = stream_token_vec(vec![Token::IntVal("10")]);
+        let res = number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, int_val) = res.unwrap();
+        let int_val = res.unwrap();
         assert_eq!(int_val, NumericLiteral::Int("10"))
     }
 
     #[test]
     fn float_test() {
-        let token_iter = span_token_vec(vec![Token::FloatVal("10.0")]);
-        let tokens = Tokens::new(&token_iter);
-
-        let res = number_parser(tokens);
+        let tokens = stream_token_vec(vec![Token::FloatVal("10.0")]);
+        let res = number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, float_val) = res.unwrap();
+        let float_val = res.unwrap();
         assert_eq!(float_val, NumericLiteral::Float("10.0"))
     }
 
     #[test]
     fn float_scientific_notation_test() {
-        let token_iter = span_token_vec(vec![Token::FloatVal("1e+10")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::FloatVal("1e+10")]);
 
-        let res = number_parser(tokens);
+        let res = number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, float_val) = res.unwrap();
+        let float_val = res.unwrap();
         assert_eq!(float_val, NumericLiteral::Float("1e+10"))
     }
 
     #[test]
     fn signed_number_test() {
-        let token_iter = span_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
 
-        let res = signed_number_parser(tokens);
+        let res = signed_number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_val) = res.unwrap();
+        let primitive_val = res.unwrap();
         assert_eq!(
             primitive_val,
             PrimitiveVal::Number(Some(NumericUnaryOp::Plus), NumericLiteral::Int("10"))
@@ -281,55 +282,51 @@ mod test {
 
     #[test]
     fn string_test() {
-        let token_iter = span_token_vec(vec![Token::Str("\"This is a string\"")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Str("\"This is a string\"")]);
 
-        let res = string_parser(tokens);
+        let res = string_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, str_val) = res.unwrap();
+        let str_val = res.unwrap();
         assert_eq!(str_val, "This is a string")
     }
 
     #[test]
     fn string_unicode_test() {
-        let token_iter = span_token_vec(vec![Token::Str("\"Japanese: アイヂ and Emoji: 😀\"")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Str("\"Japanese: アイヂ and Emoji: 😀\"")]);
 
-        let res = string_parser(tokens);
+        let res = string_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, str_val) = res.unwrap();
+        let str_val = res.unwrap();
         assert_eq!(str_val, "Japanese: アイヂ and Emoji: 😀")
     }
 
     #[test]
     fn bool_test() {
-        let token_iter = span_token_vec(vec![Token::BoolVal("true")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::BoolVal("true")]);
 
-        let res = bool_parser(tokens);
+        let res = bool_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, bool_val) = res.unwrap();
+        let bool_val = res.unwrap();
         assert_eq!(bool_val, BoolLiteral(true))
     }
 
     #[test]
     fn char_test() {
-        let token_iter = span_token_vec(vec![Token::Char("'\''")]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Char("'\''")]);
 
-        let res = char_parser(tokens);
+        let res = char_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, char_val) = res.unwrap();
+        let char_val = res.unwrap();
         assert_eq!(char_val, '\'')
     }
 
     #[test]
     fn array_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::LSqBracket,
             Token::Id("x"),
             Token::Comma,
@@ -338,12 +335,11 @@ mod test {
             Token::IntVal("10"),
             Token::RSqBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = array_val_parser(tokens);
+        let res = array_val_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, arr_val) = res.unwrap();
+        let arr_val = res.unwrap();
         assert_eq!(
             arr_val,
             ArrayVal(vec![
@@ -368,7 +364,7 @@ mod test {
 
     #[test]
     fn struct_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::LBracket,
             Token::Id("x".into()),
             Token::Colon,
@@ -381,12 +377,11 @@ mod test {
             Token::FloatVal("10"),
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = struct_val_parser(tokens);
+        let res = struct_val_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, bool_val) = res.unwrap();
+        let bool_val = res.unwrap();
         assert_eq!(
             bool_val,
             StructVal(vec![
@@ -417,7 +412,7 @@ mod test {
 
     #[test]
     fn primitive_val_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::BoolVal("true"),
             Token::Char("'a'"),
             Token::Str("\"String!\""),
@@ -426,12 +421,15 @@ mod test {
             Token::LBracket,
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = many1(primitive_val_parser)(tokens);
+        let res = primitive_val_parser()
+            .repeated()
+            .collect::<Vec<_>>()
+            .parse(tokens)
+            .into_result();
         assert!(res.is_ok());
 
-        let (_remaining, primitive_vals) = res.unwrap();
+        let primitive_vals = res.unwrap();
         assert_eq!(
             primitive_vals,
             vec![
@@ -446,17 +444,20 @@ mod test {
 
     #[test]
     fn scope_spec_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::ScopeSpecifier(ScopeSpecifier::Const),
             Token::ScopeSpecifier(ScopeSpecifier::Let),
             Token::ScopeSpecifier(ScopeSpecifier::Var),
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = many1(scope_specifier_parser)(tokens);
+        let res = scope_specifier_parser()
+            .repeated()
+            .collect::<Vec<_>>()
+            .parse(tokens)
+            .into_result();
         assert!(res.is_ok());
 
-        let (_remaining, scope_spec) = res.unwrap();
+        let scope_spec = res.unwrap();
         assert_eq!(
             scope_spec,
             vec![
@@ -469,13 +470,12 @@ mod test {
 
     #[test]
     fn type_spec_test() {
-        let token_iter = span_token_vec(vec![Token::Colon, Token::VarType(VarType::I32)]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Colon, Token::VarType(VarType::I32)]);
 
-        let res = type_specifier_parser(tokens);
+        let res = type_specifier_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, var_type) = res.unwrap();
+        let var_type = res.unwrap();
         assert_eq!(
             var_type,
             ValueVarType {
@@ -488,18 +488,17 @@ mod test {
 
     #[test]
     fn type_spec_arr_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Colon,
             Token::VarType(VarType::I32),
             Token::LSqBracket,
             Token::RSqBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = type_specifier_parser(tokens);
+        let res = type_specifier_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, var_type) = res.unwrap();
+        let var_type = res.unwrap();
         assert_eq!(
             var_type,
             ValueVarType {
@@ -512,13 +511,12 @@ mod test {
 
     #[test]
     fn type_spec_custom_test() {
-        let token_iter = span_token_vec(vec![Token::Colon, Token::Id("MyClass".into())]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Colon, Token::Id("MyClass".into())]);
 
-        let res = type_specifier_parser(tokens);
+        let res = type_specifier_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, var_type) = res.unwrap();
+        let var_type = res.unwrap();
         assert_eq!(
             var_type,
             ValueVarType {

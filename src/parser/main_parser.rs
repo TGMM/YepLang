@@ -1,195 +1,268 @@
-use super::class_parser::{class_decl_parser, fn_decl_parser};
-use super::control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser};
-use super::expr_parser::{assignment_expr_parser, expr_parser};
-use super::ffi_parser::extern_decl_parser;
-use super::primitive_parser::{
-    as_eq_tag, bop_parser, colon_tag, comma_tag, id_parser, lbracket_tag, lsqbracket_tag,
-    rbracket_tag, rsqbracket_tag, string_parser, type_specifier_parser,
+use crate::{
+    ast::{
+        Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
+        VarDecl, VarDeclAssignment,
+    },
+    lexer::Token,
+    recursive_parser,
 };
-use super::primitive_parser::{scope_specifier_parser, stmt_end_tag};
-use super::token::Tokens;
-use crate::ast::{
-    Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt, VarDecl,
-    VarDeclAssignment,
+use chumsky::{
+    extra,
+    input::{SpannedInput, Stream},
+    prelude::Rich,
+    primitive::just,
+    recursive::{Indirect, Recursive},
+    span::SimpleSpan,
+    IterParser, Parser,
 };
-use nom::branch::alt;
-use nom::combinator::{map, opt};
-use nom::error::ErrorKind;
-use nom::multi::{many0, separated_list0, separated_list1};
-use nom::sequence::{delimited, pair, preceded, terminated};
-use nom::IResult;
+use std::{
+    sync::{Arc, LazyLock, RwLock},
+    vec::IntoIter,
+};
 
-pub(crate) type ParseRes<'a, T> = IResult<Tokens<'a>, T>;
+use super::{
+    class_parser::{class_decl_parser, fn_decl_parser},
+    control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
+    expr_parser::{assignment_expr_parser, expr_parser, EXPR_PARSER},
+    ffi_parser::extern_decl_parser,
+    primitive_parser::{
+        bop_parser, id_parser, scope_specifier_parser, string_parser, type_specifier_parser,
+    },
+};
 
-pub(crate) fn stmt_end_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ()> {
-    let res = stmt_end_tag(input);
+pub type ParserError<'a, T> = extra::Err<Rich<'a, T>>;
+pub type ParserInput<'a> =
+    SpannedInput<Token<'a>, SimpleSpan, Stream<IntoIter<(Token<'a>, SimpleSpan)>>>;
 
-    if res.is_err() {
-        return Err(nom::Err::Error(nom::error::Error {
-            input,
-            code: ErrorKind::Tag,
-        }));
-    }
+pub type RecursiveParser<'a, O> =
+    Recursive<Indirect<'a, 'a, ParserInput<'a>, O, ParserError<'a, Token<'a>>>>;
+pub type GlobalParser<'a, O> = LazyLock<Arc<RwLock<RecursiveParser<'a, O>>>>;
 
-    let (remaining, _) = res.unwrap();
-
-    Ok((remaining, ()))
+pub fn stmt_end_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, (), ParserError<'i, Token<'i>>> + Clone {
+    just(Token::StmtEnd).ignored()
 }
 
-pub(crate) fn destructure_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Destructure<'i>> {
-    let id = map(id_parser, |r| r.into());
-    let arr = map(
-        delimited(
-            lsqbracket_tag,
-            separated_list0(comma_tag, destructure_parser),
-            rsqbracket_tag,
-        ),
-        |ds| Destructure::Array(ds),
-    );
-    let obj = {
-        let str_prop_name = map(string_parser, |s| PropertyName::String(s.to_string()));
-        let id_prop_name = map(id_parser, |id| PropertyName::Id(id));
+recursive_parser!(
+    DESTRUCTURE_PARSER,
+    destructure_parser,
+    Destructure<'static>,
+    declarations {
+        let destructure = DESTRUCTURE_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let id = id_parser().map(|id| Destructure::Id(id));
+        let arr = destructure
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
+            .map(Destructure::Array);
+        let obj = {
+            let str_prop_name = string_parser()
+                .map(|s| s.to_string())
+                .map(PropertyName::String);
+            let id_prop_name = id_parser().map(PropertyName::Id);
 
-        fn alias<'i>(input: Tokens<'i>) -> ParseRes<'i, Destructure<'i>> {
-            preceded(colon_tag, destructure_parser)(input)
+            let alias = just(Token::Colon).ignore_then(destructure.clone());
+
+            let str_prop = str_prop_name
+                .then(alias.clone())
+                .map(|(name, alias)| PropertyDestructure {
+                    name,
+                    alias: Some(alias),
+                });
+            let id_prop = id_prop_name
+                .then(alias.or_not())
+                .map(|(name, alias)| PropertyDestructure { name, alias });
+
+            str_prop.or(id_prop)
+        };
+        let obj = obj
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(Destructure::Object);
+
+        id.or(arr).or(obj)
+    },
+    definitions {
+        if !destructure.is_defined() {
+            destructure_parser();
         }
+    }
+);
 
-        let str_prop = map(pair(str_prop_name, alias), |(name, alias)| {
-            PropertyDestructure {
-                name,
-                alias: Some(alias),
-            }
-        });
-        let id_prop = map(pair(id_prop_name, opt(alias)), |(name, alias)| {
-            PropertyDestructure { name, alias }
-        });
+pub fn var_decl_assignment_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, VarDeclAssignment<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
+    let expr = EXPR_PARSER.read().unwrap().clone();
 
-        alt((id_prop, str_prop))
-    };
-    let obj = map(
-        delimited(lbracket_tag, separated_list0(comma_tag, obj), rbracket_tag),
-        |os| Destructure::Object(os),
-    );
-
-    alt((id, arr, obj))(input)
-}
-
-pub(crate) fn var_decl_assignment_parser<'i>(
-    input: Tokens<'i>,
-) -> ParseRes<'i, VarDeclAssignment<'i>> {
-    let (input, destructure) = destructure_parser(input)?;
-    let (input, var_type) = opt(type_specifier_parser)(input)?;
-    let (input, _) = as_eq_tag(input)?;
-    let (input, expr) = expr_parser(input)?;
-
-    Ok((
-        input,
-        VarDeclAssignment {
+    // Main definition
+    let var_decl_as = destructure
+        .clone()
+        .then(type_specifier_parser().or_not())
+        .then_ignore(just(Token::AssignmentEq))
+        .then(expr.clone())
+        .map(|((destructure, var_type), expr)| VarDeclAssignment {
             destructure,
             var_type,
             expr,
-        },
-    ))
+        });
+
+    // Definitions
+    if !destructure.is_defined() {
+        destructure_parser();
+    }
+    if !expr.is_defined() {
+        expr_parser();
+    }
+
+    var_decl_as
 }
 
-pub(crate) fn var_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, VarDecl<'i>> {
-    let (input, scope_spec) = scope_specifier_parser(input)?;
-    let (input, decl_assignments) = separated_list1(comma_tag, var_decl_assignment_parser)(input)?;
+pub fn var_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, VarDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let decl_assignments_p = var_decl_assignment_parser()
+        .separated_by(just(Token::Comma))
+        .at_least(1)
+        .collect::<Vec<_>>();
 
-    Ok((
-        input,
-        VarDecl {
+    scope_specifier_parser()
+        .then(decl_assignments_p)
+        .map(|(scope_spec, decl_assignments)| VarDecl {
             scope_spec,
             decl_assignments,
-        },
-    ))
+        })
 }
 
 // TODO: Make this chainable with a right-associative operator
 // Ex. x = y = z
 // TODO: Make this be able to have an operator before eq
 // Ex. x += 10
-pub(crate) fn assignment_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Assignment<'i>> {
-    let (input, assignee_expr) = assignment_expr_parser(input)?;
-    match assignee_expr {
-        Expr::Id(_) | Expr::Indexing(_) | Expr::MemberAccess(_) => {}
-        _ => {
-            return Err(nom::Err::Error(nom::error::Error {
-                input,
-                code: ErrorKind::Tag,
-            }))
-        }
-    }
+pub fn assignment_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, Assignment<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let expr = EXPR_PARSER.read().unwrap().clone();
 
-    let (input, bop) = opt(bop_parser)(input)?;
-    if let Some(bop_ref) = bop.as_ref() {
-        match bop_ref {
-            // These are the only operators allowed in operation assignment
-            BOp::Add | BOp::Sub | BOp::Mul | BOp::Div | BOp::Mod | BOp::Pow => {}
-            _ => {
-                return Err(nom::Err::Error(nom::error::Error {
-                    input,
-                    code: ErrorKind::Tag,
-                }))
-            }
-        }
-    }
-
-    let (input, _) = as_eq_tag(input)?;
-    let (input, assigned_expr) = expr_parser(input)?;
-
-    Ok((
-        input,
-        Assignment {
+    // Main definition
+    let non_cmp_op = bop_parser().filter(|bop| {
+        matches!(
+            bop,
+            BOp::Add | BOp::Sub | BOp::Mul | BOp::Div | BOp::Mod | BOp::Pow
+        )
+    });
+    let assignment = assignment_expr_parser()
+        .filter(|e| matches!(e, Expr::Id(_) | Expr::Indexing(_) | Expr::MemberAccess(_)))
+        .then(non_cmp_op.or_not())
+        .then_ignore(just(Token::AssignmentEq))
+        .then(expr.clone())
+        .map(|((assignee_expr, bop), assigned_expr)| Assignment {
             assignee_expr,
             bop,
             assigned_expr,
-        },
-    ))
+        });
+
+    // Definitions
+    if !expr.is_defined() {
+        expr_parser();
+    }
+
+    assignment
 }
 
-pub(crate) fn for_stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
-    let assignment = map(assignment_parser, |a| Stmt::Assignment(a));
-    let expr = map(expr_parser, |e| Stmt::Expr(e));
-    let var_decl = map(var_decl_parser, |vd| Stmt::VarDecl(vd));
+pub fn for_stmt_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, Stmt<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let expr = EXPR_PARSER.read().unwrap().clone();
 
-    let (input, stmt) = alt((assignment, expr, var_decl))(input)?;
-    Ok((input, stmt))
+    // Main definition
+    let assignment = assignment_parser().map(Stmt::Assignment);
+    let expr_s = expr.clone().map(Stmt::Expr);
+    let var_decl = var_decl_parser().map(Stmt::VarDecl);
+
+    let for_stmt = assignment.or(expr_s).or(var_decl);
+
+    // Definitions
+    if !expr.is_defined() {
+        expr_parser();
+    }
+
+    for_stmt
 }
 
-// TODO: Write tests for the statement parser
-// checking that the stmt end is correct for each one
-pub(crate) fn stmt_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Stmt<'i>> {
-    let fn_decl = map(fn_decl_parser, |fd| Stmt::FnDecl(fd));
-    let class_decl = map(class_decl_parser, |c| Stmt::ClassDecl(c));
-    let for_ = map(for_parser, |f| Stmt::For(f));
-    let while_ = map(while_parser, |w| Stmt::While(w));
-    let do_while = map(do_while_parser, |dw| Stmt::DoWhile(dw));
-    let if_ = map(if_parser, |i| Stmt::If(i));
-    let block = map(block_parser, |b| Stmt::Block(b));
-    let extern_decl = map(extern_decl_parser, |ed| Stmt::ExternDecl(ed));
+recursive_parser!(
+    STMT_PARSER,
+    stmt_parser,
+    Stmt<'static>,
+    declarations {
+        let block = BLOCK_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let fn_decl = fn_decl_parser().map(Stmt::FnDecl);
+        let class_decl = class_decl_parser().map(Stmt::ClassDecl);
+        let for_ = for_parser().map(Stmt::For);
+        let while_ = while_parser().map(Stmt::While);
+        let do_while = do_while_parser().map(Stmt::DoWhile);
+        let if_ = if_parser().map(Stmt::If);
+        let block_s = block.clone().map(Stmt::Block);
+        let extern_decl = extern_decl_parser().map(Stmt::ExternDecl);
 
-    // Non-Terminated statements
-    let stmt_nt = alt((fn_decl, class_decl, for_, while_, if_, block));
-    // Terminated statements
-    let stmt_t = alt((do_while, extern_decl, for_stmt_parser));
-    // Statement parser
-    let mut stmt_p = alt((stmt_nt, terminated(stmt_t, stmt_end_parser)));
+        let stmt_nt = fn_decl.or(class_decl).or(for_).or(while_).or(if_).or(block_s);
+        let stmt_t = do_while.or(extern_decl).or(for_stmt_parser());
+        let stmt = stmt_nt.or(stmt_t.then_ignore(stmt_end_parser()));
 
-    let (input, stmt) = stmt_p(input)?;
-    Ok((input, stmt))
-}
+        stmt
+    },
+    definitions {
+        if !block.is_defined() {
+            block_parser();
+        }
+    }
+);
 
-pub(crate) fn top_block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
-    map(many0(stmt_parser), |stmts| Block { stmts })(input)
-}
+recursive_parser!(
+    TOP_BLOCK_PARSER,
+    top_block_parser,
+    Block<'static>,
+    declarations {
+        let stmt = STMT_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        stmt.clone()
+            .repeated()
+            .collect::<Vec<_>>()
+            .map(|stmts| Block { stmts })
+    },
+    definitions {
+        if !stmt.is_defined() {
+            stmt_parser();
+        }
+    }
+);
 
-pub(crate) fn block_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, Block<'i>> {
-    delimited(lbracket_tag, top_block_parser, rbracket_tag)(input)
-}
+recursive_parser!(
+    BLOCK_PARSER,
+    block_parser,
+    Block<'static>,
+    declarations {
+        let top_block = TOP_BLOCK_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        top_block.clone().delimited_by(just(Token::LBracket), just(Token::RBracket))
+    },
+    definitions {
+        if !top_block.is_defined() {
+            top_block_parser();
+        }
+    }
+);
 
 #[cfg(test)]
 mod test {
+    use chumsky::Parser;
+
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
@@ -197,49 +270,45 @@ mod test {
         },
         lexer::Token,
         parser::{
-            helpers::test::span_token_vec,
+            helpers::test::stream_token_vec,
             main_parser::{
                 assignment_parser, block_parser, destructure_parser, for_stmt_parser,
                 stmt_end_parser, top_block_parser, var_decl_parser,
             },
-            token::Tokens,
         },
     };
 
     #[test]
     fn stmt_end_parser_test() {
-        let token_iter = span_token_vec(vec![Token::StmtEnd]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::StmtEnd]);
 
-        let res = stmt_end_parser(tokens);
+        let res = stmt_end_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, stmt_end) = res.unwrap();
+        let stmt_end = res.unwrap();
         assert_eq!(stmt_end, ())
     }
 
     #[test]
     fn stmt_end_parser_err_test() {
-        let token_iter = span_token_vec(vec![]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![]);
 
-        let res = stmt_end_parser(tokens);
+        let res = stmt_end_parser().parse(tokens).into_result();
         assert!(res.is_err());
     }
 
     #[test]
     fn destructure_arr_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::LSqBracket,
             Token::Id("x".into()),
             Token::RSqBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = destructure_parser(tokens);
+        let res = destructure_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, destructure) = res.unwrap();
+        let destructure = res.unwrap();
         assert_eq!(
             destructure,
             Destructure::Array(vec![Destructure::Id("x".into())])
@@ -248,20 +317,18 @@ mod test {
 
     #[test]
     fn destructure_id_parser_test() {
-        let token_iter: Vec<crate::parser::token::TokenSpan> =
-            span_token_vec(vec![Token::Id("x".into())]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::Id("x".into())]);
 
-        let res = destructure_parser(tokens);
+        let res = destructure_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, destructure) = res.unwrap();
+        let destructure = res.unwrap();
         assert_eq!(destructure, Destructure::Id("x".into()))
     }
 
     #[test]
     fn destructure_obj_parser_test() {
-        let token_iter: Vec<crate::parser::token::TokenSpan> = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::LBracket,
             Token::Str(r#""x""#),
             Token::Colon,
@@ -272,12 +339,11 @@ mod test {
             Token::Id("z".into()),
             Token::RBracket,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = destructure_parser(tokens);
+        let res = destructure_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, destructure) = res.unwrap();
+        let destructure = res.unwrap();
         assert_eq!(
             destructure,
             Destructure::Object(vec![
@@ -295,18 +361,16 @@ mod test {
 
     #[test]
     fn assignment_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::IntVal("10"),
-            Token::StmtEnd,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = assignment_parser(tokens);
+        let res = assignment_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, assignment) = res.unwrap();
+        let assignment = res.unwrap();
         assert_eq!(
             assignment,
             Assignment {
@@ -319,19 +383,21 @@ mod test {
 
     #[test]
     fn var_decl_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::ScopeSpecifier(ScopeSpecifier::Let),
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::IntVal("10"),
-            Token::StmtEnd,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = var_decl_parser(tokens);
+        let parse_res = var_decl_parser().parse(tokens);
+        for err in parse_res.errors() {
+            dbg!(err);
+        }
+        let res = parse_res.into_result();
         assert!(res.is_ok());
 
-        let (_remaining, assignment) = res.unwrap();
+        let assignment = res.unwrap();
         assert_eq!(
             assignment,
             VarDecl {
@@ -347,7 +413,7 @@ mod test {
 
     #[test]
     fn top_block_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::IntVal("10"),
@@ -357,12 +423,11 @@ mod test {
             Token::IntVal("10"),
             Token::StmtEnd,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = top_block_parser(tokens);
+        let res = top_block_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, block) = res.unwrap();
+        let block = res.unwrap();
         assert_eq!(
             block,
             Block {
@@ -387,29 +452,27 @@ mod test {
 
     #[test]
     fn empty_block_parser_test() {
-        let token_iter = span_token_vec(vec![Token::LBracket, Token::RBracket]);
-        let tokens = Tokens::new(&token_iter);
+        let tokens = stream_token_vec(vec![Token::LBracket, Token::RBracket]);
 
-        let res = block_parser(tokens);
+        let res = block_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, block) = res.unwrap();
+        let block = res.unwrap();
         assert_eq!(block, Block { stmts: vec![] });
     }
 
     #[test]
     fn for_stmt_assignment_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::IntVal("10"),
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = for_stmt_parser(tokens);
+        let res = for_stmt_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, block) = res.unwrap();
+        let block = res.unwrap();
         assert_eq!(
             block,
             Stmt::Assignment(Assignment {
@@ -425,18 +488,17 @@ mod test {
 
     #[test]
     fn for_stmt_var_decl_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::ScopeSpecifier(ScopeSpecifier::Let),
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::IntVal("10"),
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = for_stmt_parser(tokens);
+        let res = for_stmt_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, block) = res.unwrap();
+        let block = res.unwrap();
         assert_eq!(
             block,
             Stmt::VarDecl(VarDecl {
@@ -452,17 +514,16 @@ mod test {
 
     #[test]
     fn for_stmt_expr_parser_test() {
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
             Token::BOp(BOp::Add),
             Token::IntVal("10"),
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = for_stmt_parser(tokens);
+        let res = for_stmt_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, block) = res.unwrap();
+        let block = res.unwrap();
         assert_eq!(
             block,
             Stmt::Expr(Expr::BinaryExpr(

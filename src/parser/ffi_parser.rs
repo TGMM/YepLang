@@ -1,41 +1,37 @@
-use nom::{branch::alt, combinator::map, multi::separated_list0, sequence::delimited};
-
+use super::{
+    main_parser::{ParserError, ParserInput},
+    primitive_parser::{id_parser, value_var_type_parser},
+};
 use crate::{
     ast::{ExternDecl, ExternType},
-    parser::primitive_parser::{comma_tag, extern_tag, id_parser},
+    lexer::Token,
 };
+use chumsky::{primitive::just, IterParser, Parser};
 
-use super::{
-    main_parser::ParseRes,
-    primitive_parser::{lparen_tag, rparen_tag, spread_tag, value_var_type_parser},
-    token::Tokens,
-};
+pub fn extern_type_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ExternType, ParserError<'i, Token<'i>>> + Clone {
+    let arg_type = value_var_type_parser().map(ExternType::Type);
+    let var_args = just(Token::Spread).to(ExternType::Spread);
 
-pub(crate) fn extern_type_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ExternType> {
-    let arg_type = map(value_var_type_parser, |v| ExternType::Type(v));
-    let var_args = map(spread_tag, |_| ExternType::Spread);
-
-    alt((arg_type, var_args))(input)
+    arg_type.or(var_args)
 }
 
-pub(crate) fn extern_decl_parser<'i>(input: Tokens<'i>) -> ParseRes<'i, ExternDecl> {
-    let (input, _) = extern_tag(input)?;
-    let (input, ret_type) = value_var_type_parser(input)?;
-    let (input, fn_id) = id_parser(input)?;
-    let (input, arg_types) = delimited(
-        lparen_tag,
-        separated_list0(comma_tag, extern_type_parser),
-        rparen_tag,
-    )(input)?;
+pub fn extern_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, ExternDecl, ParserError<'i, Token<'i>>> + Clone {
+    let arg_types_p = extern_type_parser()
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LParen), just(Token::RParen));
 
-    Ok((
-        input,
-        ExternDecl {
+    just(Token::Extern)
+        .ignore_then(value_var_type_parser())
+        .then(id_parser())
+        .then(arg_types_p)
+        .map(|((ret_type, fn_id), arg_types)| ExternDecl {
             ret_type,
             fn_id,
             arg_types,
-        },
-    ))
+        })
 }
 
 #[cfg(test)]
@@ -43,13 +39,14 @@ mod test {
     use crate::{
         ast::{BOp, ExternDecl, ExternType, ValueVarType, VarType},
         lexer::Token,
-        parser::{ffi_parser::extern_decl_parser, helpers::test::span_token_vec, token::Tokens},
+        parser::{ffi_parser::extern_decl_parser, helpers::test::stream_token_vec},
     };
+    use chumsky::Parser;
 
     #[test]
     fn extern_decl_test() {
         // extern i32 printf(*u8, ...);
-        let token_iter = span_token_vec(vec![
+        let tokens = stream_token_vec(vec![
             Token::Extern,
             Token::VarType(VarType::I32),
             Token::Id("printf"),
@@ -60,12 +57,11 @@ mod test {
             Token::Spread,
             Token::RParen,
         ]);
-        let tokens = Tokens::new(&token_iter);
 
-        let res = extern_decl_parser(tokens);
+        let res = extern_decl_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let (_remaining, expr) = res.unwrap();
+        let expr = res.unwrap();
         assert_eq!(
             expr,
             ExternDecl {
