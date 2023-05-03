@@ -1,3 +1,5 @@
+#![feature(lazy_cell)]
+
 mod ast;
 mod ast_display;
 mod lexer;
