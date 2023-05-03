@@ -3,7 +3,7 @@ use super::{
         boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, paren_expr_parser,
         EXPR_PARSER, PAREN_EXPR_PARSER,
     },
-    main_parser::{block_parser, stmt_end_parser, ParserError, ParserInput},
+    main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParserError, ParserInput},
 };
 use crate::{
     ast::{
@@ -151,40 +151,33 @@ pub fn for_parser<'i: 'static>(
     // Declarations
     let expr = EXPR_PARSER.read().unwrap().clone();
     let block = BLOCK_PARSER.read().unwrap().clone();
-    let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
     // Main definition
-    // TODO:
-    // let for_p = just(Token::For)
-    //     .ignore_then(just(Token::LParen))
-    //     // TODO: for_stmt_parser
-    //     .ignore_then(todo().or_not())
-    //     .then_ignore(stmt_end_parser())
-    //     .ignore_then(expr.or_not())
-    //     .then_ignore(stmt_end_parser())
-    //     // TODO: for_stmt_parser
-    //     .ignore_then(todo().or_not())
-    //     .then_ignore(stmt_end_parser())
-    //     .then(block.clone());
-    //     .map(|(((decl_stmt, cmp_expr), postfix_stmt), block)| For {
-    //         decl_stmt,
-    //         cmp_expr,
-    //         postfix_stmt,
-    //         block,
-    //     });
+    let for_p = just(Token::For)
+        .ignore_then(just(Token::LParen))
+        .ignore_then(for_stmt_parser().map(Box::new).or_not())
+        .then_ignore(stmt_end_parser())
+        .then(expr.clone().or_not())
+        .then_ignore(stmt_end_parser())
+        .then(for_stmt_parser().map(Box::new).or_not())
+        .then_ignore(just(Token::RParen))
+        .then(block.clone())
+        .map(|(((decl_stmt, cmp_expr), postfix_stmt), block)| For {
+            decl_stmt,
+            cmp_expr,
+            postfix_stmt,
+            block,
+        });
 
     // Definitions
     if !block.is_defined() {
         block_parser();
     }
-    if !paren_expr.is_defined() {
-        paren_expr_parser();
-    }
     if !expr.is_defined() {
         expr_parser();
     }
 
-    todo()
+    for_p
 }
 
 #[cfg(test)]

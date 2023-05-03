@@ -161,9 +161,13 @@ recursive_parser!(
 
 pub fn assignment_expr_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, Expr<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let indexer_parser_ = INDEXER_PARSER.read().unwrap().clone();
+
+    // Main definition
     let id = id_parser().map(Expr::Id);
 
-    let indexed_suffix = indexer_parser().map(PExprSuffix::Index);
+    let indexed_suffix = indexer_parser_.clone().map(PExprSuffix::Index);
     let member_access_suffix = member_access_prop_parser().map(PExprSuffix::MemberAccess);
     let pexpr_suffix = indexed_suffix.or(member_access_suffix).repeated();
 
@@ -178,6 +182,11 @@ pub fn assignment_expr_parser<'i: 'static>(
         })),
         _ => unreachable!(),
     });
+
+    // Definitions
+    if !indexer_parser_.is_defined() {
+        indexer_parser();
+    }
 
     suffixed_pexpr
 }
