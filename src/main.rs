@@ -6,14 +6,9 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use crate::parser::main_parser::top_block_parser;
-use chumsky::prelude::SimpleSpan;
-use chumsky::Parser;
-use chumsky::{input::Stream, prelude::Input};
 use compiler::codegen::Compiler;
 use inkwell::{context::Context, passes::PassManager};
-use lexer::Token;
-use logos::Logos;
+use parser::main_parser::parse;
 use std::collections::HashMap;
 
 fn main() {
@@ -38,17 +33,7 @@ fn main() {
     test_func(30);
 
     printf("Out again\n");"#;
-    let tokens = Token::lexer(input)
-        .spanned()
-        .map(|(token, span)| (token.unwrap(), SimpleSpan::from(span)))
-        .collect::<Vec<_>>();
-    let length = tokens.len();
-    let tokens_stream = Stream::from_iter(tokens).spanned((length..length).into());
-
-    let top_block = top_block_parser()
-        .parse(tokens_stream)
-        .into_result()
-        .unwrap();
+    let top_block = parse(input, "input.file").expect("Invalid code");
 
     let context = Context::create();
     let module = context.create_module("TODO_file_name");
