@@ -410,8 +410,7 @@ mod test {
         )
     }
 
-    // TODO: Finish expr parser
-    // #[test]
+    #[test]
     fn primitive_val_test() {
         let tokens = stream_token_vec(vec![
             Token::BoolVal("true"),
