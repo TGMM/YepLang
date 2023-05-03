@@ -24,6 +24,7 @@ use super::{
     class_parser::{class_decl_parser, fn_decl_parser},
     control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
     expr_parser::{assignment_expr_parser, expr_parser, EXPR_PARSER},
+    ffi_parser::extern_decl_parser,
     primitive_parser::{
         bop_parser, id_parser, scope_specifier_parser, string_parser, type_specifier_parser,
     },
@@ -206,11 +207,10 @@ recursive_parser!(
         let do_while = do_while_parser().map(Stmt::DoWhile);
         let if_ = if_parser().map(Stmt::If);
         let block_s = block.clone().map(Stmt::Block);
-        // let extern_decl = todo();
+        let extern_decl = extern_decl_parser().map(Stmt::ExternDecl);
 
-        // TODO: Add back the commented parsers
         let stmt_nt = fn_decl.or(class_decl).or(for_).or(while_).or(if_).or(block_s);
-        let stmt_t = do_while.or(for_stmt_parser());
+        let stmt_t = do_while.or(extern_decl).or(for_stmt_parser());
         let stmt = stmt_nt.or(stmt_t.then_ignore(stmt_end_parser()));
 
         stmt
