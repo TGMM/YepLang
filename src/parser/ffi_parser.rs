@@ -1,14 +1,12 @@
-use chumsky::{primitive::just, IterParser, Parser};
-
-use crate::{
-    ast::{ExternDecl, ExternType},
-    lexer::Token,
-};
-
 use super::{
     main_parser::{ParserError, ParserInput},
     primitive_parser::{id_parser, value_var_type_parser},
 };
+use crate::{
+    ast::{ExternDecl, ExternType},
+    lexer::Token,
+};
+use chumsky::{primitive::just, IterParser, Parser};
 
 pub fn extern_type_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ExternType, ParserError<'i, Token<'i>>> + Clone {
