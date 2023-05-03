@@ -2,18 +2,19 @@ use super::{
     expr_parser::{boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, EXPR_PARSER},
     main_parser::{ParserError, ParserInput},
 };
+use crate::parser::main_parser::{GlobalParser, RecursiveParser};
 use crate::{
     ast::{
         ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
         StructVal, ValueVarType, VarType,
     },
     lexer::Token,
+    recursive_parser,
 };
-use chumsky::{
-    primitive::{just, todo},
-    select, IterParser, Parser,
-};
+use chumsky::recursive::Recursive;
+use chumsky::{primitive::just, select, IterParser, Parser};
 use snailquote::unescape;
+use std::sync::{Arc, LazyLock, RwLock};
 
 pub fn bop_parser<'i>() -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone
 {
@@ -80,58 +81,87 @@ pub fn char_parser<'i>(
     })
 }
 
-pub fn array_val_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, ArrayVal<'i>, ParserError<'i, Token<'i>>> + Clone {
-    // Declarations
-    let expr = EXPR_PARSER.read().unwrap().clone();
+recursive_parser!(
+    ARRAY_VAL_PARSER,
+    array_val_parser,
+    ArrayVal<'static>,
+    declarations {
+        let expr = EXPR_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let arr = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
+            .map(ArrayVal);
 
-    // Main definition
-    let arr = expr
-        .separated_by(just(Token::Comma))
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
-        .map(ArrayVal);
+        arr
+    },
+    definitions {
+        if !expr.is_defined() {
+            expr_parser();
+        }
+    }
+);
 
-    // Definitions
-    expr_parser();
+recursive_parser!(
+    STRUCT_VAL_PARSER,
+    struct_val_parser,
+    StructVal<'static>,
+    declarations {
+        let expr = EXPR_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let id_prop_name = id_parser().map(PropertyName::Id);
+        let str_prop_name = string_parser().map(PropertyName::String);
+        let prop_name = id_prop_name.or(str_prop_name);
+        let prop = prop_name.then_ignore(just(Token::Colon)).then(expr.clone());
 
-    arr
-}
+        let struct_p = prop
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(StructVal);
 
-pub fn struct_val_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, StructVal<'i>, ParserError<'i, Token<'i>>> + Clone {
-    // Declarations
-    let expr = EXPR_PARSER.read().unwrap().clone();
+        struct_p
+    },
+    definitions {
+        if !expr.is_defined() {
+            expr_parser();
+        }
+    }
+);
 
-    let id_prop_name = id_parser().map(PropertyName::Id);
-    let str_prop_name = string_parser().map(PropertyName::String);
-    let prop_name = id_prop_name.or(str_prop_name);
-    let prop = prop_name.then_ignore(just(Token::Colon)).then(expr);
+recursive_parser!(
+    PRIMITIVE_VAL_PARSER,
+    primitive_val_parser,
+    PrimitiveVal<'static>,
+    declarations {
+        let array_val = ARRAY_VAL_PARSER.read().unwrap().clone()
+        let struct_val = STRUCT_VAL_PARSER.read().unwrap().clone()
+    },
+    main_definition {
+        let num = signed_number_parser();
+        let bool = negated_bool_parser();
+        let char = char_parser().map(PrimitiveVal::Char);
+        let string = string_parser().map(PrimitiveVal::String);
+        let arr = array_val.clone().map(PrimitiveVal::Array);
+        let struct_v = struct_val.clone().map(PrimitiveVal::Struct);
 
-    // Main definition
-    let struct_p = prop
-        .separated_by(just(Token::Comma))
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
-        .map(StructVal);
+        let primitive_val = num.or(bool).or(char).or(string).or(arr).or(struct_v);
 
-    // Definitions
-    expr_parser();
-
-    struct_p
-}
-
-pub fn primitive_val_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, PrimitiveVal<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let num = signed_number_parser();
-    let bool = negated_bool_parser();
-    let char = char_parser().map(PrimitiveVal::Char);
-    let string = string_parser().map(PrimitiveVal::String);
-    let arr = array_val_parser().map(PrimitiveVal::Array);
-    let struct_v = struct_val_parser().map(PrimitiveVal::Struct);
-
-    num.or(bool).or(char).or(string).or(arr).or(struct_v)
-}
+        primitive_val
+    },
+    definitions {
+        if !array_val.is_defined() {
+            array_val_parser();
+        }
+        if !struct_val.is_defined() {
+            struct_val_parser();
+        }
+    }
+);
 
 pub fn scope_specifier_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, ScopeSpecifier, ParserError<'i, Token<'i>>> + Clone {
@@ -294,8 +324,7 @@ mod test {
         assert_eq!(char_val, '\'')
     }
 
-    // TODO: Finish expr parser
-    // #[test]
+    #[test]
     fn array_test() {
         let tokens = stream_token_vec(vec![
             Token::LSqBracket,
@@ -333,8 +362,7 @@ mod test {
         )
     }
 
-    // TODO: Finish expr parser
-    // #[test]
+    #[test]
     fn struct_test() {
         let tokens = stream_token_vec(vec![
             Token::LBracket,
