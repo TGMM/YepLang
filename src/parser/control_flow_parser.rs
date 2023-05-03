@@ -1,26 +1,16 @@
 use super::{
-    expr_parser::{
-        boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, paren_expr_parser,
-        EXPR_PARSER, PAREN_EXPR_PARSER,
-    },
+    expr_parser::{expr_parser, paren_expr_parser, EXPR_PARSER, PAREN_EXPR_PARSER},
     main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParserError, ParserInput},
 };
 use crate::{
-    ast::{
-        ArrayVal, BOp, BoolLiteral, DoWhile, For, Id, If, NumericLiteral, PrimitiveVal,
-        PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType, While,
-    },
-    lexer::Token,
-    recursive_parser,
+    ast::{Block, ElseIf},
+    parser::main_parser::BLOCK_PARSER,
 };
 use crate::{
-    ast::{Block, ElseIf},
-    parser::main_parser::{GlobalParser, RecursiveParser, BLOCK_PARSER},
+    ast::{DoWhile, For, If, While},
+    lexer::Token,
 };
-use chumsky::{primitive::just, select, IterParser, Parser};
-use chumsky::{primitive::todo, recursive::Recursive};
-use snailquote::unescape;
-use std::sync::{Arc, LazyLock, RwLock};
+use chumsky::{primitive::just, IterParser, Parser};
 
 pub fn else_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, Block<'i>, ParserError<'i, Token<'i>>> + Clone {

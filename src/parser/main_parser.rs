@@ -21,6 +21,7 @@ use std::{
 };
 
 use super::{
+    class_parser::{class_decl_parser, fn_decl_parser},
     control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
     expr_parser::{assignment_expr_parser, expr_parser, EXPR_PARSER},
     primitive_parser::{
@@ -198,8 +199,8 @@ recursive_parser!(
         let block = BLOCK_PARSER.read().unwrap().clone()
     },
     main_definition {
-        // let fn_decl = todo();
-        // let class_decl = todo();
+        let fn_decl = fn_decl_parser().map(Stmt::FnDecl);
+        let class_decl = class_decl_parser().map(Stmt::ClassDecl);
         let for_ = for_parser().map(Stmt::For);
         let while_ = while_parser().map(Stmt::While);
         let do_while = do_while_parser().map(Stmt::DoWhile);
@@ -208,7 +209,7 @@ recursive_parser!(
         // let extern_decl = todo();
 
         // TODO: Add back the commented parsers
-        let stmt_nt = for_.or(while_).or(if_).or(block_s);
+        let stmt_nt = fn_decl.or(class_decl).or(for_).or(while_).or(if_).or(block_s);
         let stmt_t = do_while.or(for_stmt_parser());
         let stmt = stmt_nt.or(stmt_t.then_ignore(stmt_end_parser()));
 
