@@ -157,6 +157,9 @@ impl<'a> From<Id> for Expr<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TopBlock<'input>(pub Block<'input>);
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Block<'input> {
     pub stmts: Vec<Stmt<'input>>,
 }

@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
-        VarDecl, VarDeclAssignment,
+        TopBlock, VarDecl, VarDeclAssignment,
     },
     lexer::Token,
     recursive_parser,
@@ -225,7 +225,7 @@ recursive_parser!(
 recursive_parser!(
     TOP_BLOCK_PARSER,
     top_block_parser,
-    Block<'static>,
+    TopBlock<'static>,
     declarations {
         let stmt = STMT_PARSER.read().unwrap().clone()
     },
@@ -234,6 +234,7 @@ recursive_parser!(
             .repeated()
             .collect::<Vec<_>>()
             .map(|stmts| Block { stmts })
+            .map(TopBlock)
     },
     definitions {
         if !stmt.is_defined() {
@@ -250,7 +251,7 @@ recursive_parser!(
         let top_block = TOP_BLOCK_PARSER.read().unwrap().clone()
     },
     main_definition {
-        top_block.clone().delimited_by(just(Token::LBracket), just(Token::RBracket))
+        top_block.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).map(|tb| tb.0)
     },
     definitions {
         if !top_block.is_defined() {
@@ -266,7 +267,8 @@ mod test {
     use crate::{
         ast::{
             Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
-            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment,
+            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock, VarDecl,
+            VarDeclAssignment,
         },
         lexer::Token,
         parser::{
@@ -430,7 +432,7 @@ mod test {
         let block = res.unwrap();
         assert_eq!(
             block,
-            Block {
+            TopBlock(Block {
                 stmts: vec![
                     Stmt::Assignment(Assignment {
                         assignee_expr: Expr::Id("x".into()),
@@ -446,7 +448,7 @@ mod test {
                         )),
                     })))
                 ]
-            }
+            })
         )
     }
 
