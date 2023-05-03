@@ -93,7 +93,7 @@ recursive_parser!(
         let top_block = TOP_BLOCK_PARSER.read().unwrap().clone()
     },
     main_definition {
-        top_block.clone().delimited_by(just(Token::LParen), just(Token::RParen))
+        top_block.clone().delimited_by(just(Token::LBracket), just(Token::RBracket))
     },
     definitions {
         if !top_block.is_defined() {
