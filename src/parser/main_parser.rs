@@ -17,15 +17,15 @@ use std::{
     vec::IntoIter,
 };
 
-use super::primitive_parser::{id_parser, scope_specifier_parser};
+use super::primitive_parser::id_parser;
 
 pub type ParserError<'a, T> = extra::Err<Rich<'a, T>>;
 pub type ParserInput<'a> =
     SpannedInput<Token<'a>, SimpleSpan, Stream<IntoIter<(Token<'a>, SimpleSpan)>>>;
 
-type RecursiveParser<'a, O> =
+pub type RecursiveParser<'a, O> =
     Recursive<Indirect<'a, 'a, ParserInput<'a>, O, ParserError<'a, Token<'a>>>>;
-type GlobalParser<'a, O> = LazyLock<Arc<RwLock<RecursiveParser<'a, O>>>>;
+pub type GlobalParser<'a, O> = LazyLock<Arc<RwLock<RecursiveParser<'a, O>>>>;
 
 pub fn stmt_end_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, (), ParserError<'i, Token<'i>>> + Clone {

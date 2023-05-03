@@ -6,7 +6,7 @@ macro_rules! recursive_parser {
         declarations { $($decl:stmt)* },
         main_definition $main_def:block,
         definitions $def:block ) => {
-        static $global_name: GlobalParser<'static, $out_ty> =
+        pub(crate) static $global_name: GlobalParser<'static, $out_ty> =
             LazyLock::new(|| Arc::new(RwLock::new(Recursive::declare())));
 
         pub(crate) fn $fn_name() -> RecursiveParser<'static, $out_ty> {
