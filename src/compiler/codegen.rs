@@ -1,79 +1,26 @@
-use crate::ast::{
-    Assignment, BExpr, BOp, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl,
-    NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
+use super::helpers::{
+    convert_type_to_metadata, convert_value_to_metadata, Compiler, ScopeMarker, ScopedVal,
+    ScopedVar,
 };
-use enum_as_inner::EnumAsInner;
+use crate::{
+    ast::{
+        Assignment, BExpr, BOp, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl,
+        NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl,
+        VarType,
+    },
+    compiler::helpers::ScopedFunc,
+};
 use inkwell::{
-    basic_block::BasicBlock,
-    builder::Builder,
-    context::Context,
-    module::{Linkage, Module},
-    passes::PassManager,
+    module::Linkage,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
+    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
     AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
 };
-use std::{collections::HashMap, mem::transmute, path::Path};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScopeMarker<'ctx> {
-    ScopeBegin,
-    Var(String, Option<ScopedVal<'ctx>>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ScopedVar<'ctx> {
-    ptr_val: PointerValue<'ctx>,
-    var_type: ValueVarType,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ScopedFunc<'ctx> {
-    ptr_val: FunctionValue<'ctx>,
-    ret_type: ValueVarType,
-}
-
-#[derive(Debug, Clone, PartialEq, EnumAsInner)]
-pub enum ScopedVal<'ctx> {
-    Var(ScopedVar<'ctx>),
-    Fn(ScopedFunc<'ctx>),
-}
-
-pub struct Compiler<'input, 'ctx> {
-    pub context: &'ctx Context,
-    pub builder: &'input Builder<'ctx>,
-    pub fpm: &'input PassManager<FunctionValue<'ctx>>,
-    pub module: &'input Module<'ctx>,
-    pub curr_scope_vars: HashMap<String, ScopedVal<'ctx>>,
-    pub scope_stack: Vec<ScopeMarker<'ctx>>,
-    pub basic_block_stack: Vec<BasicBlock<'ctx>>,
-}
+use std::{mem::transmute, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 impl<'input, 'ctx> Compiler<'input, 'ctx> {
-    pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {
-        match ty {
-            BasicTypeEnum::ArrayType(a) => BasicMetadataTypeEnum::ArrayType(a),
-            BasicTypeEnum::FloatType(f) => BasicMetadataTypeEnum::FloatType(f),
-            BasicTypeEnum::IntType(i) => BasicMetadataTypeEnum::IntType(i),
-            BasicTypeEnum::PointerType(p) => BasicMetadataTypeEnum::PointerType(p),
-            BasicTypeEnum::StructType(s) => BasicMetadataTypeEnum::StructType(s),
-            BasicTypeEnum::VectorType(v) => BasicMetadataTypeEnum::VectorType(v),
-        }
-    }
-
-    pub fn convert_value_to_metadata(val: BasicValueEnum) -> BasicMetadataValueEnum {
-        match val {
-            BasicValueEnum::ArrayValue(a) => BasicMetadataValueEnum::ArrayValue(a),
-            BasicValueEnum::IntValue(i) => BasicMetadataValueEnum::IntValue(i),
-            BasicValueEnum::FloatValue(f) => BasicMetadataValueEnum::FloatValue(f),
-            BasicValueEnum::PointerValue(p) => BasicMetadataValueEnum::PointerValue(p),
-            BasicValueEnum::StructValue(s) => BasicMetadataValueEnum::StructValue(s),
-            BasicValueEnum::VectorValue(v) => BasicMetadataValueEnum::VectorValue(v),
-        }
-    }
-
     pub fn convert_to_type_enum(&self, vvt: ValueVarType) -> BasicTypeEnum<'ctx> {
         let ctx = self.context;
         let basic_vtype: Option<BasicTypeEnum> = match vvt.vtype {
@@ -257,7 +204,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             match arg_type {
                 ExternType::Type(vvt) => {
                     let ty = self.convert_to_type_enum(vvt);
-                    let metadata = Compiler::convert_type_to_metadata(ty);
+                    let metadata = convert_type_to_metadata(ty);
                     param_types.push(metadata);
                 }
                 // TODO: This should only apply if the var_args is last
@@ -545,8 +492,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let mut args = vec![];
         for arg_expr in fn_call.args {
             let arg_val = self.codegen_rhs_expr(arg_expr, None)?;
-            let arg_metadata: BasicMetadataValueEnum =
-                Compiler::convert_value_to_metadata(arg_val.0);
+            let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val.0);
             args.push(arg_metadata);
         }
 

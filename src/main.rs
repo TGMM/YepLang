@@ -6,7 +6,7 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::codegen::Compiler;
+use compiler::helpers::Compiler;
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
 use std::collections::HashMap;
