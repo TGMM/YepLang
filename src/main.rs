@@ -6,7 +6,7 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::codegen::Compiler;
+use compiler::helpers::Compiler;
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
 use std::collections::HashMap;
@@ -14,14 +14,13 @@ use std::collections::HashMap;
 fn main() {
     let input = r#"
     extern i32 printf(*u8, ...);
-    let x: i64 = 10;
+    let x: i32 = 10;
     {
-        let y: i64 = 20;
-        let x: i32 = 30;
-        x = 50;
+        let y: i32 = 20;
+        let z: boolean = x > y;
 
         printf("X is %d and y is %d\n", x, y);
-        printf("Some text\n");
+        printf("Is x greater than y? %d\n", z);
     }
 
     function test_func(arg: i64) {

@@ -2,7 +2,7 @@ use crate::lexer::Token;
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
 use logos::Lexer;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum VarType {
     I8,
     U8,
@@ -22,6 +22,16 @@ pub enum VarType {
     String,
     Custom(Id),
 }
+impl VarType {
+    pub fn is_signed(&self) -> bool {
+        match self {
+            VarType::I8 | VarType::I16 | VarType::I32 | VarType::I64 | VarType::I128 => true,
+            VarType::U8 | VarType::U16 | VarType::U32 | VarType::U64 | VarType::U128 => false,
+            _ => panic!("Only integer types can be signed"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueVarType {
     pub vtype: VarType,
@@ -143,7 +153,7 @@ pub fn str_to_scope_spec<'input>(lex: &Lexer<'input, Token<'input>>) -> ScopeSpe
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct Id(pub String);
 impl From<&str> for Id {
     fn from(value: &str) -> Self {
@@ -233,6 +243,15 @@ pub enum BOp {
     Ne,
     Eq,
 }
+impl BOp {
+    pub fn is_cmp(&self) -> bool {
+        match self {
+            BOp::Gt | BOp::Gte | BOp::Lt | BOp::Lte | BOp::Ne | BOp::Eq => true,
+            _ => false,
+        }
+    }
+}
+
 impl<'input> InfixOperator<Expr<'input>> for BOp {
     type Strength = u8;
 
