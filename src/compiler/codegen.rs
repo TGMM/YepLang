@@ -12,7 +12,7 @@ use inkwell::{
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, OptimizationLevel,
+    AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
 };
 use std::{collections::HashMap, mem::transmute, path::Path};
 
@@ -283,7 +283,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let assignee_ptr = self.codegen_lhs_expr(assignment.assignee_expr, None);
         let new_val = self
             .codegen_rhs_expr(assignment.assigned_expr, None)
-            .expect("Void function can't be on the right-hand side of an expression");
+            .unwrap();
 
         self.builder.build_store(assignee_ptr, new_val.0);
     }
@@ -319,36 +319,166 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         bexpr: BExpr,
         expected_type: Option<&ValueVarType>,
-    ) -> (BasicValueEnum, ValueVarType) {
+    ) -> Result<(BasicValueEnum, ValueVarType), String> {
         let BExpr { lhs, op, rhs } = bexpr;
-        let lhs = self
-            .codegen_rhs_expr(lhs, expected_type)
-            .expect("Invalid LHS");
-        let rhs = self
-            .codegen_rhs_expr(rhs, expected_type)
-            .expect("Invalid RHS");
+        let lhs = self.codegen_rhs_expr(lhs, expected_type)?;
+        let rhs = self.codegen_rhs_expr(rhs, expected_type)?;
 
         let (lhs_type, rhs_type) = (lhs.1, rhs.1);
-        if lhs_type != rhs_type {
-            panic!("Invalid operation between two different types");
+        if lhs_type.array_nesting_level > 0 || rhs_type.array_nesting_level > 0 {
+            if lhs_type.array_nesting_level != rhs_type.array_nesting_level {
+                return Err(
+                    "Operations between different array nesting levels are not supported"
+                        .to_string(),
+                );
+            }
+
+            match op {
+                BOp::Eq => {
+                    return Err(
+                        "Comparing two arrays for equality is not yet supported".to_string()
+                    );
+                }
+                unsupported_op => {
+                    let error = format!(
+                        "{} operation is not supported for array types",
+                        unsupported_op,
+                    );
+
+                    return Err(error);
+                }
+            }
         }
 
-        match op {
-            BOp::Add => {}
-            BOp::Sub => todo!(),
-            BOp::Mul => todo!(),
-            BOp::Div => todo!(),
-            BOp::Mod => todo!(),
-            BOp::Pow => todo!(),
-            BOp::Gt => todo!(),
-            BOp::Gte => todo!(),
-            BOp::Lt => todo!(),
-            BOp::Lte => todo!(),
-            BOp::Ne => todo!(),
-            BOp::Eq => todo!(),
+        if lhs_type.pointer_nesting_level > 0 || rhs_type.pointer_nesting_level > 0 {
+            match op {
+                BOp::Eq => {
+                    return Err(
+                        "Comparing two pointers for equality is not yet supported".to_string()
+                    );
+                }
+                unsupported_op => {
+                    let error = format!(
+                        "{} operation is not supported for pointer types",
+                        unsupported_op,
+                    );
+
+                    return Err(error);
+                }
+            }
         }
 
-        todo!()
+        if lhs_type.vtype != rhs_type.vtype {
+            return Err("Invalid binary operation between two different types".to_string());
+        }
+
+        let operand_type = lhs_type.vtype;
+        // Primitive BOp
+        let basic_val = match operand_type {
+            VarType::I8
+            | VarType::U8
+            | VarType::I16
+            | VarType::U16
+            | VarType::I32
+            | VarType::U32
+            | VarType::I64
+            | VarType::U64
+            | VarType::I128
+            | VarType::U128 => {
+                let lhs = lhs.0.into_int_value();
+                let rhs = rhs.0.into_int_value();
+                let b = self.builder;
+
+                let bop_res = match op {
+                    BOp::Add => b.build_int_add(lhs, rhs, "int_add"),
+                    BOp::Sub => b.build_int_sub(lhs, rhs, "int_sub"),
+                    BOp::Mul => b.build_int_mul(lhs, rhs, "int_mul"),
+                    BOp::Div if operand_type.is_signed() => {
+                        b.build_int_signed_div(lhs, rhs, "int_sdiv")
+                    }
+                    BOp::Div => b.build_int_unsigned_div(lhs, rhs, "int_udiv"),
+                    BOp::Mod if operand_type.is_signed() => {
+                        b.build_int_signed_rem(lhs, rhs, "int_srem")
+                    }
+                    BOp::Mod => b.build_int_unsigned_rem(lhs, rhs, "int_urem"),
+                    BOp::Pow => {
+                        return Err(format!("The {} operator is not yet supported", BOp::Pow))
+                    }
+                    BOp::Gt if operand_type.is_signed() => {
+                        b.build_int_compare(IntPredicate::SGT, lhs, rhs, "int_sgt_cmp")
+                    }
+                    BOp::Gt => b.build_int_compare(IntPredicate::UGT, lhs, rhs, "int_ugt_cmp"),
+                    BOp::Gte if operand_type.is_signed() => {
+                        b.build_int_compare(IntPredicate::SGE, lhs, rhs, "int_sge_cmp")
+                    }
+                    BOp::Gte => b.build_int_compare(IntPredicate::UGE, lhs, rhs, "int_uge_cmp"),
+                    BOp::Lt if operand_type.is_signed() => {
+                        b.build_int_compare(IntPredicate::SLT, lhs, rhs, "int_slt_cmp")
+                    }
+                    BOp::Lt => b.build_int_compare(IntPredicate::ULT, lhs, rhs, "int_ult_cmp"),
+                    BOp::Lte if operand_type.is_signed() => {
+                        b.build_int_compare(IntPredicate::SLE, lhs, rhs, "int_sle_cmp")
+                    }
+                    BOp::Lte => b.build_int_compare(IntPredicate::ULE, lhs, rhs, "int_ule_cmp"),
+                    BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "int_ne_cmp"),
+                    BOp::Eq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
+                };
+
+                bop_res.as_basic_value_enum()
+            }
+            VarType::F32 | VarType::F64 => {
+                let lhs = lhs.0.into_float_value();
+                let rhs = rhs.0.into_float_value();
+                let b = self.builder;
+
+                let bop_res = match op {
+                    BOp::Add => b.build_float_add(lhs, rhs, "flt_add").as_basic_value_enum(),
+                    BOp::Sub => b.build_float_sub(lhs, rhs, "flt_sub").as_basic_value_enum(),
+                    BOp::Mul => b.build_float_mul(lhs, rhs, "flt_mul").as_basic_value_enum(),
+                    BOp::Div => b.build_float_div(lhs, rhs, "flt_div").as_basic_value_enum(),
+                    BOp::Mod => b.build_float_rem(lhs, rhs, "flt_mod").as_basic_value_enum(),
+                    BOp::Pow => {
+                        return Err(format!("The {} operator is not yet supported", BOp::Pow))
+                    }
+                    BOp::Gt => b
+                        .build_float_compare(FloatPredicate::OGT, lhs, rhs, "flt_gt_cmp")
+                        .as_basic_value_enum(),
+                    BOp::Gte => b
+                        .build_float_compare(FloatPredicate::OGE, lhs, rhs, "flt_ge_cmp")
+                        .as_basic_value_enum(),
+                    BOp::Lt => b
+                        .build_float_compare(FloatPredicate::OLT, lhs, rhs, "flt_lt_cmp")
+                        .as_basic_value_enum(),
+                    BOp::Lte => b
+                        .build_float_compare(FloatPredicate::OLE, lhs, rhs, "flt_le_cmp")
+                        .as_basic_value_enum(),
+                    BOp::Ne => b
+                        .build_float_compare(FloatPredicate::ONE, lhs, rhs, "flt_ne_cmp")
+                        .as_basic_value_enum(),
+                    BOp::Eq => b
+                        .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "flt_eq_cmp")
+                        .as_basic_value_enum(),
+                };
+
+                bop_res
+            }
+            VarType::Void => todo!(),
+            VarType::Boolean => todo!(),
+            VarType::Char => todo!(),
+            VarType::String => todo!(),
+            VarType::Custom(_) => todo!(),
+        };
+
+        let expr_type = if !op.is_cmp() {
+            rhs_type
+        } else {
+            ValueVarType {
+                vtype: VarType::Boolean,
+                array_nesting_level: 0,
+                pointer_nesting_level: 0,
+            }
+        };
+        Ok((basic_val, expr_type))
     }
 
     /// Codegen an expression when it's used on the right-hand side of an operation.
@@ -359,12 +489,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         expr: Expr,
         expected_type: Option<&ValueVarType>,
-    ) -> Option<(BasicValueEnum, ValueVarType)> {
+    ) -> Result<(BasicValueEnum, ValueVarType), String> {
         match expr {
-            Expr::ParenExpr(_, _) => todo!(),
-            Expr::BinaryExpr(bexpr) => Some(self.codegen_bexpr(*bexpr, expected_type)),
+            // TODO: Handle expr unary operator
+            Expr::ParenExpr(_, expr) => self.codegen_rhs_expr(*expr, expected_type),
+            Expr::BinaryExpr(bexpr) => self.codegen_bexpr(*bexpr, expected_type),
             Expr::PrimitiveVal(primitive_val) => {
-                Some(self.codegen_primitive_val(primitive_val, expected_type))
+                Ok(self.codegen_primitive_val(primitive_val, expected_type))
             }
             Expr::FnCall(fn_call) => {
                 // TODO: Handle error user-side
@@ -376,31 +507,36 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 let scoped_val = self
                     .curr_scope_vars
                     .get(&var_id.0)
-                    // TODO: This should be an user facing error
+                    // TODO: This should be a user facing error
                     // and not a panic
-                    .expect("Undeclared variable");
-                let scoped_var = scoped_val.clone().into_var().unwrap();
+                    .ok_or("Undeclared variable")?;
+                let scoped_var = scoped_val.clone().into_var().map_err(|_| {
+                    "Using function pointer as a value is not supported".to_string()
+                })?;
 
                 let instruction_name = format!("load_{}", var_id.0);
                 let var_val = self
                     .builder
                     .build_load(scoped_var.ptr_val, &instruction_name);
 
-                Some((var_val, scoped_var.var_type.clone()))
+                Ok((var_val, scoped_var.var_type.clone()))
             }
         }
     }
 
-    pub fn codegen_fn_call(&self, fn_call: FnCall) -> Option<(BasicValueEnum, ValueVarType)> {
+    pub fn codegen_fn_call(
+        &self,
+        fn_call: FnCall,
+    ) -> Result<(BasicValueEnum, ValueVarType), String> {
         let fn_name = match fn_call.fn_expr {
             Expr::Id(id) => id.0,
-            _ => panic!("TODO: Functions as values are not yet supported"),
+            _ => return Err("TODO: Functions as values are not yet supported".to_string()),
         };
         // TODO: Handle this error user-side
         let function = self
             .curr_scope_vars
             .get(&fn_name)
-            .expect("Function does not exist")
+            .ok_or("Function does not exist")?
             .clone()
             .into_fn()
             .unwrap()
@@ -408,9 +544,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
-            let arg_val = self
-                .codegen_rhs_expr(arg_expr, None)
-                .expect("Void function can't be on the right-hand side of an expression");
+            let arg_val = self.codegen_rhs_expr(arg_expr, None)?;
             let arg_metadata: BasicMetadataValueEnum =
                 Compiler::convert_value_to_metadata(arg_val.0);
             args.push(arg_metadata);
@@ -434,7 +568,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             }
         };
 
-        ret_val.left().map(|rv| (rv, vvt))
+        ret_val
+            .left()
+            .map(|rv| (rv, vvt))
+            .ok_or("Fn call returned void".to_string())
     }
 
     pub fn codegen_int_val(
@@ -589,7 +726,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             };
             let (initial_val, var_type) = self
                 .codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref())
-                .expect("Void function can't be on the right-hand side of an expression");
+                .unwrap();
             let type_ = decl_as
                 .var_type
                 .map(|vvt| self.convert_to_type_enum(vvt))
