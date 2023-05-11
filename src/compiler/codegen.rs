@@ -630,6 +630,66 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         )
     }
 
+    pub fn codegen_float_val(
+        &self,
+        float_str: &str,
+        uop: Option<NumericUnaryOp>,
+        expected_type: Option<&ValueVarType>,
+    ) -> (BasicValueEnum, ValueVarType) {
+        let float_type;
+        let mut f64_val_res: f64;
+
+        if let Some(expected_type) = expected_type {
+            if expected_type.array_nesting_level > 0 {
+                panic!("Unexpected assignment of number to array type");
+            }
+            if expected_type.pointer_nesting_level > 0 {
+                panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            }
+
+            match &expected_type.vtype {
+                VarType::F32 => {
+                    float_type = self.context.f32_type();
+                    let float_val = float_str.parse::<f32>().unwrap();
+                    f64_val_res = float_val.into();
+                }
+                VarType::F64 => {
+                    float_type = self.context.f64_type();
+                    let float_val = float_str.parse::<f64>().unwrap();
+                    f64_val_res = float_val.into();
+                }
+                ty => panic!("Invalid int assignment to {}", ty),
+            }
+        } else {
+            // Default value is f32
+            float_type = self.context.f32_type();
+            let float_val = float_str.parse::<f32>().unwrap();
+            f64_val_res = float_val.into();
+        }
+
+        if let Some(uop) = uop {
+            match uop {
+                NumericUnaryOp::Minus => {
+                    f64_val_res = -f64_val_res;
+                }
+                NumericUnaryOp::Plus => {}
+            }
+        }
+
+        let basic_val = float_type.const_float(f64_val_res).as_basic_value_enum();
+
+        (
+            basic_val,
+            expected_type
+                .unwrap_or(&ValueVarType {
+                    vtype: VarType::F64,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                })
+                .clone(),
+        )
+    }
+
     pub fn codegen_primitive_val(
         &self,
         primitive_val: PrimitiveVal,
@@ -638,7 +698,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         match primitive_val {
             PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
                 NumericLiteral::Int(i) => self.codegen_int_val(i, uop, expected_type),
-                NumericLiteral::Float(_) => todo!(),
+                NumericLiteral::Float(f) => self.codegen_float_val(f, uop, expected_type),
             },
             PrimitiveVal::Boolean(_, _) => todo!(),
             PrimitiveVal::Char(_) => todo!(),

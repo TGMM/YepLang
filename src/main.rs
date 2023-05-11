@@ -18,8 +18,10 @@ fn main() {
     {
         let y: i32 = 20;
         let z: boolean = x > y;
+        let f: f64 = 123.123;
 
         printf("X is %d and y is %d\n", x, y);
+        printf("f is %f\n", f);
         printf("Is x greater than y? %d\n", z);
     }
 
