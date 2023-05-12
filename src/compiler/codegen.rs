@@ -693,7 +693,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             basic_val,
             expected_type
                 .unwrap_or(&ValueVarType {
-                    vtype: VarType::F64,
+                    vtype: VarType::F32,
                     array_nesting_level: 0,
                     pointer_nesting_level: 0,
                 })
