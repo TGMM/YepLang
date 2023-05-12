@@ -29,6 +29,8 @@ fn main() {
         printf("Test func: %d\n", arg);
     }
 
+    let b: boolean = false;
+
     test_func(10);
     test_func(20);
     test_func(30);

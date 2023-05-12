@@ -4,9 +4,9 @@ use super::helpers::{
 };
 use crate::{
     ast::{
-        Assignment, BExpr, BOp, Block, Destructure, Expr, ExternDecl, ExternType, FnCall, FnDecl,
-        NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock, ValueVarType, VarDecl,
-        VarType,
+        Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, Expr, ExternDecl,
+        ExternType, FnCall, FnDecl, NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock,
+        ValueVarType, VarDecl, VarType,
     },
     compiler::helpers::ScopedFunc,
 };
@@ -409,11 +409,27 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
                 bop_res
             }
-            VarType::Void => todo!(),
-            VarType::Boolean => todo!(),
+            VarType::Void => panic!("Binary operations between void types are invalid"),
+            VarType::Boolean => {
+                // Bool values are i1, so they are ints
+                let lhs = lhs.0.into_int_value();
+                let rhs = rhs.0.into_int_value();
+                let b = self.builder;
+
+                let bop_res = match op {
+                    BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "bool_eq_cmp"),
+                    BOp::Eq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
+                    unsupported_operation => panic!(
+                        "Unsupported operation {} between two booleans",
+                        unsupported_operation
+                    ),
+                };
+
+                bop_res.as_basic_value_enum()
+            }
             VarType::Char => todo!(),
             VarType::String => todo!(),
-            VarType::Custom(_) => todo!(),
+            VarType::Custom(_) => panic!("Classes are not yet supported"),
         };
 
         let expr_type = if !op.is_cmp() {
@@ -444,18 +460,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Expr::PrimitiveVal(primitive_val) => {
                 Ok(self.codegen_primitive_val(primitive_val, expected_type))
             }
-            Expr::FnCall(fn_call) => {
-                // TODO: Handle error user-side
-                self.codegen_fn_call(*fn_call)
-            }
+            Expr::FnCall(fn_call) => self.codegen_fn_call(*fn_call),
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
                 let scoped_val = self
                     .curr_scope_vars
                     .get(&var_id.0)
-                    // TODO: This should be a user facing error
-                    // and not a panic
                     .ok_or("Undeclared variable")?;
                 let scoped_var = scoped_val.clone().into_var().map_err(|_| {
                     "Using function pointer as a value is not supported".to_string()
@@ -477,7 +488,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     ) -> Result<(BasicValueEnum, ValueVarType), String> {
         let fn_name = match fn_call.fn_expr {
             Expr::Id(id) => id.0,
-            _ => return Err("TODO: Functions as values are not yet supported".to_string()),
+            _ => return Err("Functions as values are not yet supported".to_string()),
         };
         // TODO: Handle this error user-side
         let function = self
@@ -690,6 +701,56 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         )
     }
 
+    pub fn codegen_bool_val(
+        &self,
+        bool_literal: BoolLiteral,
+        buop: Option<BoolUnaryOp>,
+        expected_type: Option<&ValueVarType>,
+    ) -> (BasicValueEnum, ValueVarType) {
+        let bool_type = self.context.bool_type();
+        let mut bool_val_res: bool;
+
+        if let Some(expected_type) = expected_type {
+            if expected_type.array_nesting_level > 0 {
+                panic!("Unexpected assignment of number to array type");
+            }
+            if expected_type.pointer_nesting_level > 0 {
+                panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            }
+
+            match &expected_type.vtype {
+                VarType::Boolean => {
+                    bool_val_res = bool_literal.0;
+                }
+                ty => panic!("Invalid int assignment to {}", ty),
+            }
+        } else {
+            bool_val_res = bool_literal.0;
+        }
+
+        if let Some(buop) = buop {
+            match buop {
+                BoolUnaryOp::Not => {
+                    bool_val_res = !bool_val_res;
+                }
+            }
+        }
+
+        let u64_val: u64 = bool_val_res.into();
+        let basic_val = bool_type.const_int(u64_val, false).as_basic_value_enum();
+
+        (
+            basic_val,
+            expected_type
+                .unwrap_or(&ValueVarType {
+                    vtype: VarType::Boolean,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                })
+                .clone(),
+        )
+    }
+
     pub fn codegen_primitive_val(
         &self,
         primitive_val: PrimitiveVal,
@@ -700,7 +761,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 NumericLiteral::Int(i) => self.codegen_int_val(i, uop, expected_type),
                 NumericLiteral::Float(f) => self.codegen_float_val(f, uop, expected_type),
             },
-            PrimitiveVal::Boolean(_, _) => todo!(),
+            PrimitiveVal::Boolean(buop, bool_literal) => {
+                self.codegen_bool_val(bool_literal, buop, expected_type)
+            }
             PrimitiveVal::Char(_) => todo!(),
             PrimitiveVal::String(string) => unsafe {
                 let str_val = self
@@ -723,20 +786,17 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     }
 
     fn codegen_var_decl(&mut self, var_decl: VarDecl, is_global: bool) {
-        // TODO: Handle var scope
+        // TODO: Handle scope specifier
         for decl_as in var_decl.decl_assignments {
             // TODO: Handle destructures instead of only ids
             let id = match decl_as.destructure {
                 Destructure::Id(id) => id,
-                _ => todo!(),
+                _ => panic!("Destructures are not supported yet"),
             };
             let (initial_val, var_type) = self
                 .codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref())
                 .unwrap();
-            let type_ = decl_as
-                .var_type
-                .map(|vvt| self.convert_to_type_enum(vvt))
-                .expect("TODO: Handle type inference");
+            let type_ = self.convert_to_type_enum(var_type.clone());
 
             if is_global {
                 let new_global = self.module.add_global(type_, None, &id.0);
