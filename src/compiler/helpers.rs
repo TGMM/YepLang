@@ -35,6 +35,13 @@ pub enum ScopedVal<'ctx> {
     Fn(ScopedFunc<'ctx>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlockType {
+    Normal,
+    Function,
+    If,
+}
+
 pub struct Compiler<'input, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'input Builder<'ctx>,

@@ -1,12 +1,12 @@
 use super::helpers::{
-    convert_type_to_metadata, convert_value_to_metadata, Compiler, ScopeMarker, ScopedVal,
-    ScopedVar,
+    convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, ScopeMarker,
+    ScopedVal, ScopedVar,
 };
 use crate::{
     ast::{
         Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, Expr, ExternDecl,
-        ExternType, FnCall, FnDecl, NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt, TopBlock,
-        ValueVarType, VarDecl, VarType,
+        ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt,
+        TopBlock, ValueVarType, VarDecl, VarType,
     },
     compiler::helpers::ScopedFunc,
 };
@@ -75,14 +75,14 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.basic_block_stack.push(entry_basic_block);
 
         // Codegen all statements
-        self.codegen_block(top_block.0, true, false);
+        self.codegen_block(top_block.0, true, BlockType::Normal);
 
         let int_zero = self.context.i32_type().const_zero();
         self.builder.build_return(Some(&int_zero));
     }
 
-    fn codegen_block(&mut self, block: Block, is_global: bool, func_block: bool) {
-        if !func_block {
+    fn codegen_block(&mut self, block: Block, is_global: bool, block_type: BlockType) {
+        if !(block_type == BlockType::Function) {
             self.scope_stack.push(ScopeMarker::ScopeBegin);
         }
 
@@ -117,11 +117,52 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Stmt::For(_) => todo!(),
             Stmt::While(_) => todo!(),
             Stmt::DoWhile(_) => todo!(),
-            Stmt::If(_) => todo!(),
-            Stmt::Block(block) => self.codegen_block(block, false, false),
+            Stmt::If(if_) => self.codegen_if(if_),
+            Stmt::Block(block) => self.codegen_block(block, false, BlockType::Normal),
             Stmt::VarDecl(var_decl) => self.codegen_var_decl(var_decl, is_global),
             Stmt::ExternDecl(extern_decl) => self.codegen_extern_decl(extern_decl),
         }
+    }
+
+    pub fn codegen_if(&mut self, if_: If) {
+        let parent_block = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
+
+        let then_block = self.context.append_basic_block(parent_block, "then");
+        let else_block = self.context.append_basic_block(parent_block, "else");
+        let merge_block = self.context.append_basic_block(parent_block, "ifcont");
+
+        let if_expr = self
+            .codegen_rhs_expr(
+                if_.if_expr,
+                Some(&ValueVarType {
+                    vtype: VarType::Boolean,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                }),
+            )
+            .expect("Invalid expression for if condtition")
+            .0
+            .into_int_value();
+
+        self.builder
+            .build_conditional_branch(if_expr, then_block, else_block);
+
+        self.builder.position_at_end(then_block);
+        self.codegen_block(if_.if_block, false, BlockType::If);
+        self.builder.build_unconditional_branch(merge_block);
+
+        if let Some(else_b) = if_.else_b {
+            self.builder.position_at_end(else_block);
+            self.codegen_block(else_b, false, BlockType::If);
+            self.builder.build_unconditional_branch(merge_block);
+        }
+
+        self.builder.position_at_end(merge_block);
     }
 
     pub fn codegen_fn_decl(&mut self, fn_decl: FnDecl, is_global: bool) {
@@ -183,7 +224,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             };
         }
 
-        self.codegen_block(fn_decl.block, false, true);
+        self.codegen_block(fn_decl.block, false, BlockType::Function);
         self.builder.build_return(None);
 
         self.basic_block_stack.pop();
@@ -479,8 +520,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 let var_val;
 
                 let is_var_const = ptr_val.is_const();
-                if let Some(global_var) = self.module.get_global(var_name) && 
-                   let Some(initializer) = global_var.get_initializer() && 
+                if let Some(global_var) = self.module.get_global(var_name) &&
+                   let Some(initializer) = global_var.get_initializer() &&
                    is_var_const {
                     var_val = initializer;
                 } else {
