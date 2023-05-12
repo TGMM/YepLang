@@ -547,7 +547,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let function = self
             .curr_scope_vars
             .get(&fn_name)
-            .ok_or("Function does not exist")?
+            .ok_or("Function does not exist")
+            .unwrap()
             .clone()
             .into_fn()
             .unwrap()
