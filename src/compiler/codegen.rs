@@ -464,18 +464,30 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
+                let var_name = &var_id.0;
                 let scoped_val = self
                     .curr_scope_vars
-                    .get(&var_id.0)
+                    .get(var_name)
                     .ok_or("Undeclared variable")?;
                 let scoped_var = scoped_val.clone().into_var().map_err(|_| {
                     "Using function pointer as a value is not supported".to_string()
                 })?;
 
                 let instruction_name = format!("load_{}", var_id.0);
-                let var_val = self
-                    .builder
-                    .build_load(scoped_var.ptr_val, &instruction_name);
+
+                let ptr_val = scoped_var.ptr_val;
+                let var_val;
+
+                let is_var_const = ptr_val.is_const();
+                if let Some(global_var) = self.module.get_global(var_name) && 
+                   let Some(initializer) = global_var.get_initializer() && 
+                   is_var_const {
+                    var_val = initializer;
+                } else {
+                    var_val = self
+                        .builder
+                        .build_load(scoped_var.ptr_val, &instruction_name);
+                }
 
                 Ok((var_val, scoped_var.var_type.clone()))
             }
