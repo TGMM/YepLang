@@ -219,7 +219,7 @@ impl<'input> From<Id> for Destructure<'input> {
 pub struct VarDeclAssignment<'input> {
     pub destructure: Destructure<'input>,
     pub var_type: Option<ValueVarType>,
-    pub expr: Expr<'input>,
+    pub expr: Option<Expr<'input>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

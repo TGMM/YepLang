@@ -846,14 +846,38 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 Destructure::Id(id) => id,
                 _ => panic!("Destructures are not supported yet"),
             };
-            let (initial_val, var_type) = self
-                .codegen_rhs_expr(decl_as.expr, decl_as.var_type.as_ref())
-                .unwrap();
-            let type_ = self.convert_to_type_enum(var_type.clone());
+
+            let initial_expr_val = decl_as.expr.map(|initial_expr| {
+                self.codegen_rhs_expr(initial_expr, decl_as.var_type.as_ref())
+                    .unwrap()
+            });
+            let (initial_val, inferred_var_type) = match initial_expr_val {
+                Some((bve, vvt)) => (Some(bve), Some(vvt)),
+                None => (None, None),
+            };
+
+            let type_;
+            let var_type;
+            if let Some(explicit_var_type) = decl_as.var_type {
+                type_ = self.convert_to_type_enum(explicit_var_type.clone());
+                var_type = explicit_var_type;
+            } else if let Some(inferred_var_type) = inferred_var_type {
+                type_ = self.convert_to_type_enum(inferred_var_type.clone());
+                var_type = inferred_var_type;
+            } else {
+                panic!("Variables must have an explicit type or an initial value");
+            }
 
             if is_global {
                 let new_global = self.module.add_global(type_, None, &id.0);
-                new_global.set_initializer(&initial_val);
+
+                if let Some(initial_val) = initial_val {
+                    new_global.set_initializer(&initial_val);
+                } else {
+                    let default_value = type_.const_zero();
+                    new_global.set_initializer(&default_value);
+                }
+
                 let global_ptr = new_global.as_pointer_value();
                 self.curr_scope_vars.insert(
                     id.0,
@@ -867,7 +891,11 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             }
 
             let new_local = self.builder.build_alloca(type_, &id.0);
-            self.builder.build_store(new_local, initial_val);
+
+            if let Some(initial_val) = initial_val {
+                self.builder.build_store(new_local, initial_val);
+            }
+
             self.declare_variable(
                 id.0,
                 ScopedVar {

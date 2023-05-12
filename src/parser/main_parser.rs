@@ -105,8 +105,7 @@ pub fn var_decl_assignment_parser<'i: 'static>(
     let var_decl_as = destructure
         .clone()
         .then(type_specifier_parser().or_not())
-        .then_ignore(just(Token::AssignmentEq))
-        .then(expr.clone())
+        .then(just(Token::AssignmentEq).ignore_then(expr.clone()).or_not())
         .map(|((destructure, var_type), expr)| VarDeclAssignment {
             destructure,
             var_type,
@@ -437,7 +436,10 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    )))
                 }]
             }
         )
@@ -538,7 +540,10 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    )))
                 }],
             })
         )
