@@ -1,4 +1,5 @@
 #![feature(lazy_cell)]
+#![feature(let_chains)]
 
 mod ast;
 mod ast_display;
@@ -13,29 +14,28 @@ use std::collections::HashMap;
 
 fn main() {
     let input = r#"
-    extern i32 printf(*u8, ...);
-    let x: i32 = 10;
-    {
-        let y: i32 = 20;
-        let z: boolean = x > y;
-        let f: f64 = 123.123;
+    extern i32 printf(*i8, ...);
 
-        printf("X is %d and y is %d\n", x, y);
-        printf("f is %f\n", f);
-        printf("Is x greater than y? %d\n", z);
+    function addTwo(lhs: i32, rhs: i32): i32 {
+        return lhs + rhs;
     }
 
-    function test_func(arg: i64) {
-        printf("Test func: %d\n", arg);
+    let a = 5;
+    let b = 5;
+    let res = addTwo(a, b);
+    printf("%d + %d = %d\n", a, b, res);
+
+    function isPair(num: i32): boolean {
+        if(num % 2 == 0) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
-    let b: boolean = false;
-
-    test_func(10);
-    test_func(20);
-    test_func(30);
-
-    printf("Out again\n");"#;
+    let is_pair = isPair(res);
+    printf("Result is pair? %d\n", is_pair);
+    "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
 
     let context = Context::create();
@@ -61,6 +61,8 @@ fn main() {
         curr_scope_vars: HashMap::new(),
         basic_block_stack: Vec::new(),
         scope_stack: Vec::new(),
+        curr_func_ret_type: None,
+        func_ret_type_stack: vec![],
     };
 
     compiler.codegen_top_block(top_block);

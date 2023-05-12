@@ -6,7 +6,7 @@ use super::{
     },
     primitive_parser::{id_parser, type_specifier_parser},
 };
-use crate::parser::main_parser::BLOCK_PARSER;
+use crate::{ast::Return, parser::main_parser::BLOCK_PARSER};
 use crate::{
     ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl},
     lexer::Token,
@@ -113,6 +113,13 @@ pub fn class_decl_parser<'i: 'static>(
         });
 
     class_decl
+}
+
+pub fn return_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, Return<'i>, ParserError<'i, Token<'i>>> + Clone {
+    just(Token::Return)
+        .ignore_then(expr_parser().or_not())
+        .map(Return)
 }
 
 #[cfg(test)]

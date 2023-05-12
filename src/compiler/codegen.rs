@@ -5,7 +5,7 @@ use super::helpers::{
 use crate::{
     ast::{
         Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, Expr, ExternDecl,
-        ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal, Stmt,
+        ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal, Return, Stmt,
         TopBlock, ValueVarType, VarDecl, VarType,
     },
     compiler::helpers::ScopedFunc,
@@ -13,7 +13,7 @@ use crate::{
 use inkwell::{
     module::Linkage,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
+    types::{BasicType, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
     AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
 };
@@ -21,9 +21,9 @@ use std::{mem::transmute, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 impl<'input, 'ctx> Compiler<'input, 'ctx> {
-    pub fn convert_to_type_enum(&self, vvt: ValueVarType) -> BasicTypeEnum<'ctx> {
+    pub fn convert_to_type_enum(&self, vvt: &ValueVarType) -> BasicTypeEnum<'ctx> {
         let ctx = self.context;
-        let basic_vtype: Option<BasicTypeEnum> = match vvt.vtype {
+        let basic_vtype: Option<BasicTypeEnum> = match &vvt.vtype {
             VarType::I8 | VarType::U8 => ctx.i8_type().as_basic_type_enum().into(),
             VarType::I16 | VarType::U16 => ctx.i16_type().as_basic_type_enum().into(),
             VarType::I32 | VarType::U32 => ctx.i32_type().as_basic_type_enum().into(),
@@ -32,7 +32,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             VarType::F32 => ctx.f32_type().as_basic_type_enum().into(),
             VarType::F64 => ctx.f64_type().as_basic_type_enum().into(),
             VarType::Boolean => ctx.bool_type().as_basic_type_enum().into(),
-            _ => None,
+            other => panic!("{} is not a valid basic value", other),
         };
 
         let mut final_type = basic_vtype.unwrap();
@@ -75,19 +75,23 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.basic_block_stack.push(entry_basic_block);
 
         // Codegen all statements
-        self.codegen_block(top_block.0, true, BlockType::Normal);
+        self.codegen_block(top_block.0, BlockType::GLOBAL);
 
         let int_zero = self.context.i32_type().const_zero();
         self.builder.build_return(Some(&int_zero));
     }
 
-    fn codegen_block(&mut self, block: Block, is_global: bool, block_type: BlockType) {
-        if !(block_type == BlockType::Function) {
+    fn codegen_block(&mut self, block: Block, mut block_type: BlockType) {
+        // Entering a block means the block type is not global anymore
+        block_type.remove(BlockType::GLOBAL);
+        block_type.insert(BlockType::LOCAL);
+
+        if !(block_type == BlockType::FUNC) {
             self.scope_stack.push(ScopeMarker::ScopeBegin);
         }
 
         for stmt in block.stmts {
-            self.codegen_stmt(stmt, is_global);
+            self.codegen_stmt(stmt, block_type);
         }
 
         // Now we swap
@@ -108,23 +112,63 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
     }
 
-    fn codegen_stmt(&mut self, stmt: Stmt, is_global: bool) {
+    fn codegen_stmt(&mut self, stmt: Stmt, block_type: BlockType) {
         match stmt {
             Stmt::Assignment(assignment) => self.codegen_assignment(assignment),
             Stmt::Expr(expr) => _ = self.codegen_rhs_expr(expr, None),
             Stmt::ClassDecl(_) => todo!(),
-            Stmt::FnDecl(fn_decl) => self.codegen_fn_decl(fn_decl, is_global),
+            Stmt::FnDecl(fn_decl) => self.codegen_fn_decl(fn_decl, block_type),
             Stmt::For(_) => todo!(),
             Stmt::While(_) => todo!(),
             Stmt::DoWhile(_) => todo!(),
-            Stmt::If(if_) => self.codegen_if(if_),
-            Stmt::Block(block) => self.codegen_block(block, false, BlockType::Normal),
-            Stmt::VarDecl(var_decl) => self.codegen_var_decl(var_decl, is_global),
+            Stmt::If(if_) => self.codegen_if(if_, block_type),
+            Stmt::Block(block) => self.codegen_block(block, block_type),
+            Stmt::VarDecl(var_decl) => self.codegen_var_decl(var_decl, block_type),
             Stmt::ExternDecl(extern_decl) => self.codegen_extern_decl(extern_decl),
+            Stmt::Return(return_) => self.codegen_return(return_, block_type),
         }
     }
 
-    pub fn codegen_if(&mut self, if_: If) {
+    pub fn codegen_return(&mut self, return_: Return, block_type: BlockType) {
+        let expected_ret_type = self.curr_func_ret_type.clone();
+
+        if expected_ret_type.is_some() != return_.0.is_some() {
+            panic!("Invalid return type: Void functions must not return values");
+        }
+
+        let basic_ret_value = if let Some(ret_expr) = return_.0 {
+            let (ret_val, ret_type) = self
+                .codegen_rhs_expr(ret_expr, expected_ret_type.as_ref())
+                .expect("Invalid value for function return");
+
+            let expected_ret_type = expected_ret_type.unwrap();
+            if ret_type != expected_ret_type {
+                panic!(
+                    "Invalid type for returned value, expected {:#?}, got {:#?}",
+                    expected_ret_type, ret_type
+                );
+            }
+
+            Some(ret_val)
+        } else {
+            None
+        };
+        let basic_ret_value_ref = basic_ret_value.as_ref().map(|rv| rv as &dyn BasicValue);
+
+        match block_type {
+            BlockType::FUNC | BlockType::FUNC_LOCAL => {
+                self.builder.build_return(basic_ret_value_ref);
+            }
+            BlockType::FUNC_IF => {
+                self.builder.build_return(basic_ret_value_ref);
+            }
+            bt => panic!("Invalid return statement {:#?}", bt),
+        }
+    }
+
+    pub fn codegen_if(&mut self, if_: If, mut block_type: BlockType) {
+        block_type.insert(BlockType::IF);
+
         let parent_block = self
             .builder
             .get_insert_block()
@@ -153,26 +197,46 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .build_conditional_branch(if_expr, then_block, else_block);
 
         self.builder.position_at_end(then_block);
-        self.codegen_block(if_.if_block, false, BlockType::If);
+        self.codegen_block(if_.if_block, block_type);
         self.builder.build_unconditional_branch(merge_block);
 
+        self.builder.position_at_end(else_block);
         if let Some(else_b) = if_.else_b {
-            self.builder.position_at_end(else_block);
-            self.codegen_block(else_b, false, BlockType::If);
-            self.builder.build_unconditional_branch(merge_block);
+            self.codegen_block(else_b, block_type);
         }
+        self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(merge_block);
     }
 
-    pub fn codegen_fn_decl(&mut self, fn_decl: FnDecl, is_global: bool) {
-        let fn_name = fn_decl.fn_id.0;
+    pub fn codegen_fn_decl(&mut self, fn_decl: FnDecl, block_type: BlockType) {
+        // We save previous return types
+        if let Some(curr_fn) = self.curr_func_ret_type.take() {
+            self.func_ret_type_stack.push(curr_fn);
+        }
+        // We store the new return type
+        self.curr_func_ret_type = fn_decl.ret_type.clone();
 
-        let fn_type = self.context.void_type().fn_type(
-            &[BasicMetadataTypeEnum::IntType(self.context.i32_type())],
-            false,
-        );
-        let linkage = if is_global {
+        let fn_name = fn_decl.fn_id.0;
+        let param_types = fn_decl
+            .args
+            .iter()
+            .map(|(d, vvt)| {
+                if !matches!(d, Destructure::Id(_)) {
+                    panic!("Destructuring of arguments is not supported yet");
+                }
+                convert_type_to_metadata(self.convert_to_type_enum(vvt))
+            })
+            .collect::<Vec<_>>();
+
+        let ret_type = fn_decl.ret_type.unwrap_or(ValueVarType {
+            vtype: VarType::Void,
+            array_nesting_level: 0,
+            pointer_nesting_level: 0,
+        });
+        let basic_ret_type = self.convert_to_type_enum(&ret_type);
+        let fn_type = basic_ret_type.fn_type(&param_types, false);
+        let linkage = if matches!(block_type, BlockType::GLOBAL) {
             Linkage::External
         } else {
             Linkage::Internal
@@ -186,11 +250,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.builder.position_at_end(fn_basic_block);
         self.basic_block_stack.push(fn_basic_block);
 
-        let ret_type = fn_decl.ret_type.unwrap_or(ValueVarType {
-            vtype: VarType::Void,
-            array_nesting_level: 0,
-            pointer_nesting_level: 0,
-        });
         // TODO: The current function call searches for it on
         // the module instead of the var map
         self.curr_scope_vars.insert(
@@ -205,7 +264,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         for ((arg_destructure, arg_type), arg_val) in
             fn_decl.args.into_iter().zip(fun.get_param_iter())
         {
-            let ty = self.convert_to_type_enum(arg_type.clone());
+            let ty = self.convert_to_type_enum(&arg_type);
             match arg_destructure {
                 Destructure::Id(id) => {
                     let arg_ptr = self.builder.build_alloca(ty, &id.0);
@@ -224,7 +283,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             };
         }
 
-        self.codegen_block(fn_decl.block, false, BlockType::Function);
+        self.codegen_block(fn_decl.block, BlockType::FUNC);
+        // TODO: Build correct return
         self.builder.build_return(None);
 
         self.basic_block_stack.pop();
@@ -233,18 +293,21 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .last()
             .expect("Unexpected error: Basic block stack is empty");
         self.builder.position_at_end(*prev_basic_block);
+
+        // We store the new return type
+        self.curr_func_ret_type = self.func_ret_type_stack.pop();
     }
 
     pub fn codegen_extern_decl(&mut self, extern_decl: ExternDecl) {
         let fn_name = &extern_decl.fn_id.0;
-        let ret_type = self.convert_to_type_enum(extern_decl.ret_type.clone());
+        let ret_type = self.convert_to_type_enum(&extern_decl.ret_type);
 
         let mut is_var_args = false;
         let mut param_types = vec![];
         for arg_type in extern_decl.arg_types {
             match arg_type {
                 ExternType::Type(vvt) => {
-                    let ty = self.convert_to_type_enum(vvt);
+                    let ty = self.convert_to_type_enum(&vvt);
                     let metadata = convert_type_to_metadata(ty);
                     param_types.push(metadata);
                 }
@@ -547,12 +610,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let function = self
             .curr_scope_vars
             .get(&fn_name)
-            .ok_or("Function does not exist")
+            .ok_or(format!("Function {} does not exist", &fn_name))
             .unwrap()
             .clone()
             .into_fn()
-            .unwrap()
-            .ptr_val;
+            .unwrap();
+        let function_ptr = function.ptr_val;
+        let func_ret_ty = function.ret_type;
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
@@ -562,26 +626,14 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
 
         let instruction_name = format!("call_{}", fn_name);
-        let call = self.builder.build_call(function, &args, &instruction_name);
+        let call = self
+            .builder
+            .build_call(function_ptr, &args, &instruction_name);
         let ret_val = call.try_as_basic_value();
-
-        let vvt = if ret_val.left().is_none() {
-            ValueVarType {
-                array_nesting_level: 0,
-                pointer_nesting_level: 0,
-                vtype: VarType::Void,
-            }
-        } else {
-            ValueVarType {
-                array_nesting_level: 0,
-                pointer_nesting_level: 0,
-                vtype: VarType::Void,
-            }
-        };
 
         ret_val
             .left()
-            .map(|rv| (rv, vvt))
+            .map(|rv| (rv, func_ret_ty))
             .ok_or("Fn call returned void".to_string())
     }
 
@@ -608,45 +660,45 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     int_type = self.context.i8_type();
                     let int_val = int_str.parse::<i8>().unwrap();
                     let i64_val: i64 = int_val.into();
-                    u64_val_res = unsafe { transmute(i64_val) }
+                    u64_val_res = unsafe { transmute(i64_val) };
                 }
                 VarType::U8 => {
                     int_type = self.context.i8_type();
                     let int_val = int_str.parse::<u8>().unwrap();
                     let u64_val: u64 = int_val.into();
                     unsigned = true;
-                    u64_val_res = unsafe { transmute(u64_val) }
+                    u64_val_res = unsafe { transmute(u64_val) };
                 }
                 VarType::I16 => {
                     int_type = self.context.i16_type();
                     let int_val = int_str.parse::<i16>().unwrap();
                     let i64_val: i64 = int_val.into();
-                    u64_val_res = unsafe { transmute(i64_val) }
+                    u64_val_res = unsafe { transmute(i64_val) };
                 }
                 VarType::U16 => {
                     int_type = self.context.i16_type();
                     let int_val = int_str.parse::<u16>().unwrap();
                     let u64_val: u64 = int_val.into();
                     unsigned = true;
-                    u64_val_res = unsafe { transmute(u64_val) }
+                    u64_val_res = unsafe { transmute(u64_val) };
                 }
                 VarType::I32 => {
                     int_type = self.context.i32_type();
                     let int_val = int_str.parse::<i32>().unwrap();
                     let i64_val: i64 = int_val.into();
-                    u64_val_res = unsafe { transmute(i64_val) }
+                    u64_val_res = unsafe { transmute(i64_val) };
                 }
                 VarType::U32 => {
                     int_type = self.context.i32_type();
                     let int_val = int_str.parse::<u32>().unwrap();
                     let u64_val: u64 = int_val.into();
                     unsigned = true;
-                    u64_val_res = unsafe { transmute(u64_val) }
+                    u64_val_res = unsafe { transmute(u64_val) };
                 }
                 VarType::I64 => {
                     int_type = self.context.i64_type();
                     let int_val = int_str.parse::<i64>().unwrap();
-                    u64_val_res = unsafe { transmute(int_val) }
+                    u64_val_res = unsafe { transmute(int_val) };
                 }
                 VarType::U64 => {
                     int_type = self.context.i64_type();
@@ -664,7 +716,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             int_type = self.context.i32_type();
             let int_val = int_str.parse::<i32>().unwrap();
             let i64_val: i64 = int_val.into();
-            u64_val_res = unsafe { transmute(i64_val) }
+            u64_val_res = unsafe { transmute(i64_val) };
         }
 
         if let Some(uop) = uop {
@@ -839,7 +891,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
     }
 
-    fn codegen_var_decl(&mut self, var_decl: VarDecl, is_global: bool) {
+    fn codegen_var_decl(&mut self, var_decl: VarDecl, block_type: BlockType) {
         // TODO: Handle scope specifier
         for decl_as in var_decl.decl_assignments {
             // TODO: Handle destructures instead of only ids
@@ -860,16 +912,16 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             let type_;
             let var_type;
             if let Some(explicit_var_type) = decl_as.var_type {
-                type_ = self.convert_to_type_enum(explicit_var_type.clone());
+                type_ = self.convert_to_type_enum(&explicit_var_type);
                 var_type = explicit_var_type;
             } else if let Some(inferred_var_type) = inferred_var_type {
-                type_ = self.convert_to_type_enum(inferred_var_type.clone());
+                type_ = self.convert_to_type_enum(&inferred_var_type);
                 var_type = inferred_var_type;
             } else {
                 panic!("Variables must have an explicit type or an initial value");
             }
 
-            if is_global {
+            if matches!(block_type, BlockType::GLOBAL) {
                 let new_global = self.module.add_global(type_, None, &id.0);
 
                 if let Some(initial_val) = initial_val {

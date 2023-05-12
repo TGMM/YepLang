@@ -1,4 +1,5 @@
-use crate::ast::ValueVarType;
+use crate::ast::{FnDecl, ValueVarType};
+use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
     basic_block::BasicBlock,
@@ -35,11 +36,17 @@ pub enum ScopedVal<'ctx> {
     Fn(ScopedFunc<'ctx>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum BlockType {
-    Normal,
-    Function,
-    If,
+pub type BlockFlag = u8;
+bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub struct BlockType: BlockFlag {
+        const GLOBAL = 0b00000001;
+        const LOCAL = 0b00000010;
+        const FUNC = 0b00000100;
+        const IF = 0b00001000;
+        const FUNC_IF = Self::LOCAL.bits() | Self::FUNC.bits() | Self::IF.bits();
+        const FUNC_LOCAL = Self::FUNC.bits() | Self::LOCAL.bits();
+    }
 }
 
 pub struct Compiler<'input, 'ctx> {
@@ -50,6 +57,10 @@ pub struct Compiler<'input, 'ctx> {
     pub curr_scope_vars: HashMap<String, ScopedVal<'ctx>>,
     pub scope_stack: Vec<ScopeMarker<'ctx>>,
     pub basic_block_stack: Vec<BasicBlock<'ctx>>,
+    /// Used only for return statements that need to know
+    /// if we're inside a function, and its respective return type
+    pub curr_func_ret_type: Option<ValueVarType>,
+    pub func_ret_type_stack: Vec<ValueVarType>,
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {

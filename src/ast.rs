@@ -187,7 +187,11 @@ pub enum Stmt<'input> {
     Block(Block<'input>),
     VarDecl(VarDecl<'input>),
     ExternDecl(ExternDecl),
+    Return(Return<'input>),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Return<'input>(pub Option<Expr<'input>>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyName {
