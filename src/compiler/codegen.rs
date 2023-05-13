@@ -1,6 +1,6 @@
 use super::helpers::{
-    convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, ScopeMarker,
-    ScopedVal, ScopedVar,
+    convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, ExpectedExprType,
+    ScopeMarker, ScopedVal, ScopedVar,
 };
 use crate::{
     ast::{
@@ -8,7 +8,7 @@ use crate::{
         ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal, Return, Stmt,
         TopBlock, ValueVarType, VarDecl, VarType,
     },
-    compiler::helpers::ScopedFunc,
+    compiler::helpers::{FnRetVal, ScopedFunc},
 };
 use inkwell::{
     module::Linkage,
@@ -121,7 +121,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Stmt::For(_) => todo!(),
             Stmt::While(_) => todo!(),
             Stmt::DoWhile(_) => todo!(),
-            Stmt::If(if_) => self.codegen_if(if_, block_type),
+            Stmt::If(if_) => {
+                self.codegen_if(if_, block_type);
+            }
             Stmt::Block(block) => self.codegen_block(block, block_type),
             Stmt::VarDecl(var_decl) => self.codegen_var_decl(var_decl, block_type),
             Stmt::ExternDecl(extern_decl) => self.codegen_extern_decl(extern_decl),
@@ -129,40 +131,53 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
     }
 
-    pub fn codegen_return(&mut self, return_: Return, block_type: BlockType) {
-        let expected_ret_type = self.curr_func_ret_type.clone();
+    pub fn codegen_return(&self, return_: Return, block_type: BlockType) {
+        let ret_expr = return_.0;
+        let fn_ret_val = self.curr_func_ret_val.clone();
 
-        if expected_ret_type.is_some() != return_.0.is_some() {
-            panic!("Invalid return type: Void functions must not return values");
+        if ret_expr.is_some() && fn_ret_val.is_none() {
+            panic!("Void functions can't return values");
         }
 
-        let basic_ret_value = if let Some(ret_expr) = return_.0 {
-            let (ret_val, ret_type) = self
-                .codegen_rhs_expr(ret_expr, expected_ret_type.as_ref())
-                .expect("Invalid value for function return");
-
-            let expected_ret_type = expected_ret_type.unwrap();
-            if ret_type != expected_ret_type {
-                panic!(
-                    "Invalid type for returned value, expected {:#?}, got {:#?}",
-                    expected_ret_type, ret_type
-                );
+        // Return is void
+        if ret_expr.is_none() {
+            // Returning void on a non-void function
+            if fn_ret_val.is_some() {
+                panic!("Non-void functions must return a value");
             }
 
-            Some(ret_val)
+            if block_type.contains(BlockType::FUNC) {
+                self.builder.build_return(None);
+            } else {
+                panic!("Return statements must be inside a function");
+            }
+        }
+
+        let ret_expr = ret_expr.unwrap();
+
+        let FnRetVal {
+            val: ret_val_ptr,
+            vtype: expected_ret_type,
+            ret_bb,
+        } = fn_ret_val.unwrap();
+
+        let (ret_val, ret_type) = self
+            .codegen_rhs_expr(ret_expr, Some(&expected_ret_type))
+            .expect("Invalid value for function return");
+
+        let expected_ret_type = expected_ret_type;
+        if ret_type != expected_ret_type {
+            panic!(
+                "Invalid type for returned value, expected {:#?}, got {:#?}",
+                expected_ret_type, ret_type
+            );
+        }
+
+        if block_type.contains(BlockType::FUNC) {
+            self.builder.build_store(ret_val_ptr, ret_val);
+            self.builder.build_unconditional_branch(ret_bb);
         } else {
-            None
-        };
-        let basic_ret_value_ref = basic_ret_value.as_ref().map(|rv| rv as &dyn BasicValue);
-
-        match block_type {
-            BlockType::FUNC | BlockType::FUNC_LOCAL => {
-                self.builder.build_return(basic_ret_value_ref);
-            }
-            BlockType::FUNC_IF => {
-                self.builder.build_return(basic_ret_value_ref);
-            }
-            bt => panic!("Invalid return statement {:#?}", bt),
+            panic!("Return statements must be inside a function");
         }
     }
 
@@ -193,13 +208,16 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .0
             .into_int_value();
 
+        // If
         self.builder
             .build_conditional_branch(if_expr, then_block, else_block);
 
+        // Then
         self.builder.position_at_end(then_block);
         self.codegen_block(if_.if_block, block_type);
         self.builder.build_unconditional_branch(merge_block);
 
+        // Else
         self.builder.position_at_end(else_block);
         if let Some(else_b) = if_.else_b {
             self.codegen_block(else_b, block_type);
@@ -210,13 +228,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     }
 
     pub fn codegen_fn_decl(&mut self, fn_decl: FnDecl, block_type: BlockType) {
-        // We save previous return types
-        if let Some(curr_fn) = self.curr_func_ret_type.take() {
-            self.func_ret_type_stack.push(curr_fn);
-        }
-        // We store the new return type
-        self.curr_func_ret_type = fn_decl.ret_type.clone();
-
         let fn_name = fn_decl.fn_id.0;
         let param_types = fn_decl
             .args
@@ -229,7 +240,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             })
             .collect::<Vec<_>>();
 
-        let ret_type = fn_decl.ret_type.unwrap_or(ValueVarType {
+        let ret_type = fn_decl.ret_type.clone().unwrap_or(ValueVarType {
             vtype: VarType::Void,
             array_nesting_level: 0,
             pointer_nesting_level: 0,
@@ -249,6 +260,23 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let fn_basic_block = self.context.append_basic_block(fun, &basic_block_name);
         self.builder.position_at_end(fn_basic_block);
         self.basic_block_stack.push(fn_basic_block);
+
+        let ret_basic_block_name = format!("{}_ret_bb", fn_name);
+        let ret_basic_block = self.context.append_basic_block(fun, &ret_basic_block_name);
+        // We save previous return types
+        if let Some(curr_fn) = self.curr_func_ret_val.take() {
+            self.func_ret_val_stack.push(curr_fn);
+        }
+        // We store the new return type in case there is some
+        if let Some(ret_type) = fn_decl.ret_type {
+            let basic_type = self.convert_to_type_enum(&ret_type);
+
+            self.curr_func_ret_val = Some(FnRetVal {
+                val: self.builder.build_alloca(basic_type, "fn_ret_val"),
+                vtype: ret_type,
+                ret_bb: ret_basic_block,
+            });
+        };
 
         // TODO: The current function call searches for it on
         // the module instead of the var map
@@ -284,9 +312,25 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
 
         self.codegen_block(fn_decl.block, BlockType::FUNC);
-        // TODO: Build correct return
-        self.builder.build_return(None);
 
+        // Building the return
+        // Every block must end with a br statement, so we jump to the return block
+        self.builder.build_unconditional_branch(ret_basic_block);
+        // We need a reference to the previous block, we get that here
+        // This could be either the function block or the if_cont block
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        // We move the return after the if_cont
+        ret_basic_block.move_after(prev_bb).unwrap();
+
+        // We jump at the end of the return
+        self.builder.position_at_end(ret_basic_block);
+        let ret_val = self.curr_func_ret_val.take();
+        let ret_val_ptr = ret_val.map(|rv| rv.val);
+        let ret_val_load = ret_val_ptr.map(|ptr| self.builder.build_load(ptr, "ret_val_load"));
+        self.builder
+            .build_return(ret_val_load.as_ref().map(|ptr| ptr as &dyn BasicValue));
+
+        // Return from function, get back to main basic block
         self.basic_block_stack.pop();
         let prev_basic_block = self
             .basic_block_stack
@@ -295,7 +339,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.builder.position_at_end(*prev_basic_block);
 
         // We store the new return type
-        self.curr_func_ret_type = self.func_ret_type_stack.pop();
+        self.curr_func_ret_val = self.func_ret_val_stack.pop();
     }
 
     pub fn codegen_extern_decl(&mut self, extern_decl: ExternDecl) {
@@ -369,11 +413,17 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     pub fn codegen_bexpr(
         &self,
         bexpr: BExpr,
-        expected_type: Option<&ValueVarType>,
+        expected_type: ExpectedExprType,
     ) -> Result<(BasicValueEnum, ValueVarType), String> {
+        let ExpectedExprType {
+            expected_lhs_type,
+            expected_rhs_type,
+            expected_ret_type,
+        } = expected_type;
+
         let BExpr { lhs, op, rhs } = bexpr;
-        let lhs = self.codegen_rhs_expr(lhs, expected_type)?;
-        let rhs = self.codegen_rhs_expr(rhs, expected_type)?;
+        let lhs = self.codegen_rhs_expr(lhs, expected_lhs_type)?;
+        let rhs = self.codegen_rhs_expr(rhs, expected_rhs_type)?;
 
         let (lhs_type, rhs_type) = (lhs.1, rhs.1);
         if lhs_type.array_nesting_level > 0 || rhs_type.array_nesting_level > 0 {
@@ -420,7 +470,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
 
         if lhs_type.vtype != rhs_type.vtype {
-            return Err("Invalid binary operation between two different types".to_string());
+            return Err(format!(
+                "Invalid binary operation between two different types: {} and {}",
+                lhs_type.vtype, rhs_type.vtype
+            ));
         }
 
         let operand_type = lhs_type.vtype;
@@ -545,6 +598,16 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 pointer_nesting_level: 0,
             }
         };
+
+        if let Some(expected_ret_type) = expected_ret_type {
+            if expected_ret_type != &expr_type {
+                panic!(
+                    "Expected {:#?} as result of the expression, found {:#?}",
+                    &expected_ret_type, &expr_type
+                );
+            }
+        }
+
         Ok((basic_val, expr_type))
     }
 
@@ -560,7 +623,14 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         match expr {
             // TODO: Handle expr unary operator
             Expr::ParenExpr(_, expr) => self.codegen_rhs_expr(*expr, expected_type),
-            Expr::BinaryExpr(bexpr) => self.codegen_bexpr(*bexpr, expected_type),
+            Expr::BinaryExpr(bexpr) => self.codegen_bexpr(
+                *bexpr,
+                ExpectedExprType {
+                    expected_lhs_type: None,
+                    expected_rhs_type: None,
+                    expected_ret_type: expected_type,
+                },
+            ),
             Expr::PrimitiveVal(primitive_val) => {
                 Ok(self.codegen_primitive_val(primitive_val, expected_type))
             }
@@ -682,12 +752,6 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     unsigned = true;
                     u64_val_res = unsafe { transmute(u64_val) };
                 }
-                VarType::I32 => {
-                    int_type = self.context.i32_type();
-                    let int_val = int_str.parse::<i32>().unwrap();
-                    let i64_val: i64 = int_val.into();
-                    u64_val_res = unsafe { transmute(i64_val) };
-                }
                 VarType::U32 => {
                     int_type = self.context.i32_type();
                     let int_val = int_str.parse::<u32>().unwrap();
@@ -709,7 +773,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 VarType::I128 | VarType::U128 => {
                     panic!("128 bit integers are not supported.")
                 }
-                ty => panic!("Invalid int assignment to {}", ty),
+                // Since default value is i32, it's the last case
+                VarType::I32 | _ => {
+                    int_type = self.context.i32_type();
+                    let int_val = int_str.parse::<i32>().unwrap();
+                    let i64_val: i64 = int_val.into();
+                    u64_val_res = unsafe { transmute(i64_val) };
+                }
             }
         } else {
             // Default value is i32

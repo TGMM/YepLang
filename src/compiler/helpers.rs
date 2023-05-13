@@ -1,4 +1,4 @@
-use crate::ast::{FnDecl, ValueVarType};
+use crate::ast::ValueVarType;
 use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
@@ -36,6 +36,12 @@ pub enum ScopedVal<'ctx> {
     Fn(ScopedFunc<'ctx>),
 }
 
+pub struct ExpectedExprType<'expr> {
+    pub expected_lhs_type: Option<&'expr ValueVarType>,
+    pub expected_rhs_type: Option<&'expr ValueVarType>,
+    pub expected_ret_type: Option<&'expr ValueVarType>,
+}
+
 pub type BlockFlag = u8;
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -49,6 +55,13 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnRetVal<'ctx> {
+    pub val: PointerValue<'ctx>,
+    pub vtype: ValueVarType,
+    pub ret_bb: BasicBlock<'ctx>,
+}
+
 pub struct Compiler<'input, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'input Builder<'ctx>,
@@ -59,8 +72,8 @@ pub struct Compiler<'input, 'ctx> {
     pub basic_block_stack: Vec<BasicBlock<'ctx>>,
     /// Used only for return statements that need to know
     /// if we're inside a function, and its respective return type
-    pub curr_func_ret_type: Option<ValueVarType>,
-    pub func_ret_type_stack: Vec<ValueVarType>,
+    pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
+    pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {
