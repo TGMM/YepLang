@@ -324,9 +324,19 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         // We jump at the end of the return
         self.builder.position_at_end(ret_basic_block);
-        let ret_val = self.curr_func_ret_val.take();
-        let ret_val_ptr = ret_val.map(|rv| rv.val);
-        let ret_val_load = ret_val_ptr.map(|ptr| self.builder.build_load(ptr, "ret_val_load"));
+
+        let ret_val_load = if let Some(ret_val) = self.curr_func_ret_val.take() {
+            let ret_val_ptr = ret_val.val;
+            let ret_val_ty = self.convert_to_type_enum(&ret_val.vtype);
+            let ret_val_load = self
+                .builder
+                .build_load(ret_val_ty, ret_val_ptr, "ret_val_load");
+
+            Some(ret_val_load)
+        } else {
+            None
+        };
+
         self.builder
             .build_return(ret_val_load.as_ref().map(|ptr| ptr as &dyn BasicValue));
 
@@ -659,12 +669,13 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                    is_var_const {
                     var_val = initializer;
                 } else {
+                    let var_type = self.convert_to_type_enum(&scoped_var.var_type);
                     var_val = self
                         .builder
-                        .build_load(scoped_var.ptr_val, &instruction_name);
+                        .build_load(var_type, scoped_var.ptr_val, &instruction_name);
                 }
 
-                Ok((var_val, scoped_var.var_type.clone()))
+                Ok((var_val, scoped_var.var_type))
             }
         }
     }
@@ -691,8 +702,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
-            let arg_val = self.codegen_rhs_expr(arg_expr, None)?;
-            let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val.0);
+            let (arg_val, arg_type) = self.codegen_rhs_expr(arg_expr, None)?;
+            let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val);
             args.push(arg_metadata);
         }
 
