@@ -165,7 +165,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .codegen_rhs_expr(ret_expr, Some(&expected_ret_type))
             .expect("Invalid value for function return");
 
-        let expected_ret_type = expected_ret_type;
+        let expected_ret_type: ValueVarType = expected_ret_type;
         if ret_type != expected_ret_type {
             panic!(
                 "Invalid type for returned value, expected {:#?}, got {:#?}",
@@ -632,7 +632,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 },
             ),
             Expr::PrimitiveVal(primitive_val) => {
-                Ok(self.codegen_primitive_val(primitive_val, expected_type))
+                let pv = self.codegen_primitive_val(primitive_val, expected_type);
+                Ok(pv)
             }
             Expr::FnCall(fn_call) => self.codegen_fn_call(*fn_call),
             Expr::Indexing(_) => todo!(),
@@ -711,21 +712,21 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         int_str: &str,
         uop: Option<NumericUnaryOp>,
-        expected_type: Option<&ValueVarType>,
+        mut expected_type: Option<&ValueVarType>,
     ) -> (BasicValueEnum, ValueVarType) {
         let int_type;
         let mut u64_val_res: u64;
         let mut unsigned = false;
 
-        if let Some(expected_type) = expected_type {
-            if expected_type.array_nesting_level > 0 {
+        if let Some(expected_type_ref) = expected_type {
+            if expected_type_ref.array_nesting_level > 0 {
                 panic!("Unexpected assignment of number to array type");
             }
-            if expected_type.pointer_nesting_level > 0 {
+            if expected_type_ref.pointer_nesting_level > 0 {
                 panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
             }
 
-            match &expected_type.vtype {
+            match &expected_type_ref.vtype {
                 VarType::I8 => {
                     int_type = self.context.i8_type();
                     let int_val = int_str.parse::<i8>().unwrap();
@@ -779,6 +780,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     let int_val = int_str.parse::<i32>().unwrap();
                     let i64_val: i64 = int_val.into();
                     u64_val_res = unsafe { transmute(i64_val) };
+
+                    let _ = expected_type.insert(&ValueVarType {
+                        vtype: VarType::I32,
+                        array_nesting_level: 0,
+                        pointer_nesting_level: 0,
+                    });
                 }
             }
         } else {
@@ -787,6 +794,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             let int_val = int_str.parse::<i32>().unwrap();
             let i64_val: i64 = int_val.into();
             u64_val_res = unsafe { transmute(i64_val) };
+
+            let _ = expected_type.insert(&ValueVarType {
+                vtype: VarType::I32,
+                array_nesting_level: 0,
+                pointer_nesting_level: 0,
+            });
         }
 
         if let Some(uop) = uop {
@@ -805,16 +818,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let basic_val = int_type.const_int(u64_val_res, false).as_basic_value_enum();
 
-        (
-            basic_val,
-            expected_type
-                .unwrap_or(&ValueVarType {
-                    vtype: VarType::I32,
-                    array_nesting_level: 0,
-                    pointer_nesting_level: 0,
-                })
-                .clone(),
-        )
+        (basic_val, expected_type.unwrap().clone())
     }
 
     pub fn codegen_float_val(
@@ -932,7 +936,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         primitive_val: PrimitiveVal,
         expected_type: Option<&ValueVarType>,
     ) -> (BasicValueEnum, ValueVarType) {
-        match primitive_val {
+        let (bv, vvt) = match primitive_val {
             PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
                 NumericLiteral::Int(i) => self.codegen_int_val(i, uop, expected_type),
                 NumericLiteral::Float(f) => self.codegen_float_val(f, uop, expected_type),
@@ -941,10 +945,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 self.codegen_bool_val(bool_literal, buop, expected_type)
             }
             PrimitiveVal::Char(_) => todo!(),
-            PrimitiveVal::String(string) => unsafe {
+            PrimitiveVal::String(string) => {
                 let str_val = self
                     .builder
-                    .build_global_string(&string, "globstr")
+                    .build_global_string_ptr(&string, "globstr")
                     .as_basic_value_enum();
 
                 (
@@ -955,10 +959,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                         pointer_nesting_level: 0,
                     },
                 )
-            },
+            }
             PrimitiveVal::Array(_) => todo!(),
             PrimitiveVal::Struct(_) => todo!(),
-        }
+        };
+
+        (bv, vvt)
     }
 
     fn codegen_var_decl(&mut self, var_decl: VarDecl, block_type: BlockType) {
