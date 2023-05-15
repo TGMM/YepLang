@@ -23,7 +23,7 @@ use std::{
 };
 
 use super::{
-    class_parser::{class_decl_parser, fn_decl_parser},
+    class_parser::{class_decl_parser, fn_decl_parser, return_parser},
     control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
     expr_parser::{assignment_expr_parser, expr_parser, EXPR_PARSER},
     ffi_parser::extern_decl_parser,
@@ -105,8 +105,7 @@ pub fn var_decl_assignment_parser<'i: 'static>(
     let var_decl_as = destructure
         .clone()
         .then(type_specifier_parser().or_not())
-        .then_ignore(just(Token::AssignmentEq))
-        .then(expr.clone())
+        .then(just(Token::AssignmentEq).ignore_then(expr.clone()).or_not())
         .map(|((destructure, var_type), expr)| VarDeclAssignment {
             destructure,
             var_type,
@@ -210,9 +209,10 @@ recursive_parser!(
         let if_ = if_parser().map(Stmt::If);
         let block_s = block.clone().map(Stmt::Block);
         let extern_decl = extern_decl_parser().map(Stmt::ExternDecl);
+        let return_stmt = return_parser().map(Stmt::Return);
 
         let stmt_nt = fn_decl.or(class_decl).or(for_).or(while_).or(if_).or(block_s);
-        let stmt_t = do_while.or(extern_decl).or(for_stmt_parser());
+        let stmt_t = do_while.or(extern_decl).or(return_stmt).or(for_stmt_parser());
         let stmt = stmt_nt.or(stmt_t.then_ignore(stmt_end_parser()));
 
         stmt
@@ -437,7 +437,10 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    )))
                 }]
             }
         )
@@ -538,7 +541,10 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
+                        None,
+                        NumericLiteral::Int("10")
+                    )))
                 }],
             })
         )

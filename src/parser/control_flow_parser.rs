@@ -504,10 +504,10 @@ mod test {
                         decl_assignments: vec![VarDeclAssignment {
                             destructure: Destructure::Id("x".into()),
                             var_type: None,
-                            expr: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("0")
-                            ))
+                            )))
                         }]
                     })
                     .into()
