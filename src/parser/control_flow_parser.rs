@@ -119,7 +119,6 @@ pub fn do_while_parser<'i: 'static>(
         .ignore_then(block.clone())
         .then_ignore(just(Token::While))
         .then(paren_expr.clone())
-        .then_ignore(stmt_end_parser())
         .map(|(do_block, while_cond)| DoWhile {
             do_block,
             while_cond,
@@ -440,7 +439,6 @@ mod test {
             Token::BOp(BOp::Gt),
             Token::IntVal("10"),
             Token::RParen,
-            Token::StmtEnd,
         ]);
 
         let res = do_while_parser().parse(tokens).into_result();

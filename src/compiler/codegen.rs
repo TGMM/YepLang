@@ -4,9 +4,9 @@ use super::helpers::{
 };
 use crate::{
     ast::{
-        Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, Expr, ExternDecl,
-        ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal, Return, Stmt,
-        TopBlock, ValueVarType, VarDecl, VarType, While,
+        Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, DoWhile, Expr,
+        ExternDecl, ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal,
+        Return, Stmt, TopBlock, ValueVarType, VarDecl, VarType, While,
     },
     compiler::helpers::{FnRetVal, ScopedFunc},
 };
@@ -120,7 +120,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Stmt::FnDecl(fn_decl) => self.codegen_fn_decl(fn_decl, block_type),
             Stmt::For(_) => todo!(),
             Stmt::While(while_) => self.codegen_while(while_, block_type),
-            Stmt::DoWhile(_) => todo!(),
+            Stmt::DoWhile(do_while) => self.codegen_do_while(do_while, block_type),
             Stmt::If(if_) => {
                 self.codegen_if(if_, block_type);
             }
@@ -264,6 +264,47 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.codegen_block(while_.block, block_type);
         self.builder.build_unconditional_branch(comp_block);
 
+        self.builder.position_at_end(merge_block);
+    }
+
+    pub fn codegen_do_while(&mut self, do_while: DoWhile, mut block_type: BlockType) {
+        block_type.insert(BlockType::WHILE);
+
+        let parent_block = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
+
+        let then_block = self.context.append_basic_block(parent_block, "while_then");
+        let comp_block = self.context.append_basic_block(parent_block, "while_cond");
+        let merge_block = self.context.append_basic_block(parent_block, "while_cont");
+
+        // Do
+        self.builder.build_unconditional_branch(then_block);
+        self.builder.position_at_end(then_block);
+        self.codegen_block(do_while.do_block, block_type);
+        self.builder.build_unconditional_branch(comp_block);
+
+        // While
+        self.builder.position_at_end(comp_block);
+        let while_expr = self
+            .codegen_rhs_expr(
+                do_while.while_cond,
+                Some(&ValueVarType {
+                    vtype: VarType::Boolean,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                }),
+            )
+            .expect("Invalid expression for if condtition")
+            .0
+            .into_int_value();
+        self.builder
+            .build_conditional_branch(while_expr, then_block, merge_block);
+
+        // Cont
         self.builder.position_at_end(merge_block);
     }
 
@@ -426,6 +467,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
     pub fn codegen_assignment(&self, assignment: Assignment) {
         // TODO: The BOP doesn't work
+        if assignment.bop.is_some() {
+            panic!("Binary operators on assignments aren't supported yet");
+        }
+
         let assignee_ptr = self.codegen_lhs_expr(assignment.assignee_expr, None);
         let new_val = self
             .codegen_rhs_expr(assignment.assigned_expr, None)
