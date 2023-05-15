@@ -16,25 +16,17 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    function addTwo(lhs: i32, rhs: i32): i32 {
-        return lhs + rhs;
-    }
-
-    let a = 5;
-    let b = 5;
-    let res = addTwo(a, b);
-    printf("%d + %d = %d\n", a, b, res);
-
-    function isPair(num: i32): boolean {
-        if(num % 2 == 0) {
-            return true;
-        } else {
-            return false;
+    function fib(n: i32): i32
+    {
+        if (n <= 1) {
+            return n;
         }
+        
+        return fib(n - 1) + fib(n - 2);
     }
 
-    let is_pair = isPair(res);
-    printf("Result is pair? %d\n", is_pair);
+    let n = 9;
+    printf("Fib of %d is %d", n, fib(n));
     "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
 
@@ -61,8 +53,8 @@ fn main() {
         curr_scope_vars: HashMap::new(),
         basic_block_stack: Vec::new(),
         scope_stack: Vec::new(),
-        curr_func_ret_type: None,
-        func_ret_type_stack: vec![],
+        curr_func_ret_val: None,
+        func_ret_val_stack: vec![],
     };
 
     compiler.codegen_top_block(top_block);
