@@ -5,8 +5,8 @@ use super::helpers::{
 use crate::{
     ast::{
         Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, DoWhile, Expr,
-        ExternDecl, ExternType, FnCall, FnDecl, If, NumericLiteral, NumericUnaryOp, PrimitiveVal,
-        Return, Stmt, TopBlock, ValueVarType, VarDecl, VarType, While,
+        ExternDecl, ExternType, FnCall, FnDecl, For, If, NumericLiteral, NumericUnaryOp,
+        PrimitiveVal, Return, Stmt, TopBlock, ValueVarType, VarDecl, VarType, While,
     },
     compiler::helpers::{FnRetVal, ScopedFunc},
 };
@@ -118,7 +118,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             Stmt::Expr(expr) => _ = self.codegen_rhs_expr(expr, None),
             Stmt::ClassDecl(_) => todo!(),
             Stmt::FnDecl(fn_decl) => self.codegen_fn_decl(fn_decl, block_type),
-            Stmt::For(_) => todo!(),
+            Stmt::For(for_) => self.codegen_for(for_, block_type),
             Stmt::While(while_) => self.codegen_while(while_, block_type),
             Stmt::DoWhile(do_while) => self.codegen_do_while(do_while, block_type),
             Stmt::If(if_) => {
@@ -253,7 +253,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     pointer_nesting_level: 0,
                 }),
             )
-            .expect("Invalid expression for if condtition")
+            .expect("Invalid expression for while condtition")
             .0
             .into_int_value();
         self.builder
@@ -298,11 +298,74 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     pointer_nesting_level: 0,
                 }),
             )
-            .expect("Invalid expression for if condtition")
+            .expect("Invalid expression for do while condtition")
             .0
             .into_int_value();
         self.builder
             .build_conditional_branch(while_expr, then_block, merge_block);
+
+        // Cont
+        self.builder.position_at_end(merge_block);
+    }
+
+    pub fn codegen_for(&mut self, for_: For, mut block_type: BlockType) {
+        block_type.insert(BlockType::WHILE);
+
+        let parent_block = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
+
+        let decl_block = self.context.append_basic_block(parent_block, "for_decl");
+        let comp_block = self.context.append_basic_block(parent_block, "for_cond");
+        let postfix_block = self.context.append_basic_block(parent_block, "for_postfix");
+        let then_block = self.context.append_basic_block(parent_block, "for_then");
+        let merge_block = self.context.append_basic_block(parent_block, "for_cont");
+
+        // Decl stmt
+        self.builder.build_unconditional_branch(decl_block);
+        self.builder.position_at_end(decl_block);
+        if let Some(stmt) = for_.decl_stmt {
+            self.codegen_stmt(*stmt, block_type);
+        }
+        self.builder.build_unconditional_branch(comp_block);
+
+        // Postfix stmt
+        self.builder.position_at_end(postfix_block);
+        if let Some(stmt) = for_.postfix_stmt {
+            self.codegen_stmt(*stmt, block_type);
+        }
+        self.builder.build_unconditional_branch(comp_block);
+
+        // Block
+        self.builder.position_at_end(then_block);
+        self.codegen_block(for_.block, block_type);
+        self.builder.build_unconditional_branch(postfix_block);
+
+        // Cond
+        self.builder.position_at_end(comp_block);
+        let cond_expr = if let Some(cmp_expr) = for_.cmp_expr {
+            self.codegen_rhs_expr(
+                cmp_expr,
+                Some(&ValueVarType {
+                    vtype: VarType::Boolean,
+                    array_nesting_level: 0,
+                    pointer_nesting_level: 0,
+                }),
+            )
+            .expect("Invalid condtition expression in for loop")
+            .0
+            .into_int_value()
+        } else {
+            // Default value is true
+            self.context.bool_type().const_int(1, false)
+        };
+
+        // Execution
+        self.builder
+            .build_conditional_branch(cond_expr, then_block, merge_block);
 
         // Cont
         self.builder.position_at_end(merge_block);
