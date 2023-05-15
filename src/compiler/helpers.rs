@@ -50,7 +50,9 @@ bitflags! {
         const LOCAL = 0b00000010;
         const FUNC = 0b00000100;
         const IF = 0b00001000;
+        const WHILE = 0b00010000;
         const FUNC_IF = Self::LOCAL.bits() | Self::FUNC.bits() | Self::IF.bits();
+        const FUNC_WHILE = Self::LOCAL.bits() | Self::FUNC.bits() | Self::WHILE.bits();
         const FUNC_LOCAL = Self::FUNC.bits() | Self::LOCAL.bits();
     }
 }

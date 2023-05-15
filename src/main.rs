@@ -16,17 +16,37 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    function fib(n: i32): i32
+    function iterative_fib(n: i32): i32
+    {
+        let i = 0, first = 0, second = 1, result: i32;
+
+        while(i <= n) {
+            if(i <= 1) {
+                result = i;
+            } else {
+                result = first + second;
+                first = second;
+                second = result;
+            }
+
+            i = i + 1;
+        }
+
+        return result;
+    }
+
+    function rec_fib(n: i32): i32
     {
         if (n <= 1) {
             return n;
         }
         
-        return fib(n - 1) + fib(n - 2);
+        return rec_fib(n - 1) + rec_fib(n - 2);
     }
 
-    let n = 9;
-    printf("Fib of %d is %d", n, fib(n));
+    let n = 14;
+    printf("Iterative: Fib of %d is %d\n", n, iterative_fib(n));
+    printf("Recursive: Fib of %d is %d\n", n, rec_fib(n));
     "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
 
