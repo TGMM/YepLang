@@ -7,7 +7,7 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::helpers::Compiler;
+use compiler::{codegen::compile_to_x86, helpers::Compiler};
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
 use std::{cell::OnceCell, collections::HashMap};
@@ -54,7 +54,7 @@ fn main() {
         target_data: OnceCell::new(),
     };
 
-    Compiler::compile_to_x86(
+    compile_to_x86(
         &mut compiler,
         top_block,
         "C:/Users/TGMM/Documents/Tareas/Compiladores/yep_lang/tests",
