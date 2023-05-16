@@ -7,7 +7,7 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::{codegen::compile_to_x86, helpers::Compiler};
+use compiler::{helpers::Compiler, main_codegen::compile_to_x86};
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
 use std::{cell::OnceCell, collections::HashMap};
