@@ -39,7 +39,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         };
 
         let mut final_type = basic_vtype.unwrap();
-        for dim in &vvt.array_dimensions {
+        for dim in vvt.array_dimensions.iter().rev() {
             final_type = final_type.array_type(*dim).as_basic_type_enum()
         }
         for _ in 0..vvt.pointer_nesting_level {
@@ -544,6 +544,52 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         self.builder.build_store(assignee_ptr, new_val.0);
     }
 
+    pub fn codegen_lhs_indexing(
+        &self,
+        indexing: Indexing,
+        expected_type: Option<&ValueVarType>,
+    ) -> Result<(PointerValue, ValueVarType), String> {
+        let (idxd, idxd_type) = self.codegen_lhs_expr(indexing.indexed, None);
+
+        if let Some(et) = expected_type {
+            if et != &idxd_type {
+                panic!("Assigning array of one type to array of another");
+            }
+        }
+
+        // Array dimensions are u32
+        let u32_type = DEFAULT_TYPES.get(&VarType::U32).unwrap();
+        let (idxr, idxr_type) = self.codegen_rhs_expr(indexing.indexer, Some(u32_type))?;
+
+        if idxr_type != *u32_type {
+            panic!("Indexing is only supported for arrays, array indexes must be of type u32");
+        }
+
+        let idxr: inkwell::values::IntValue = idxr.into_int_value();
+
+        let element_type = {
+            let mut et = idxd_type.clone();
+            et.array_dimensions.pop_front();
+
+            et
+        };
+        let target_data = self.target_data.get().unwrap();
+        let ptr_size_type = self.context.ptr_sized_int_type(target_data, None);
+        let zero_ptr = ptr_size_type.const_zero();
+
+        let idxr_ptr = self
+            .builder
+            .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
+
+        let arr_ty = self.convert_to_type_enum(&idxd_type);
+        let ret_val_ptr = unsafe {
+            self.builder
+                .build_gep(arr_ty, idxd, &[zero_ptr, idxr_ptr], "indexing")
+        };
+
+        Ok((ret_val_ptr, element_type))
+    }
+
     /// Codegen an expression when it's used on the left-hand side of an operation.
     pub fn codegen_lhs_expr(
         &self,
@@ -552,7 +598,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     ) -> (PointerValue, ValueVarType) {
         match expr {
             Expr::ParenExpr(None, expr) => self.codegen_lhs_expr(*expr, expected_type),
-            Expr::Indexing(_) => todo!(),
+            Expr::Indexing(indexing) => {
+                self.codegen_lhs_indexing(*indexing, expected_type).unwrap()
+            }
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
                 let var_ptr = self
@@ -772,7 +820,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         Ok((basic_val, expr_type))
     }
 
-    pub fn codegen_indexing(
+    pub fn codegen_rhs_indexing(
         &self,
         indexing: Indexing,
         expected_type: Option<&ValueVarType>,
@@ -781,7 +829,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         if let Some(et) = expected_type {
             if et != &idxd_type {
-                panic!("Array types are different, idk");
+                panic!("Assigning array of one type to array of another");
             }
         }
 
@@ -848,7 +896,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 Ok(pv)
             }
             Expr::FnCall(fn_call) => self.codegen_fn_call(*fn_call),
-            Expr::Indexing(indexing) => self.codegen_indexing(*indexing, expected_type),
+            Expr::Indexing(indexing) => self.codegen_rhs_indexing(*indexing, expected_type),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
                 let var_name = &var_id.0;

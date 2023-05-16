@@ -16,10 +16,12 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    let arr: i32[5] = [1, 2, 3, 4, 5];
-    let one: u32 = 1, five: u32 = 5;
-    for(let i: u32 = 0; i < five; i = i + one) {
-        printf("Array element %d is %d\n", i, arr[i]);
+    let arr: i32[3][1] = [[1], [2], [3]];
+    let one: u32 = 1, three: u32 = 3;
+    for(let i: u32 = 0; i < three; i = i + one) {
+        for(let j: u32 = 0; j < one; j = j + one) {
+            printf("Array element %d, %d is %d\n", i, j, arr[i][j]);
+        }   
     }
     "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
