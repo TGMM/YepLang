@@ -1,23 +1,26 @@
 use super::helpers::{
     convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, ExpectedExprType,
-    ScopeMarker, ScopedVal, ScopedVar,
+    ScopeMarker, ScopedVal, ScopedVar, DEFAULT_TYPES,
 };
 use crate::{
     ast::{
-        Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, DoWhile, Expr,
-        ExternDecl, ExternType, FnCall, FnDecl, For, If, NumericLiteral, NumericUnaryOp,
-        PrimitiveVal, Return, Stmt, TopBlock, ValueVarType, VarDecl, VarType, While,
+        ArrayVal, Assignment, BExpr, BOp, Block, BoolLiteral, BoolUnaryOp, Destructure, DoWhile,
+        Expr, ExternDecl, ExternType, FnCall, FnDecl, For, If, Indexing, NumericLiteral,
+        NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
+        While,
     },
     compiler::helpers::{FnRetVal, ScopedFunc},
 };
 use inkwell::{
     module::Linkage,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
+    targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetTriple,
+    },
     types::{BasicType, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
     AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
 };
-use std::{mem::transmute, path::Path};
+use std::{collections::VecDeque, mem::transmute, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 impl<'input, 'ctx> Compiler<'input, 'ctx> {
@@ -36,9 +39,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         };
 
         let mut final_type = basic_vtype.unwrap();
-        for _ in 0..vvt.array_nesting_level {
-            // TODO: Specify size here
-            final_type = final_type.array_type(1).as_basic_type_enum()
+        for dim in &vvt.array_dimensions {
+            final_type = final_type.array_type(*dim).as_basic_type_enum()
         }
         for _ in 0..vvt.pointer_nesting_level {
             final_type = final_type
@@ -200,7 +202,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 if_.if_expr,
                 Some(&ValueVarType {
                     vtype: VarType::Boolean,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 }),
             )
@@ -249,7 +251,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 while_.while_cond,
                 Some(&ValueVarType {
                     vtype: VarType::Boolean,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 }),
             )
@@ -294,7 +296,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 do_while.while_cond,
                 Some(&ValueVarType {
                     vtype: VarType::Boolean,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 }),
             )
@@ -351,7 +353,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 cmp_expr,
                 Some(&ValueVarType {
                     vtype: VarType::Boolean,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 }),
             )
@@ -386,7 +388,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let ret_type = fn_decl.ret_type.clone().unwrap_or(ValueVarType {
             vtype: VarType::Void,
-            array_nesting_level: 0,
+            array_dimensions: VecDeque::new(),
             pointer_nesting_level: 0,
         });
         let basic_ret_type = self.convert_to_type_enum(&ret_type);
@@ -534,7 +536,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             panic!("Binary operators on assignments aren't supported yet");
         }
 
-        let assignee_ptr = self.codegen_lhs_expr(assignment.assignee_expr, None);
+        let assignee_ptr = self.codegen_lhs_expr(assignment.assignee_expr, None).0;
         let new_val = self
             .codegen_rhs_expr(assignment.assigned_expr, None)
             .unwrap();
@@ -547,7 +549,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         expr: Expr,
         expected_type: Option<&ValueVarType>,
-    ) -> PointerValue {
+    ) -> (PointerValue, ValueVarType) {
         match expr {
             Expr::ParenExpr(None, expr) => self.codegen_lhs_expr(*expr, expected_type),
             Expr::Indexing(_) => todo!(),
@@ -561,7 +563,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     .expect("Undeclared variable or function");
 
                 match var_ptr {
-                    ScopedVal::Var(v) => v.ptr_val,
+                    ScopedVal::Var(v) => (v.ptr_val, v.var_type.clone()),
                     ScopedVal::Fn(_) => todo!(),
                 }
             }
@@ -585,8 +587,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let rhs = self.codegen_rhs_expr(rhs, expected_rhs_type)?;
 
         let (lhs_type, rhs_type) = (lhs.1, rhs.1);
-        if lhs_type.array_nesting_level > 0 || rhs_type.array_nesting_level > 0 {
-            if lhs_type.array_nesting_level != rhs_type.array_nesting_level {
+        if lhs_type.array_dimensions.len() > 0 || rhs_type.array_dimensions.len() > 0 {
+            if lhs_type.array_dimensions.len() != rhs_type.array_dimensions.len() {
                 return Err(
                     "Operations between different array nesting levels are not supported"
                         .to_string(),
@@ -753,7 +755,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         } else {
             ValueVarType {
                 vtype: VarType::Boolean,
-                array_nesting_level: 0,
+                array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0,
             }
         };
@@ -768,6 +770,57 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         }
 
         Ok((basic_val, expr_type))
+    }
+
+    pub fn codegen_indexing(
+        &self,
+        indexing: Indexing,
+        expected_type: Option<&ValueVarType>,
+    ) -> Result<(BasicValueEnum, ValueVarType), String> {
+        let (idxd, idxd_type) = self.codegen_lhs_expr(indexing.indexed, None);
+
+        if let Some(et) = expected_type {
+            if et != &idxd_type {
+                panic!("Array types are different, idk");
+            }
+        }
+
+        // Array dimensions are u32
+        let u32_type = DEFAULT_TYPES.get(&VarType::U32).unwrap();
+        let (idxr, idxr_type) = self.codegen_rhs_expr(indexing.indexer, Some(u32_type))?;
+
+        if idxr_type != *u32_type {
+            panic!("Indexing is only supported for arrays, array indexes must be of type u32");
+        }
+
+        let idxr: inkwell::values::IntValue = idxr.into_int_value();
+
+        let element_type = {
+            let mut et = idxd_type.clone();
+            et.array_dimensions.pop_front();
+
+            et
+        };
+        let element_b_type = self.convert_to_type_enum(&element_type);
+
+        let target_data = self.target_data.get().unwrap();
+        let ptr_size_type = self.context.ptr_sized_int_type(target_data, None);
+        let zero_ptr = ptr_size_type.const_zero();
+
+        let idxr_ptr = self
+            .builder
+            .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
+
+        let arr_ty = self.convert_to_type_enum(&idxd_type);
+        let ret_val_ptr = unsafe {
+            self.builder
+                .build_gep(arr_ty, idxd, &[zero_ptr, idxr_ptr], "indexing")
+        };
+        let ret_val = self
+            .builder
+            .build_load(element_b_type, ret_val_ptr, "load_array_val");
+
+        Ok((ret_val, element_type))
     }
 
     /// Codegen an expression when it's used on the right-hand side of an operation.
@@ -795,7 +848,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                 Ok(pv)
             }
             Expr::FnCall(fn_call) => self.codegen_fn_call(*fn_call),
-            Expr::Indexing(_) => todo!(),
+            Expr::Indexing(indexing) => self.codegen_indexing(*indexing, expected_type),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(var_id) => {
                 let var_name = &var_id.0;
@@ -851,6 +904,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
 
         let mut args = vec![];
         for arg_expr in fn_call.args {
+            // TODO: Match argument expressions to expected types
             let (arg_val, arg_type) = self.codegen_rhs_expr(arg_expr, None)?;
             let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val);
             args.push(arg_metadata);
@@ -879,7 +933,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let mut unsigned = false;
 
         if let Some(expected_type_ref) = expected_type {
-            if expected_type_ref.array_nesting_level > 0 {
+            if expected_type_ref.array_dimensions.len() > 0 {
                 panic!("Unexpected assignment of number to array type");
             }
             if expected_type_ref.pointer_nesting_level > 0 {
@@ -941,11 +995,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     let i64_val: i64 = int_val.into();
                     u64_val_res = unsafe { transmute(i64_val) };
 
-                    let _ = expected_type.insert(&ValueVarType {
-                        vtype: VarType::I32,
-                        array_nesting_level: 0,
-                        pointer_nesting_level: 0,
-                    });
+                    let _ = expected_type.insert(&DEFAULT_TYPES.get(&VarType::I32).unwrap());
                 }
             }
         } else {
@@ -955,11 +1005,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             let i64_val: i64 = int_val.into();
             u64_val_res = unsafe { transmute(i64_val) };
 
-            let _ = expected_type.insert(&ValueVarType {
-                vtype: VarType::I32,
-                array_nesting_level: 0,
-                pointer_nesting_level: 0,
-            });
+            let _ = expected_type.insert(&DEFAULT_TYPES.get(&VarType::I32).unwrap());
         }
 
         if let Some(uop) = uop {
@@ -991,7 +1037,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let mut f64_val_res: f64;
 
         if let Some(expected_type) = expected_type {
-            if expected_type.array_nesting_level > 0 {
+            if expected_type.array_dimensions.len() > 0 {
                 panic!("Unexpected assignment of number to array type");
             }
             if expected_type.pointer_nesting_level > 0 {
@@ -1034,7 +1080,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             expected_type
                 .unwrap_or(&ValueVarType {
                     vtype: VarType::F32,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 })
                 .clone(),
@@ -1051,7 +1097,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         let mut bool_val_res: bool;
 
         if let Some(expected_type) = expected_type {
-            if expected_type.array_nesting_level > 0 {
+            if expected_type.array_dimensions.len() > 0 {
                 panic!("Unexpected assignment of number to array type");
             }
             if expected_type.pointer_nesting_level > 0 {
@@ -1084,11 +1130,105 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             expected_type
                 .unwrap_or(&ValueVarType {
                     vtype: VarType::Boolean,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 })
                 .clone(),
         )
+    }
+
+    pub fn codegen_arr_val(
+        &self,
+        arr_val: ArrayVal,
+        expected_type: Option<&ValueVarType>,
+    ) -> (BasicValueEnum, ValueVarType) {
+        let exprs = arr_val.0;
+        let exprs_len: u32 = exprs
+            .len()
+            .try_into()
+            .expect("Array dimensions should fit inside an u32");
+
+        if exprs.is_empty() && expected_type.is_none() {
+            panic!("Can't infer type of empty array");
+        }
+        if let Some(et) = expected_type {
+            let expected_dim = et.array_dimensions[0];
+
+            if expected_dim != exprs_len {
+                panic!(
+                    "Array declared with {} elements, but assigned value only has {} elements",
+                    expected_dim, exprs_len
+                );
+            }
+        }
+
+        let mut element_type = expected_type.map(|et| {
+            // Same type but of individual element
+            let mut element_type = et.clone();
+            element_type.array_dimensions.pop_front();
+
+            element_type
+        });
+
+        let mut vals = vec![];
+        for expr in exprs {
+            let (val, ty_) = self.codegen_rhs_expr(expr, element_type.as_ref()).unwrap();
+            element_type.get_or_insert(ty_);
+            vals.push(val);
+        }
+
+        // By this point we should have a type
+        let mut resulting_type = element_type.unwrap();
+        let element_b_type = self.convert_to_type_enum(&resulting_type);
+        let array_val = match element_b_type {
+            BasicTypeEnum::ArrayType(at) => {
+                let array_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_array_value())
+                    .collect::<Vec<_>>();
+                at.const_array(&array_vals)
+            }
+            BasicTypeEnum::FloatType(ft) => {
+                let float_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_float_value())
+                    .collect::<Vec<_>>();
+                ft.const_array(&float_vals)
+            }
+            BasicTypeEnum::IntType(it) => {
+                let int_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_int_value())
+                    .collect::<Vec<_>>();
+                it.const_array(&int_vals)
+            }
+            BasicTypeEnum::PointerType(pt) => {
+                let pt_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_pointer_value())
+                    .collect::<Vec<_>>();
+                pt.const_array(&pt_vals)
+            }
+            BasicTypeEnum::StructType(st) => {
+                let struct_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_struct_value())
+                    .collect::<Vec<_>>();
+                st.const_array(&struct_vals)
+            }
+            BasicTypeEnum::VectorType(vt) => {
+                let vector_vals = vals
+                    .into_iter()
+                    .map(|v| v.into_vector_value())
+                    .collect::<Vec<_>>();
+                vt.const_array(&vector_vals)
+            }
+        };
+
+        // If we had an inferred type we convert it to an array type
+        resulting_type.array_dimensions.push_front(exprs_len);
+
+        (array_val.as_basic_value_enum(), resulting_type)
     }
 
     pub fn codegen_primitive_val(
@@ -1115,12 +1255,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
                     str_val,
                     ValueVarType {
                         vtype: VarType::String,
-                        array_nesting_level: 0,
+                        array_dimensions: VecDeque::new(),
                         pointer_nesting_level: 0,
                     },
                 )
             }
-            PrimitiveVal::Array(_) => todo!(),
+            PrimitiveVal::Array(arr_val) => self.codegen_arr_val(arr_val, expected_type),
             PrimitiveVal::Struct(_) => todo!(),
         };
 
@@ -1196,7 +1336,8 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     }
 
     pub fn compile_to_x86(
-        compiler: &Compiler<'input, 'ctx>,
+        compiler: &mut Compiler<'input, 'ctx>,
+        top_block: TopBlock,
         path: &str,
         file_name: &str,
     ) -> String {
@@ -1220,6 +1361,9 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         compiler
             .module
             .set_data_layout(&target_machine.get_target_data().get_data_layout());
+
+        compiler.target_data.set(target_machine.get_target_data());
+        compiler.codegen_top_block(top_block);
 
         let out_path = format!("{path}\\{file_name}");
         compiler

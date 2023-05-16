@@ -1,4 +1,4 @@
-use crate::ast::ValueVarType;
+use crate::ast::{ValueVarType, VarType};
 use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
@@ -7,10 +7,37 @@ use inkwell::{
     context::Context,
     module::Module,
     passes::PassManager,
+    targets::TargetData,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
-use std::collections::HashMap;
+use std::{
+    cell::OnceCell,
+    collections::{HashMap, VecDeque},
+    sync::LazyLock,
+};
+
+pub static DEFAULT_TYPES: LazyLock<HashMap<VarType, ValueVarType>> = LazyLock::new(|| {
+    let mut hm = HashMap::new();
+    hm.insert(
+        VarType::I32,
+        ValueVarType {
+            vtype: VarType::I32,
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        },
+    );
+    hm.insert(
+        VarType::U32,
+        ValueVarType {
+            vtype: VarType::U32,
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        },
+    );
+
+    hm
+});
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeMarker<'ctx> {
@@ -76,6 +103,8 @@ pub struct Compiler<'input, 'ctx> {
     /// if we're inside a function, and its respective return type
     pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
     pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
+    /// This should be initialized before codegen
+    pub target_data: OnceCell<TargetData>,
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {

@@ -10,43 +10,17 @@ mod parser;
 use compiler::helpers::Compiler;
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
-use std::collections::HashMap;
+use std::{cell::OnceCell, collections::HashMap};
 
 fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    function iterative_fib(n: i32): i32
-    {
-        let i = 0, first = 0, second = 1, result: i32;
-
-        while(i <= n) {
-            if(i <= 1) {
-                result = i;
-            } else {
-                result = first + second;
-                first = second;
-                second = result;
-            }
-
-            i = i + 1;
-        }
-
-        return result;
+    let arr: i32[5] = [1, 2, 3, 4, 5];
+    let one: u32 = 1, five: u32 = 5;
+    for(let i: u32 = 0; i < five; i = i + one) {
+        printf("Array element %d is %d\n", i, arr[i]);
     }
-
-    function rec_fib(n: i32): i32
-    {
-        if (n <= 1) {
-            return n;
-        }
-        
-        return rec_fib(n - 1) + rec_fib(n - 2);
-    }
-
-    let n = 14;
-    printf("Iterative: Fib of %d is %d\n", n, iterative_fib(n));
-    printf("Recursive: Fib of %d is %d\n", n, rec_fib(n));
     "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
 
@@ -75,11 +49,12 @@ fn main() {
         scope_stack: Vec::new(),
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
+        target_data: OnceCell::new(),
     };
 
-    compiler.codegen_top_block(top_block);
     Compiler::compile_to_x86(
-        &compiler,
+        &mut compiler,
+        top_block,
         "C:/Users/TGMM/Documents/Tareas/Compiladores/yep_lang/tests",
         "test",
     );

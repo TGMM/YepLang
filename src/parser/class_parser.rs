@@ -124,6 +124,8 @@ pub fn return_parser<'i: 'static>(
 
 #[cfg(test)]
 mod test {
+    use std::collections::VecDeque;
+
     use chumsky::Parser;
 
     use crate::{
@@ -163,7 +165,7 @@ mod test {
                 args: vec![],
                 ret_type: Some(ValueVarType {
                     vtype: VarType::I32,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0
                 }),
                 block: Block { stmts: vec![] }
@@ -195,7 +197,7 @@ mod test {
                 args: vec![],
                 ret_type: Some(ValueVarType {
                     vtype: VarType::I32,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0
                 }),
                 block: Block { stmts: vec![] }
@@ -257,13 +259,13 @@ mod test {
                     Destructure::Id("x".into()),
                     ValueVarType {
                         vtype: VarType::I32,
-                        array_nesting_level: 0,
+                        array_dimensions: VecDeque::new(),
                         pointer_nesting_level: 0
                     }
                 )],
                 ret_type: Some(ValueVarType {
                     vtype: VarType::I32,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0
                 }),
                 block: Block { stmts: vec![] }
@@ -304,7 +306,7 @@ mod test {
                         args: vec![],
                         ret_type: Some(ValueVarType {
                             vtype: VarType::I32,
-                            array_nesting_level: 0,
+                            array_dimensions: VecDeque::new(),
                             pointer_nesting_level: 0
                         }),
                         block: Block { stmts: vec![] }
@@ -313,7 +315,7 @@ mod test {
                         id: "myClassProp".into(),
                         vtype: Some(ValueVarType {
                             vtype: VarType::F32,
-                            array_nesting_level: 0,
+                            array_dimensions: VecDeque::new(),
                             pointer_nesting_level: 0
                         }),
                         assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
@@ -364,7 +366,7 @@ mod test {
                             args: vec![],
                             ret_type: Some(ValueVarType {
                                 vtype: VarType::I32,
-                                array_nesting_level: 0,
+                                array_dimensions: VecDeque::new(),
                                 pointer_nesting_level: 0
                             }),
                             block: Block { stmts: vec![] }
@@ -373,7 +375,7 @@ mod test {
                             id: "myClassProp".into(),
                             vtype: Some(ValueVarType {
                                 vtype: VarType::F32,
-                                array_nesting_level: 0,
+                                array_dimensions: VecDeque::new(),
                                 pointer_nesting_level: 0
                             }),
                             assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
