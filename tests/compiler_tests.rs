@@ -31,9 +31,8 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let arr: i32[3][1] = [[1], [2], [3]];
-    let one: u32 = 1, three: u32 = 3;
-    for(let i: u32 = 0; i < three; i = i + one) {
-        for(let j: u32 = 0; j < one; j = j + one) {
+    for(let i: u32 = 0; i < 3; i = i + 1) {
+        for(let j: u32 = 0; j < 1; j = j + 1) {
             printf("Array element %d, %d is %d\n", i, j, arr[i][j]);
         }   
     }
@@ -47,8 +46,7 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let arr: i32[5] = [1, 2, 3, 4, 5];
-    let one: u32 = 1, five: u32 = 5;
-    for(let i: u32 = 0; i < five; i = i + one) {
+    for(let i: u32 = 0; i < 5; i = i + 1) {
         printf("Array element %d is %d\n", i, arr[i]);
     }
     "#,
