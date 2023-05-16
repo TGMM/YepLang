@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, VarType},
+    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -88,6 +88,24 @@ impl fmt::Display for VarType {
             VarType::String => write!(f, "string"),
             VarType::Custom(cs) => write!(f, "{}", cs),
         }
+    }
+}
+
+impl fmt::Display for ValueVarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut output = String::new();
+
+        for _ in 0..self.pointer_nesting_level {
+            output += "*";
+        }
+
+        output += self.vtype.to_string().as_str();
+
+        for dim in self.array_dimensions.iter() {
+            output += format!("[{}]", dim).as_str();
+        }
+
+        write!(f, "{}", output)
     }
 }
 

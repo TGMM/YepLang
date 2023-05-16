@@ -13,9 +13,9 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    let x = 2147483647;
-    printf("Max int is %d\n", x);
-    printf("Overflow add is %d\n", x + 1);
+    let f: f64 = 10.0;
+
+    printf("Float is %f\n", f);
     "#;
 
     compile_yep(

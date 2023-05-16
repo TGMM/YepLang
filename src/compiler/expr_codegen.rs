@@ -437,7 +437,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
     if let Some(expected_ret_type) = expected_ret_type {
         if expected_ret_type != &expr_type {
             panic!(
-                "Expected {:#?} as result of the expression, found {:#?}",
+                "Expected {} as result of the expression, found {}",
                 &expected_ret_type, &expr_type
             );
         }

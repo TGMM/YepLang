@@ -1,12 +1,12 @@
 use super::{
     class_codegen::{codegen_fn_decl, codegen_return},
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
-    expr_codegen::{codegen_lhs_expr, codegen_rhs_expr},
+    expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
-    helpers::{BlockType, Compiler, ScopeMarker, ScopedVal, ScopedVar},
+    helpers::{BlockType, Compiler, ExpectedExprType, ScopeMarker, ScopedVal, ScopedVar},
 };
 use crate::{
-    ast::{Assignment, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
+    ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
     parser::main_parser::parse,
 };
 use inkwell::{
@@ -214,15 +214,50 @@ fn codegen_var_decl<'input, 'ctx>(
 }
 
 pub fn codegen_assignment(compiler: &Compiler, assignment: Assignment) {
-    // TODO: The BOP doesn't work
-    if assignment.bop.is_some() {
-        panic!("Binary operators on assignments aren't supported yet");
-    }
+    let (assignee_ptr, expected_type) =
+        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None);
 
-    let assignee_ptr = codegen_lhs_expr(compiler, assignment.assignee_expr, None).0;
-    let new_val = codegen_rhs_expr(compiler, assignment.assigned_expr, None).unwrap();
+    let new_val = if let Some(bop) = assignment.bop {
+        let bexpr = BExpr {
+            lhs: assignment.assignee_expr,
+            op: bop,
+            rhs: assignment.assigned_expr,
+        };
 
-    compiler.builder.build_store(assignee_ptr, new_val.0);
+        let (bop_val, bop_type) = codegen_bexpr(
+            compiler,
+            bexpr,
+            ExpectedExprType {
+                expected_lhs_type: Some(&expected_type),
+                expected_rhs_type: None,
+                expected_ret_type: Some(&expected_type),
+            },
+        )
+        .unwrap();
+
+        if expected_type != bop_type {
+            panic!(
+                "Invalid types, expected {} but got {}",
+                expected_type, bop_type
+            );
+        }
+
+        bop_val
+    } else {
+        let (new_val, new_val_type) =
+            codegen_rhs_expr(compiler, assignment.assigned_expr, None).unwrap();
+
+        if expected_type != new_val_type {
+            panic!(
+                "Invalid types, expected {} but got {}",
+                expected_type, new_val_type
+            );
+        }
+
+        new_val
+    };
+
+    compiler.builder.build_store(assignee_ptr, new_val);
 }
 
 pub fn compile_to_x86<'input, 'ctx>(

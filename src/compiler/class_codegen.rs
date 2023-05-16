@@ -48,7 +48,7 @@ pub fn codegen_return(compiler: &Compiler, return_: Return, block_type: BlockTyp
     let expected_ret_type: ValueVarType = expected_ret_type;
     if ret_type != expected_ret_type {
         panic!(
-            "Invalid type for returned value, expected {:#?}, got {:#?}",
+            "Invalid type for returned value, expected {}, got {}",
             expected_ret_type, ret_type
         );
     }
