@@ -6,7 +6,10 @@ use inkwell::{
 };
 
 use super::{
-    helpers::{convert_value_to_metadata, Compiler, ExpectedExprType, ScopedVal, DEFAULT_TYPES},
+    helpers::{
+        convert_value_to_metadata, semantic_cube, Compiler, ExpectedExprType, ScopedVal,
+        DEFAULT_TYPES,
+    },
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
 };
@@ -295,14 +298,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
     }
 
-    if lhs_type.vtype != rhs_type.vtype {
-        return Err(format!(
-            "Invalid binary operation between two different types: {} and {}",
-            lhs_type.vtype, rhs_type.vtype
-        ));
-    }
-
-    let operand_type = lhs_type.vtype;
+    let expr_type = semantic_cube(&lhs_type, &rhs_type)?;
+    let operand_type = expr_type.vtype.clone();
     // Primitive BOp
     let basic_val = match operand_type {
         VarType::I8
@@ -315,9 +312,17 @@ pub fn codegen_bexpr<'input, 'ctx>(
         | VarType::U64
         | VarType::I128
         | VarType::U128 => {
-            let lhs = lhs.0.into_int_value();
-            let rhs = rhs.0.into_int_value();
+            let mut lhs = lhs.0.into_int_value();
+            let mut rhs = rhs.0.into_int_value();
+
             let b = compiler.builder;
+            let cast_type = convert_to_type_enum(compiler, &expr_type).into_int_type();
+            if lhs_type != expr_type {
+                lhs = b.build_int_cast(lhs, cast_type, "int_cast");
+            }
+            if rhs_type != expr_type {
+                rhs = b.build_int_cast(rhs, cast_type, "int_cast");
+            }
 
             let bop_res = match op {
                 BOp::Add => b.build_int_add(lhs, rhs, "int_add"),
@@ -355,9 +360,17 @@ pub fn codegen_bexpr<'input, 'ctx>(
             bop_res.as_basic_value_enum()
         }
         VarType::F32 | VarType::F64 => {
-            let lhs = lhs.0.into_float_value();
-            let rhs = rhs.0.into_float_value();
+            let mut lhs = lhs.0.into_float_value();
+            let mut rhs = rhs.0.into_float_value();
+
             let b = compiler.builder;
+            let cast_type = convert_to_type_enum(compiler, &expr_type).into_float_type();
+            if lhs_type != expr_type {
+                lhs = b.build_float_cast(lhs, cast_type, "float_cast");
+            }
+            if rhs_type != expr_type {
+                rhs = b.build_float_cast(rhs, cast_type, "float_cast");
+            }
 
             let bop_res = match op {
                 BOp::Add => b.build_float_add(lhs, rhs, "flt_add").as_basic_value_enum(),

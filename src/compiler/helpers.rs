@@ -1,4 +1,4 @@
-use crate::ast::{ValueVarType, VarType};
+use crate::ast::{BOp, ValueVarType, VarType};
 use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
@@ -127,4 +127,36 @@ pub fn convert_value_to_metadata(val: BasicValueEnum) -> BasicMetadataValueEnum 
         BasicValueEnum::StructValue(s) => BasicMetadataValueEnum::StructValue(s),
         BasicValueEnum::VectorValue(v) => BasicMetadataValueEnum::VectorValue(v),
     }
+}
+
+/// This only works for operand types
+pub fn semantic_cube(lhs: &ValueVarType, rhs: &ValueVarType) -> Result<ValueVarType, String> {
+    if lhs.array_dimensions.len() != rhs.array_dimensions.len()
+        || lhs.array_dimensions != rhs.array_dimensions
+    {
+        return Err("Incompatible types: Array dimensions do not match".to_string());
+    }
+
+    if lhs.pointer_nesting_level != rhs.pointer_nesting_level {
+        return Err("Incompatible types: Pointer nesting does not match".to_string());
+    }
+
+    if lhs.vtype.is_int() != rhs.vtype.is_int() {
+        return Err("Incompatible types".to_string());
+    }
+
+    if lhs.vtype.is_float() != rhs.vtype.is_float() {
+        return Err("Incompatible types".to_string());
+    }
+
+    let mut resulting_type: VarType = lhs.vtype.clone().max(rhs.vtype.clone());
+    if resulting_type.is_int() {
+        resulting_type = resulting_type.to_signed_int();
+    }
+
+    Ok(ValueVarType {
+        vtype: resulting_type,
+        array_dimensions: lhs.array_dimensions.clone(),
+        pointer_nesting_level: lhs.pointer_nesting_level,
+    })
 }

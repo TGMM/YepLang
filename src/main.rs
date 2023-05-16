@@ -13,13 +13,9 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    let arr: i32[3][1] = [[1], [2], [3]];
-    let one: u32 = 1, three: u32 = 3;
-    for(let i: u32 = 0; i < three; i = i + one) {
-        for(let j: u32 = 0; j < one; j = j + one) {
-            printf("Array element %d, %d is %d\n", i, j, arr[i][j]);
-        }   
-    }
+    let x = 2147483647;
+    printf("Max int is %d\n", x);
+    printf("Overflow add is %d\n", x + 1);
     "#;
 
     compile_yep(

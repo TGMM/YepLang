@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cmp::Ordering, collections::VecDeque};
 
 use crate::lexer::Token;
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
@@ -27,11 +27,141 @@ pub enum VarType {
 }
 impl VarType {
     pub fn is_signed(&self) -> bool {
+        use VarType::*;
+
         match self {
-            VarType::I8 | VarType::I16 | VarType::I32 | VarType::I64 | VarType::I128 => true,
-            VarType::U8 | VarType::U16 | VarType::U32 | VarType::U64 | VarType::U128 => false,
+            I8 | I16 | I32 | I64 | I128 => true,
+            U8 | U16 | U32 | U64 | U128 => false,
             _ => panic!("Only integer types can be signed"),
         }
+    }
+
+    pub fn is_int(&self) -> bool {
+        use VarType::*;
+
+        match self {
+            I8 | I16 | I32 | I64 | I128 | U8 | U16 | U32 | U64 | U128 => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_int_val(&self) -> i32 {
+        use VarType::*;
+
+        match self {
+            I8 => 8,
+            I16 => 16,
+            I32 => 32,
+            I64 => 64,
+            I128 => 128,
+            U8 => 8,
+            U32 => 32,
+            U16 => 16,
+            U64 => 64,
+            U128 => 128,
+            _ => panic!("Only ints can have int values"),
+        }
+    }
+
+    pub fn to_signed_int(&self) -> Self {
+        use VarType::*;
+        match self {
+            I8 | U8 => I8,
+            I16 | U16 => I16,
+            I32 | U32 => I32,
+            I64 | U64 => I64,
+            I128 | U128 => I128,
+            _ => panic!("Only ints can have int values"),
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            VarType::F32 | VarType::F64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_float_val(&self) -> i32 {
+        match self {
+            VarType::F32 => 32,
+            VarType::F64 => 64,
+            _ => panic!("Only float can have float values"),
+        }
+    }
+}
+impl PartialOrd for VarType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self > other {
+            return Some(Ordering::Greater);
+        }
+
+        if self < other {
+            return Some(Ordering::Less);
+        }
+
+        if self.is_int() && other.is_int() {
+            return self.get_int_val().partial_cmp(&other.get_int_val());
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val().partial_cmp(&other.get_float_val());
+        }
+
+        None
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() < other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() < other.get_float_val();
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() <= other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() <= other.get_float_val();
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() > other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() > other.get_float_val();
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() >= other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() >= other.get_float_val();
+        }
+
+        panic!("Incompatible types")
+    }
+}
+impl Ord for VarType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).expect("Invalid ordering")
     }
 }
 
