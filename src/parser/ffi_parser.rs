@@ -36,6 +36,8 @@ pub fn extern_decl_parser<'i: 'static>(
 
 #[cfg(test)]
 mod test {
+    use std::collections::VecDeque;
+
     use crate::{
         ast::{BOp, ExternDecl, ExternType, ValueVarType, VarType},
         lexer::Token,
@@ -67,14 +69,14 @@ mod test {
             ExternDecl {
                 ret_type: ValueVarType {
                     vtype: VarType::I32,
-                    array_nesting_level: 0,
+                    array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0
                 },
                 fn_id: "printf".into(),
                 arg_types: vec![
                     ExternType::Type(ValueVarType {
                         vtype: VarType::U8,
-                        array_nesting_level: 0,
+                        array_dimensions: VecDeque::new(),
                         pointer_nesting_level: 1
                     }),
                     ExternType::Spread

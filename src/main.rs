@@ -7,26 +7,22 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::helpers::Compiler;
+use compiler::{helpers::Compiler, main_codegen::compile_to_x86};
 use inkwell::{context::Context, passes::PassManager};
 use parser::main_parser::parse;
-use std::collections::HashMap;
+use std::{cell::OnceCell, collections::HashMap};
 
 fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    function fib(n: i32): i32
-    {
-        if (n <= 1) {
-            return n;
-        }
-        
-        return fib(n - 1) + fib(n - 2);
+    let arr: i32[3][1] = [[1], [2], [3]];
+    let one: u32 = 1, three: u32 = 3;
+    for(let i: u32 = 0; i < three; i = i + one) {
+        for(let j: u32 = 0; j < one; j = j + one) {
+            printf("Array element %d, %d is %d\n", i, j, arr[i][j]);
+        }   
     }
-
-    let n = 9;
-    printf("Fib of %d is %d", n, fib(n));
     "#;
     let top_block = parse(input, "input.file").expect("Invalid code");
 
@@ -55,11 +51,12 @@ fn main() {
         scope_stack: Vec::new(),
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
+        target_data: OnceCell::new(),
     };
 
-    compiler.codegen_top_block(top_block);
-    Compiler::compile_to_x86(
-        &compiler,
+    compile_to_x86(
+        &mut compiler,
+        top_block,
         "C:/Users/TGMM/Documents/Tareas/Compiladores/yep_lang/tests",
         "test",
     );

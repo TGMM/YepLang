@@ -1,5 +1,8 @@
+use std::collections::VecDeque;
+
 use crate::lexer::Token;
 use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
+use enum_as_inner::EnumAsInner;
 use logos::Lexer;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
@@ -35,17 +38,17 @@ impl VarType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueVarType {
     pub vtype: VarType,
-    // TODO: In case this is an array, it should specify quantity and
-    // type (Ex. arr: i32[10])
-    /// This is the nesting level of the array.
-    /// 0 means the type is not an array
-    pub array_nesting_level: u8,
+    /// The length of each dimension of the array.
+    /// An empty vec means the type is not an array.
+    ///
+    /// Ex: arr\[5]\[5] represents a 5*5 matrix
+    pub array_dimensions: VecDeque<u32>,
     /// This is the nesting level of the pointer.
     /// 0 means the type is not a pointer
     pub pointer_nesting_level: u8,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, EnumAsInner)]
 pub enum NumericLiteral<'input> {
     Int(&'input str),
     Float(&'input str),

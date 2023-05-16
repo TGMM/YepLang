@@ -14,7 +14,10 @@ use crate::{
 use chumsky::recursive::Recursive;
 use chumsky::{primitive::just, select, IterParser, Parser};
 use snailquote::unescape;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, LazyLock, RwLock},
+};
 
 pub fn bop_parser<'i>() -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone
 {
@@ -186,16 +189,24 @@ pub fn value_var_type_parser<'i>(
     // TODO: We could try_map in count to convert usize to u8
     let ptr_nesting = pointer_symbol_parser().repeated().count();
     let vtype = var_type_parser();
-    let array_nesting = just(Token::LSqBracket)
-        .then(just(Token::RSqBracket))
+    let array_nesting = number_parser()
+        // Array dimensions can't be floats
+        .filter(|n| matches!(n, NumericLiteral::Int(_)))
+        .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
+        .map(|nl| *nl.as_int().unwrap())
+        .map(|num| {
+            num.parse::<u32>()
+                .expect("Array dimensions should fit in an unsigned 32 bit integer")
+        })
         .repeated()
-        .count();
+        .collect::<Vec<_>>()
+        .map(|v| VecDeque::from(v));
 
     ptr_nesting
         .then(vtype)
         .then(array_nesting)
-        .map(|((ptr_nl, vtype), arr_nl)| ValueVarType {
-            array_nesting_level: arr_nl.try_into().expect("Array nesting too deep"),
+        .map(|((ptr_nl, vtype), array_dimensions)| ValueVarType {
+            array_dimensions,
             vtype,
             pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
         })
@@ -208,6 +219,8 @@ pub fn type_specifier_parser<'i>(
 
 #[cfg(test)]
 mod test {
+    use std::collections::VecDeque;
+
     use crate::{
         ast::{
             ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
@@ -480,7 +493,7 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::I32,
-                array_nesting_level: 0,
+                array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
         )
@@ -492,6 +505,7 @@ mod test {
             Token::Colon,
             Token::VarType(VarType::I32),
             Token::LSqBracket,
+            Token::IntVal("5"),
             Token::RSqBracket,
         ]);
 
@@ -503,7 +517,7 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::I32,
-                array_nesting_level: 1,
+                array_dimensions: VecDeque::from([5]),
                 pointer_nesting_level: 0
             }
         )
@@ -521,7 +535,7 @@ mod test {
             var_type,
             ValueVarType {
                 vtype: VarType::Custom("MyClass".into()),
-                array_nesting_level: 0,
+                array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
         )
