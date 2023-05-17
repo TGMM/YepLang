@@ -13,9 +13,9 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    let f: f64 = 10.0;
-
-    printf("Float is %f\n", f);
+    for(let i: u32 = 0; i < 3; i += 1) {
+        printf("I is %d\n", i);
+    }
     "#;
 
     compile_yep(

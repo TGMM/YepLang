@@ -298,7 +298,15 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
     }
 
-    let expr_type = semantic_cube(&lhs_type, &rhs_type)?;
+    let expr_type: ValueVarType = if let Some(et) = expected_ret_type.cloned() {
+        if matches!(et.vtype, VarType::Boolean) {
+            semantic_cube(&lhs_type, &rhs_type)?
+        } else {
+            et
+        }
+    } else {
+        semantic_cube(&lhs_type, &rhs_type)?
+    };
     let operand_type = expr_type.vtype.clone();
     // Primitive BOp
     let basic_val = match operand_type {
@@ -424,8 +432,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
         VarType::Custom(_) => panic!("Classes are not yet supported"),
     };
 
-    let expr_type = if !op.is_cmp() {
-        rhs_type
+    let cmp_expr_type = if !op.is_cmp() {
+        expr_type
     } else {
         ValueVarType {
             vtype: VarType::Boolean,
@@ -435,13 +443,13 @@ pub fn codegen_bexpr<'input, 'ctx>(
     };
 
     if let Some(expected_ret_type) = expected_ret_type {
-        if expected_ret_type != &expr_type {
+        if expected_ret_type != &cmp_expr_type {
             panic!(
                 "Expected {} as result of the expression, found {}",
-                &expected_ret_type, &expr_type
+                &expected_ret_type, &cmp_expr_type
             );
         }
     }
 
-    Ok((basic_val, expr_type))
+    Ok((basic_val, cmp_expr_type))
 }
