@@ -1,6 +1,6 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{Compiler, DEFAULT_TYPES},
+    helpers::{Compiler, CompilerError, DEFAULT_TYPES},
     main_codegen::convert_to_type_enum,
 };
 use crate::ast::{
@@ -18,7 +18,7 @@ pub fn codegen_int_val<'input, 'ctx>(
     int_str: &str,
     uop: Option<NumericUnaryOp>,
     mut expected_type: Option<&ValueVarType>,
-) -> (BasicValueEnum<'ctx>, ValueVarType) {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let int_type;
     let mut u64_val_res: u64;
     let mut unsigned = false;
@@ -115,7 +115,7 @@ pub fn codegen_int_val<'input, 'ctx>(
 
     let basic_val = int_type.const_int(u64_val_res, false).as_basic_value_enum();
 
-    (basic_val, expected_type.unwrap().clone())
+    Ok((basic_val, expected_type.unwrap().clone()))
 }
 
 pub fn codegen_float_val<'input, 'ctx>(
@@ -123,7 +123,7 @@ pub fn codegen_float_val<'input, 'ctx>(
     float_str: &str,
     uop: Option<NumericUnaryOp>,
     expected_type: Option<&ValueVarType>,
-) -> (BasicValueEnum<'ctx>, ValueVarType) {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let float_type;
     let mut f64_val_res: f64;
 
@@ -166,7 +166,7 @@ pub fn codegen_float_val<'input, 'ctx>(
 
     let basic_val = float_type.const_float(f64_val_res).as_basic_value_enum();
 
-    (
+    Ok((
         basic_val,
         expected_type
             .unwrap_or(&ValueVarType {
@@ -175,7 +175,7 @@ pub fn codegen_float_val<'input, 'ctx>(
                 pointer_nesting_level: 0,
             })
             .clone(),
-    )
+    ))
 }
 
 pub fn codegen_bool_val<'input, 'ctx>(
@@ -183,7 +183,7 @@ pub fn codegen_bool_val<'input, 'ctx>(
     bool_literal: BoolLiteral,
     buop: Option<BoolUnaryOp>,
     expected_type: Option<&ValueVarType>,
-) -> (BasicValueEnum<'ctx>, ValueVarType) {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let bool_type = compiler.context.bool_type();
     let mut bool_val_res: bool;
 
@@ -216,7 +216,7 @@ pub fn codegen_bool_val<'input, 'ctx>(
     let u64_val: u64 = bool_val_res.into();
     let basic_val = bool_type.const_int(u64_val, false).as_basic_value_enum();
 
-    (
+    Ok((
         basic_val,
         expected_type
             .unwrap_or(&ValueVarType {
@@ -225,14 +225,14 @@ pub fn codegen_bool_val<'input, 'ctx>(
                 pointer_nesting_level: 0,
             })
             .clone(),
-    )
+    ))
 }
 
 pub fn codegen_arr_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     arr_val: ArrayVal,
     expected_type: Option<&ValueVarType>,
-) -> (BasicValueEnum<'ctx>, ValueVarType) {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let exprs = arr_val.0;
     let exprs_len: u32 = exprs
         .len()
@@ -319,14 +319,14 @@ pub fn codegen_arr_val<'input, 'ctx>(
     // If we had an inferred type we convert it to an array type
     resulting_type.array_dimensions.push_front(exprs_len);
 
-    (array_val.as_basic_value_enum(), resulting_type)
+    Ok((array_val.as_basic_value_enum(), resulting_type))
 }
 
 pub fn codegen_primitive_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     primitive_val: PrimitiveVal,
     expected_type: Option<&ValueVarType>,
-) -> (BasicValueEnum<'ctx>, ValueVarType) {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (bv, vvt) = match primitive_val {
         PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
             NumericLiteral::Int(i) => codegen_int_val(compiler, i, uop, expected_type),
@@ -342,18 +342,18 @@ pub fn codegen_primitive_val<'input, 'ctx>(
                 .build_global_string_ptr(&string, "globstr")
                 .as_basic_value_enum();
 
-            (
+            Ok((
                 str_val,
                 ValueVarType {
                     vtype: VarType::String,
                     array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 },
-            )
+            ))
         }
         PrimitiveVal::Array(arr_val) => codegen_arr_val(compiler, arr_val, expected_type),
         PrimitiveVal::Struct(_) => todo!(),
-    };
+    }?;
 
-    (bv, vvt)
+    Ok((bv, vvt))
 }

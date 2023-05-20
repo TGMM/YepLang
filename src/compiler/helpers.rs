@@ -1,4 +1,4 @@
-use crate::ast::{BOp, ValueVarType, VarType};
+use crate::ast::{ValueVarType, VarType};
 use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
@@ -16,6 +16,8 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::LazyLock,
 };
+
+pub type CompilerError = String;
 
 pub static DEFAULT_TYPES: LazyLock<HashMap<VarType, ValueVarType>> = LazyLock::new(|| {
     let mut hm = HashMap::new();

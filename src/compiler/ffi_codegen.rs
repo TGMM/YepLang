@@ -8,7 +8,7 @@ use crate::{
 };
 use inkwell::{module::Linkage, types::BasicType};
 
-pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) {
+pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> Result<(), String> {
     let fn_name = &extern_decl.fn_id.0;
     let ret_type = convert_to_type_enum(compiler, &extern_decl.ret_type);
 
@@ -38,4 +38,6 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) {
             ret_type: extern_decl.ret_type,
         }),
     );
+
+    Ok(())
 }

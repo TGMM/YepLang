@@ -6,7 +6,11 @@ use super::{
 use crate::ast::{DoWhile, For, If, ValueVarType, VarType, While};
 use std::collections::VecDeque;
 
-pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
+pub fn codegen_if(
+    compiler: &mut Compiler,
+    if_: If,
+    mut block_type: BlockType,
+) -> Result<(), String> {
     block_type.insert(BlockType::IF);
 
     let parent_block = compiler.builder.get_insert_block().unwrap();
@@ -35,7 +39,7 @@ pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
 
     // Then
     compiler.builder.position_at_end(then_block);
-    codegen_block(compiler, if_.if_block, block_type);
+    codegen_block(compiler, if_.if_block, block_type)?;
     compiler.builder.build_unconditional_branch(merge_block);
 
     // Else ifs
@@ -79,14 +83,14 @@ pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
 
         // Block
         compiler.builder.position_at_end(else_if_block_bb);
-        codegen_block(compiler, else_if.else_block, block_type);
+        codegen_block(compiler, else_if.else_block, block_type)?;
         compiler.builder.build_unconditional_branch(merge_block);
     }
 
     // Else
     compiler.builder.position_at_end(else_block);
     if let Some(else_b) = if_.else_b {
-        codegen_block(compiler, else_b, block_type);
+        codegen_block(compiler, else_b, block_type)?;
     }
     compiler.builder.build_unconditional_branch(merge_block);
 
@@ -97,9 +101,15 @@ pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
         .build_conditional_branch(if_expr.into_int_value(), then_block, next_cond_bb);
 
     compiler.builder.position_at_end(merge_block);
+
+    Ok(())
 }
 
-pub fn codegen_while(compiler: &mut Compiler, while_: While, mut block_type: BlockType) {
+pub fn codegen_while(
+    compiler: &mut Compiler,
+    while_: While,
+    mut block_type: BlockType,
+) -> Result<(), String> {
     block_type.insert(BlockType::WHILE);
 
     let parent_block = compiler
@@ -140,13 +150,19 @@ pub fn codegen_while(compiler: &mut Compiler, while_: While, mut block_type: Blo
 
     // Then
     compiler.builder.position_at_end(then_block);
-    codegen_block(compiler, while_.block, block_type);
+    codegen_block(compiler, while_.block, block_type)?;
     compiler.builder.build_unconditional_branch(comp_block);
 
     compiler.builder.position_at_end(merge_block);
+
+    Ok(())
 }
 
-pub fn codegen_do_while(compiler: &mut Compiler, do_while: DoWhile, mut block_type: BlockType) {
+pub fn codegen_do_while(
+    compiler: &mut Compiler,
+    do_while: DoWhile,
+    mut block_type: BlockType,
+) -> Result<(), String> {
     block_type.insert(BlockType::WHILE);
 
     let parent_block = compiler
@@ -169,7 +185,7 @@ pub fn codegen_do_while(compiler: &mut Compiler, do_while: DoWhile, mut block_ty
     // Do
     compiler.builder.build_unconditional_branch(then_block);
     compiler.builder.position_at_end(then_block);
-    codegen_block(compiler, do_while.do_block, block_type);
+    codegen_block(compiler, do_while.do_block, block_type)?;
     compiler.builder.build_unconditional_branch(comp_block);
 
     // While
@@ -192,9 +208,15 @@ pub fn codegen_do_while(compiler: &mut Compiler, do_while: DoWhile, mut block_ty
 
     // Cont
     compiler.builder.position_at_end(merge_block);
+
+    Ok(())
 }
 
-pub fn codegen_for(compiler: &mut Compiler, for_: For, mut block_type: BlockType) {
+pub fn codegen_for(
+    compiler: &mut Compiler,
+    for_: For,
+    mut block_type: BlockType,
+) -> Result<(), String> {
     block_type.insert(BlockType::WHILE);
 
     let parent_block = compiler
@@ -224,20 +246,20 @@ pub fn codegen_for(compiler: &mut Compiler, for_: For, mut block_type: BlockType
     compiler.builder.build_unconditional_branch(decl_block);
     compiler.builder.position_at_end(decl_block);
     if let Some(stmt) = for_.decl_stmt {
-        codegen_stmt(compiler, *stmt, block_type);
+        codegen_stmt(compiler, *stmt, block_type)?;
     }
     compiler.builder.build_unconditional_branch(comp_block);
 
     // Postfix stmt
     compiler.builder.position_at_end(postfix_block);
     if let Some(stmt) = for_.postfix_stmt {
-        codegen_stmt(compiler, *stmt, block_type);
+        codegen_stmt(compiler, *stmt, block_type)?;
     }
     compiler.builder.build_unconditional_branch(comp_block);
 
     // Block
     compiler.builder.position_at_end(then_block);
-    codegen_block(compiler, for_.block, block_type);
+    codegen_block(compiler, for_.block, block_type)?;
     compiler.builder.build_unconditional_branch(postfix_block);
 
     // Cond
@@ -267,4 +289,6 @@ pub fn codegen_for(compiler: &mut Compiler, for_: For, mut block_type: BlockType
 
     // Cont
     compiler.builder.position_at_end(merge_block);
+
+    Ok(())
 }

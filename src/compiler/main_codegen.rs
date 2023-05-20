@@ -3,7 +3,9 @@ use super::{
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
-    helpers::{BlockType, Compiler, ExpectedExprType, ScopeMarker, ScopedVal, ScopedVar},
+    helpers::{
+        BlockType, Compiler, CompilerError, ExpectedExprType, ScopeMarker, ScopedVal, ScopedVar,
+    },
 };
 use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
@@ -75,7 +77,10 @@ pub fn declare_variable<'input, 'ctx>(
         .insert(var_name, ScopedVal::Var(value));
 }
 
-pub fn codegen_top_block(compiler: &mut Compiler, top_block: TopBlock) {
+pub fn codegen_top_block(
+    compiler: &mut Compiler,
+    top_block: TopBlock,
+) -> Result<(), CompilerError> {
     let fn_type = compiler.context.i32_type().fn_type(&[], false);
     let fun = compiler
         .module
@@ -85,13 +90,19 @@ pub fn codegen_top_block(compiler: &mut Compiler, top_block: TopBlock) {
     compiler.basic_block_stack.push(entry_basic_block);
 
     // Codegen all statements
-    codegen_block(compiler, top_block.0, BlockType::GLOBAL);
+    codegen_block(compiler, top_block.0, BlockType::GLOBAL)?;
 
     let int_zero = compiler.context.i32_type().const_zero();
     compiler.builder.build_return(Some(&int_zero));
+
+    Ok(())
 }
 
-pub fn codegen_block(compiler: &mut Compiler, block: Block, mut block_type: BlockType) {
+pub fn codegen_block(
+    compiler: &mut Compiler,
+    block: Block,
+    mut block_type: BlockType,
+) -> Result<(), CompilerError> {
     // Entering a block means the block type is not global anymore
     block_type.remove(BlockType::GLOBAL);
     block_type.insert(BlockType::LOCAL);
@@ -101,7 +112,7 @@ pub fn codegen_block(compiler: &mut Compiler, block: Block, mut block_type: Bloc
     }
 
     for stmt in block.stmts {
-        codegen_stmt(compiler, stmt, block_type);
+        codegen_stmt(compiler, stmt, block_type)?;
     }
 
     // Now we swap
@@ -120,20 +131,24 @@ pub fn codegen_block(compiler: &mut Compiler, block: Block, mut block_type: Bloc
             }
         }
     }
+
+    Ok(())
 }
 
-pub fn codegen_stmt(compiler: &mut Compiler, stmt: Stmt, block_type: BlockType) {
+pub fn codegen_stmt(
+    compiler: &mut Compiler,
+    stmt: Stmt,
+    block_type: BlockType,
+) -> Result<(), CompilerError> {
     match stmt {
         Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment),
-        Stmt::Expr(expr) => _ = codegen_rhs_expr(compiler, expr, None),
+        Stmt::Expr(expr) => codegen_rhs_expr(compiler, expr, None).map(|(_, _)| ()),
         Stmt::ClassDecl(_) => todo!(),
         Stmt::FnDecl(fn_decl) => codegen_fn_decl(compiler, fn_decl, block_type),
         Stmt::For(for_) => codegen_for(compiler, for_, block_type),
         Stmt::While(while_) => codegen_while(compiler, while_, block_type),
         Stmt::DoWhile(do_while) => codegen_do_while(compiler, do_while, block_type),
-        Stmt::If(if_) => {
-            codegen_if(compiler, if_, block_type);
-        }
+        Stmt::If(if_) => codegen_if(compiler, if_, block_type),
         Stmt::Block(block) => codegen_block(compiler, block, block_type),
         Stmt::VarDecl(var_decl) => codegen_var_decl(compiler, var_decl, block_type),
         Stmt::ExternDecl(extern_decl) => codegen_extern_decl(compiler, extern_decl),
@@ -145,7 +160,7 @@ fn codegen_var_decl<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_decl: VarDecl,
     block_type: BlockType,
-) {
+) -> Result<(), CompilerError> {
     // TODO: Handle scope specifier
     for decl_as in var_decl.decl_assignments {
         // TODO: Handle destructures instead of only ids
@@ -193,7 +208,7 @@ fn codegen_var_decl<'input, 'ctx>(
                 }),
             );
 
-            return;
+            return Ok(());
         }
 
         let new_local = compiler.builder.build_alloca(type_, &id.0);
@@ -211,9 +226,14 @@ fn codegen_var_decl<'input, 'ctx>(
             },
         );
     }
+
+    Ok(())
 }
 
-pub fn codegen_assignment(compiler: &Compiler, assignment: Assignment) {
+pub fn codegen_assignment(
+    compiler: &Compiler,
+    assignment: Assignment,
+) -> Result<(), CompilerError> {
     let (assignee_ptr, expected_type) =
         codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None);
 
@@ -258,6 +278,7 @@ pub fn codegen_assignment(compiler: &Compiler, assignment: Assignment) {
     };
 
     compiler.builder.build_store(assignee_ptr, new_val);
+    Ok(())
 }
 
 pub fn compile_to_x86<'input, 'ctx>(
@@ -265,7 +286,7 @@ pub fn compile_to_x86<'input, 'ctx>(
     top_block: TopBlock,
     path: &str,
     file_name: &str,
-) -> String {
+) -> Result<String, CompilerError> {
     Target::initialize_x86(&InitializationConfig::default());
     let triple = TargetTriple::create("x86_64-pc-windows-msvc");
     let target = Target::from_triple(&triple).unwrap();
@@ -291,7 +312,7 @@ pub fn compile_to_x86<'input, 'ctx>(
         .target_data
         .set(target_machine.get_target_data())
         .unwrap();
-    codegen_top_block(compiler, top_block);
+    codegen_top_block(compiler, top_block)?;
 
     let out_path = format!("{path}\\{file_name}");
     compiler
@@ -313,10 +334,14 @@ pub fn compile_to_x86<'input, 'ctx>(
         )
         .unwrap();
 
-    out_path
+    Ok(out_path)
 }
 
-pub fn compile_yep(input: &'static str, path: &'static str, out_name: &'static str) {
+pub fn compile_yep(
+    input: &'static str,
+    path: &'static str,
+    out_name: &'static str,
+) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").expect("Invalid code");
 
     let context = Context::create();
@@ -347,5 +372,7 @@ pub fn compile_yep(input: &'static str, path: &'static str, out_name: &'static s
         target_data: OnceCell::new(),
     };
 
-    compile_to_x86(&mut compiler, top_block, path, out_name);
+    compile_to_x86(&mut compiler, top_block, path, out_name)?;
+
+    Ok(())
 }

@@ -12,7 +12,11 @@ use crate::{
 use inkwell::{module::Linkage, types::BasicType, values::BasicValue};
 use std::collections::VecDeque;
 
-pub fn codegen_return(compiler: &Compiler, return_: Return, block_type: BlockType) {
+pub fn codegen_return(
+    compiler: &Compiler,
+    return_: Return,
+    block_type: BlockType,
+) -> Result<(), String> {
     let ret_expr = return_.0;
     let fn_ret_val = compiler.curr_func_ret_val.clone();
 
@@ -59,9 +63,15 @@ pub fn codegen_return(compiler: &Compiler, return_: Return, block_type: BlockTyp
     } else {
         panic!("Return statements must be inside a function");
     }
+
+    Ok(())
 }
 
-pub fn codegen_fn_decl(compiler: &mut Compiler, fn_decl: FnDecl, block_type: BlockType) {
+pub fn codegen_fn_decl(
+    compiler: &mut Compiler,
+    fn_decl: FnDecl,
+    block_type: BlockType,
+) -> Result<(), String> {
     let fn_name = fn_decl.fn_id.0;
     let param_types = fn_decl
         .args
@@ -149,7 +159,7 @@ pub fn codegen_fn_decl(compiler: &mut Compiler, fn_decl: FnDecl, block_type: Blo
         };
     }
 
-    codegen_block(compiler, fn_decl.block, BlockType::FUNC);
+    codegen_block(compiler, fn_decl.block, BlockType::FUNC)?;
 
     // Building the return
     // Every block must end with a br statement, so we jump to the return block
@@ -189,4 +199,6 @@ pub fn codegen_fn_decl(compiler: &mut Compiler, fn_decl: FnDecl, block_type: Blo
 
     // We store the new return type
     compiler.curr_func_ret_val = compiler.func_ret_val_stack.pop();
+
+    Ok(())
 }

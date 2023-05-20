@@ -1,24 +1,22 @@
-use std::collections::VecDeque;
-
-use inkwell::{
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
-    FloatPredicate, IntPredicate,
-};
-
 use super::{
     helpers::{
-        convert_value_to_metadata, semantic_cube, Compiler, ExpectedExprType, ScopedVal,
-        DEFAULT_TYPES,
+        convert_value_to_metadata, semantic_cube, Compiler, CompilerError, ExpectedExprType,
+        ScopedVal, DEFAULT_TYPES,
     },
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
 };
 use crate::ast::{BExpr, BOp, Expr, FnCall, Indexing, ValueVarType, VarType};
+use inkwell::{
+    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
+    FloatPredicate, IntPredicate,
+};
+use std::collections::VecDeque;
 
 pub fn codegen_fn_call<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     fn_call: FnCall,
-) -> Result<(BasicValueEnum<'ctx>, ValueVarType), String> {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let fn_name = match fn_call.fn_expr {
         Expr::Id(id) => id.0,
         _ => return Err("Functions as values are not yet supported".to_string()),
@@ -92,7 +90,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     expr: Expr,
     expected_type: Option<&ValueVarType>,
-) -> Result<(BasicValueEnum<'ctx>, ValueVarType), String> {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     match expr {
         // TODO: Handle expr unary operator
         Expr::ParenExpr(_, expr) => codegen_rhs_expr(compiler, *expr, expected_type),
@@ -106,8 +104,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
             },
         ),
         Expr::PrimitiveVal(primitive_val) => {
-            let pv = codegen_primitive_val(compiler, primitive_val, expected_type);
-            Ok(pv)
+            codegen_primitive_val(compiler, primitive_val, expected_type)
         }
         Expr::FnCall(fn_call) => codegen_fn_call(compiler, *fn_call),
         Expr::Indexing(indexing) => codegen_rhs_indexing(compiler, *indexing, expected_type),
@@ -149,7 +146,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
-) -> Result<(PointerValue<'ctx>, ValueVarType), String> {
+) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None);
 
     if let Some(et) = expected_type {
@@ -196,7 +193,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
-) -> Result<(BasicValueEnum<'ctx>, ValueVarType), String> {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None);
 
     if let Some(et) = expected_type {
@@ -248,7 +245,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     bexpr: BExpr,
     expected_type: ExpectedExprType,
-) -> Result<(BasicValueEnum<'ctx>, ValueVarType), String> {
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let ExpectedExprType {
         expected_lhs_type,
         expected_rhs_type,
