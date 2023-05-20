@@ -9,18 +9,14 @@ use std::collections::VecDeque;
 pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
     block_type.insert(BlockType::IF);
 
-    let parent_block = compiler
-        .builder
-        .get_insert_block()
-        .unwrap()
-        .get_parent()
-        .unwrap();
+    let parent_block = compiler.builder.get_insert_block().unwrap();
+    let parent_func = parent_block.get_parent().unwrap();
 
-    let then_block = compiler.context.append_basic_block(parent_block, "then");
-    let else_block = compiler.context.append_basic_block(parent_block, "else");
-    let merge_block = compiler.context.append_basic_block(parent_block, "ifcont");
+    let then_block = compiler.context.append_basic_block(parent_func, "then");
+    let else_block = compiler.context.append_basic_block(parent_func, "else");
+    let merge_block = compiler.context.append_basic_block(parent_func, "ifcont");
 
-    let if_expr = codegen_rhs_expr(
+    let (if_expr, if_expr_type) = codegen_rhs_expr(
         compiler,
         if_.if_expr,
         Some(&ValueVarType {
@@ -29,19 +25,63 @@ pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
             pointer_nesting_level: 0,
         }),
     )
-    .expect("Invalid expression for if condtition")
-    .0
-    .into_int_value();
-
-    // If
-    compiler
-        .builder
-        .build_conditional_branch(if_expr, then_block, else_block);
+    .expect("Invalid expression for if condtition");
+    if if_expr_type.array_dimensions.len() > 0
+        || if_expr_type.pointer_nesting_level > 0
+        || !matches!(if_expr_type.vtype, VarType::Boolean)
+    {
+        panic!("Conditional expression must be of boolean type");
+    }
 
     // Then
     compiler.builder.position_at_end(then_block);
     codegen_block(compiler, if_.if_block, block_type);
     compiler.builder.build_unconditional_branch(merge_block);
+
+    // Else ifs
+    let else_ifs = if_.else_if;
+    let mut else_if_blocks = vec![];
+
+    let mut build_after_then = then_block;
+    for _ in 0..else_ifs.len() {
+        let else_if_cond_bb = compiler
+            .context
+            .insert_basic_block_after(build_after_then, "else_if_cond");
+        build_after_then = else_if_cond_bb;
+        let else_if_block_bb = compiler
+            .context
+            .insert_basic_block_after(build_after_then, "else_if_block");
+        build_after_then = else_if_block_bb;
+
+        else_if_blocks.push((else_if_cond_bb, else_if_block_bb));
+    }
+
+    let mut next_cond_bb = else_block;
+    for (else_if, (else_if_cond_bb, else_if_block_bb)) in
+        else_ifs.into_iter().zip(else_if_blocks).rev()
+    {
+        // Condition
+        compiler.builder.position_at_end(else_if_cond_bb);
+        let (comp, comp_type) = codegen_rhs_expr(compiler, else_if.else_expr, None).unwrap();
+        if comp_type.array_dimensions.len() > 0
+            || comp_type.pointer_nesting_level > 0
+            || !matches!(comp_type.vtype, VarType::Boolean)
+        {
+            panic!("Conditional expression must be of boolean type");
+        }
+
+        compiler.builder.build_conditional_branch(
+            comp.into_int_value(),
+            else_if_block_bb,
+            next_cond_bb,
+        );
+        next_cond_bb = else_if_cond_bb;
+
+        // Block
+        compiler.builder.position_at_end(else_if_block_bb);
+        codegen_block(compiler, else_if.else_block, block_type);
+        compiler.builder.build_unconditional_branch(merge_block);
+    }
 
     // Else
     compiler.builder.position_at_end(else_block);
@@ -49,6 +89,12 @@ pub fn codegen_if(compiler: &mut Compiler, if_: If, mut block_type: BlockType) {
         codegen_block(compiler, else_b, block_type);
     }
     compiler.builder.build_unconditional_branch(merge_block);
+
+    compiler.builder.position_at_end(parent_block);
+    // If
+    compiler
+        .builder
+        .build_conditional_branch(if_expr.into_int_value(), then_block, next_cond_bb);
 
     compiler.builder.position_at_end(merge_block);
 }

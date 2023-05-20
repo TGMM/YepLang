@@ -13,9 +13,18 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    for(let i: u32 = 0; i < 3; i += 1) {
-        printf("I is %d\n", i);
+    let x = 1;
+    if(x > 3) {
+        printf("> 3\n");
+    } else if(x > 2) {
+        printf("> 2\n");
+    } else if(x > 1) {
+        printf("> 1\n");
+    } else {
+        printf("None\n");
     }
+
+    printf("End\n");
     "#;
 
     compile_yep(
