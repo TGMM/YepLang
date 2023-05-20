@@ -287,7 +287,10 @@ pub fn compile_to_x86<'input, 'ctx>(
         .module
         .set_data_layout(&target_machine.get_target_data().get_data_layout());
 
-    let _ = compiler.target_data.set(target_machine.get_target_data());
+    compiler
+        .target_data
+        .set(target_machine.get_target_data())
+        .unwrap();
     codegen_top_block(compiler, top_block);
 
     let out_path = format!("{path}\\{file_name}");
