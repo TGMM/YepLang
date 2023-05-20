@@ -8,7 +8,7 @@ use crate::ast::{
     VarType,
 };
 use inkwell::{
-    types::BasicTypeEnum,
+    types::{BasicTypeEnum, FloatType},
     values::{ArrayValue, BasicValue, BasicValueEnum},
 };
 use std::{collections::VecDeque, mem::transmute};
@@ -126,63 +126,51 @@ pub fn codegen_float_val<'input, 'ctx>(
     uop: Option<NumericUnaryOp>,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let float_type;
-    let mut f64_val_res: f64;
-
-    if let Some(expected_type) = expected_type {
-        if expected_type.array_dimensions.len() > 0 {
-            return Err("Unexpected assignment of number to array type".to_string());
+    let (mut float_val, float_type, var_type): (f64, FloatType, ValueVarType) = match expected_type
+    {
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::F64 => {
+            let float_type = compiler.context.f64_type();
+            let float_val = float_str.parse::<f64>().unwrap();
+            (
+                float_val.into(),
+                float_type,
+                ValueVarType {
+                    vtype: VarType::F32,
+                    array_dimensions: VecDeque::new(),
+                    pointer_nesting_level: 0,
+                },
+            )
         }
-        if expected_type.pointer_nesting_level > 0 {
-            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
+        _ => {
+            let float_type = compiler.context.f32_type();
+            let float_val = float_str.parse::<f32>().unwrap();
+            (
+                float_val.into(),
+                float_type,
+                ValueVarType {
+                    vtype: VarType::F64,
+                    array_dimensions: VecDeque::new(),
+                    pointer_nesting_level: 0,
+                },
+            )
         }
-
-        match &expected_type.vtype {
-            VarType::F32 => {
-                float_type = compiler.context.f32_type();
-                let float_val = float_str.parse::<f32>().unwrap();
-                f64_val_res = float_val.into();
-            }
-            VarType::F64 => {
-                float_type = compiler.context.f64_type();
-                let float_val = float_str.parse::<f64>().unwrap();
-                f64_val_res = float_val.into();
-            }
-            ty => {
-                return Err(format!(
-                    "Invalid float assignment to variable of type {}",
-                    ty
-                ))
-            }
-        }
-    } else {
-        // Default value is f32
-        float_type = compiler.context.f32_type();
-        let float_val = float_str.parse::<f32>().unwrap();
-        f64_val_res = float_val.into();
-    }
+    };
 
     if let Some(uop) = uop {
         match uop {
             NumericUnaryOp::Minus => {
-                f64_val_res = -f64_val_res;
+                float_val = -float_val;
             }
             NumericUnaryOp::Plus => {}
         }
     }
 
-    let basic_val = float_type.const_float(f64_val_res).as_basic_value_enum();
-
-    Ok((
-        basic_val,
-        expected_type
-            .unwrap_or(&ValueVarType {
-                vtype: VarType::F32,
-                array_dimensions: VecDeque::new(),
-                pointer_nesting_level: 0,
-            })
-            .clone(),
-    ))
+    let basic_val = float_type.const_float(float_val).as_basic_value_enum();
+    Ok((basic_val, var_type))
 }
 
 pub fn codegen_bool_val<'input, 'ctx>(
