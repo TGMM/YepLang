@@ -170,10 +170,11 @@ fn codegen_var_decl<'input, 'ctx>(
         };
 
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
-            codegen_rhs_expr(compiler, initial_expr, decl_as.var_type.as_ref()).unwrap()
+            codegen_rhs_expr(compiler, initial_expr, decl_as.var_type.as_ref())
         });
         let (initial_val, inferred_var_type) = match initial_expr_val {
-            Some((bve, vvt)) => (Some(bve), Some(vvt)),
+            Some(Ok((bve, vvt))) => (Some(bve), Some(vvt)),
+            Some(Err(err)) => return Err(err),
             None => (None, None),
         };
 
@@ -181,6 +182,15 @@ fn codegen_var_decl<'input, 'ctx>(
         let var_type;
         if let Some(explicit_var_type) = decl_as.var_type {
             type_ = convert_to_type_enum(compiler, &explicit_var_type)?;
+
+            // Type checking
+            if let Some(ivt) = inferred_var_type && ivt != explicit_var_type {
+                return Err(format!(
+                    "Can't assign a value of {} to a variable of type {}",
+                    ivt, explicit_var_type
+                ));
+            }
+
             var_type = explicit_var_type;
         } else if let Some(inferred_var_type) = inferred_var_type {
             type_ = convert_to_type_enum(compiler, &inferred_var_type)?;

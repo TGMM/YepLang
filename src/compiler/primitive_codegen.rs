@@ -8,7 +8,7 @@ use crate::ast::{
     VarType,
 };
 use inkwell::{
-    types::{BasicType, BasicTypeEnum},
+    types::BasicTypeEnum,
     values::{ArrayValue, BasicValue, BasicValueEnum},
 };
 use std::{collections::VecDeque, mem::transmute};
@@ -148,7 +148,12 @@ pub fn codegen_float_val<'input, 'ctx>(
                 let float_val = float_str.parse::<f64>().unwrap();
                 f64_val_res = float_val.into();
             }
-            ty => return Err(format!("Invalid int assignment to {}", ty)),
+            ty => {
+                return Err(format!(
+                    "Invalid float assignment to variable of type {}",
+                    ty
+                ))
+            }
         }
     } else {
         // Default value is f32
@@ -184,49 +189,28 @@ pub fn codegen_bool_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     bool_literal: BoolLiteral,
     buop: Option<BoolUnaryOp>,
-    expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let bool_type = compiler.context.bool_type();
-    let mut bool_val_res: bool;
-
-    if let Some(expected_type) = expected_type {
-        if expected_type.array_dimensions.len() > 0 {
-            return Err("Unexpected assignment of number to array type".to_string());
-        }
-        if expected_type.pointer_nesting_level > 0 {
-            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
-        }
-
-        match &expected_type.vtype {
-            VarType::Boolean => {
-                bool_val_res = bool_literal.0;
-            }
-            ty => return Err(format!("Invalid int assignment to {}", ty)),
-        }
-    } else {
-        bool_val_res = bool_literal.0;
-    }
+    let mut bool_val = bool_literal.0;
 
     if let Some(buop) = buop {
         match buop {
             BoolUnaryOp::Not => {
-                bool_val_res = !bool_val_res;
+                bool_val = !bool_val;
             }
         }
     }
 
-    let u64_val: u64 = bool_val_res.into();
+    let u64_val: u64 = bool_val.into();
     let basic_val = bool_type.const_int(u64_val, false).as_basic_value_enum();
 
     Ok((
         basic_val,
-        expected_type
-            .unwrap_or(&ValueVarType {
-                vtype: VarType::Boolean,
-                array_dimensions: VecDeque::new(),
-                pointer_nesting_level: 0,
-            })
-            .clone(),
+        ValueVarType {
+            vtype: VarType::Boolean,
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        },
     ))
 }
 
@@ -334,9 +318,7 @@ pub fn codegen_primitive_val<'input, 'ctx>(
             NumericLiteral::Int(i) => codegen_int_val(compiler, i, uop, expected_type),
             NumericLiteral::Float(f) => codegen_float_val(compiler, f, uop, expected_type),
         },
-        PrimitiveVal::Boolean(buop, bool_literal) => {
-            codegen_bool_val(compiler, bool_literal, buop, expected_type)
-        }
+        PrimitiveVal::Boolean(buop, bool_literal) => codegen_bool_val(compiler, bool_literal, buop),
         PrimitiveVal::Char(_) => todo!(),
         PrimitiveVal::String(string) => {
             let str_val = compiler
