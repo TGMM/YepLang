@@ -26,21 +26,21 @@ const MAIN_FN_NAME: &str = "main";
 pub fn convert_to_type_enum<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     vvt: &ValueVarType,
-) -> BasicTypeEnum<'ctx> {
+) -> Result<BasicTypeEnum<'ctx>, CompilerError> {
     let ctx = compiler.context;
-    let basic_vtype: Option<BasicTypeEnum> = match &vvt.vtype {
-        VarType::I8 | VarType::U8 => ctx.i8_type().as_basic_type_enum().into(),
-        VarType::I16 | VarType::U16 => ctx.i16_type().as_basic_type_enum().into(),
-        VarType::I32 | VarType::U32 => ctx.i32_type().as_basic_type_enum().into(),
-        VarType::I64 | VarType::U64 => ctx.i64_type().as_basic_type_enum().into(),
-        VarType::I128 | VarType::U128 => ctx.i128_type().as_basic_type_enum().into(),
-        VarType::F32 => ctx.f32_type().as_basic_type_enum().into(),
-        VarType::F64 => ctx.f64_type().as_basic_type_enum().into(),
-        VarType::Boolean => ctx.bool_type().as_basic_type_enum().into(),
-        other => panic!("{} is not a valid basic value", other),
+    let basic_vtype: Result<BasicTypeEnum, CompilerError> = match &vvt.vtype {
+        VarType::I8 | VarType::U8 => Ok(ctx.i8_type().as_basic_type_enum()),
+        VarType::I16 | VarType::U16 => Ok(ctx.i16_type().as_basic_type_enum()),
+        VarType::I32 | VarType::U32 => Ok(ctx.i32_type().as_basic_type_enum()),
+        VarType::I64 | VarType::U64 => Ok(ctx.i64_type().as_basic_type_enum()),
+        VarType::I128 | VarType::U128 => Ok(ctx.i128_type().as_basic_type_enum()),
+        VarType::F32 => Ok(ctx.f32_type().as_basic_type_enum()),
+        VarType::F64 => Ok(ctx.f64_type().as_basic_type_enum()),
+        VarType::Boolean => Ok(ctx.bool_type().as_basic_type_enum()),
+        other => Err(format!("{} is not a valid basic value", other)),
     };
 
-    let mut final_type = basic_vtype.unwrap();
+    let mut final_type = basic_vtype?;
     for dim in vvt.array_dimensions.iter().rev() {
         final_type = final_type.array_type(*dim).as_basic_type_enum()
     }
@@ -50,7 +50,7 @@ pub fn convert_to_type_enum<'input, 'ctx>(
             .as_basic_type_enum()
     }
 
-    final_type
+    Ok(final_type)
 }
 
 pub fn declare_variable<'input, 'ctx>(
@@ -166,7 +166,7 @@ fn codegen_var_decl<'input, 'ctx>(
         // TODO: Handle destructures instead of only ids
         let id = match decl_as.destructure {
             Destructure::Id(id) => id,
-            _ => panic!("Destructures are not supported yet"),
+            _ => return Err("Destructures are not supported yet".to_string()),
         };
 
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
@@ -180,13 +180,13 @@ fn codegen_var_decl<'input, 'ctx>(
         let type_;
         let var_type;
         if let Some(explicit_var_type) = decl_as.var_type {
-            type_ = convert_to_type_enum(compiler, &explicit_var_type);
+            type_ = convert_to_type_enum(compiler, &explicit_var_type)?;
             var_type = explicit_var_type;
         } else if let Some(inferred_var_type) = inferred_var_type {
-            type_ = convert_to_type_enum(compiler, &inferred_var_type);
+            type_ = convert_to_type_enum(compiler, &inferred_var_type)?;
             var_type = inferred_var_type;
         } else {
-            panic!("Variables must have an explicit type or an initial value");
+            return Err("Variables must have an explicit type or an initial value".to_string());
         }
 
         if matches!(block_type, BlockType::GLOBAL) {
@@ -235,7 +235,7 @@ pub fn codegen_assignment(
     assignment: Assignment,
 ) -> Result<(), CompilerError> {
     let (assignee_ptr, expected_type) =
-        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None);
+        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None)?;
 
     let new_val = if let Some(bop) = assignment.bop {
         let bexpr = BExpr {
@@ -256,10 +256,10 @@ pub fn codegen_assignment(
         .unwrap();
 
         if expected_type != bop_type {
-            panic!(
+            return Err(format!(
                 "Invalid types, expected {} but got {}",
                 expected_type, bop_type
-            );
+            ));
         }
 
         bop_val
@@ -268,10 +268,10 @@ pub fn codegen_assignment(
             codegen_rhs_expr(compiler, assignment.assigned_expr, None).unwrap();
 
         if expected_type != new_val_type {
-            panic!(
+            return Err(format!(
                 "Invalid types, expected {} but got {}",
                 expected_type, new_val_type
-            );
+            ));
         }
 
         new_val

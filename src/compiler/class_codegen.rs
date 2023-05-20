@@ -21,20 +21,20 @@ pub fn codegen_return(
     let fn_ret_val = compiler.curr_func_ret_val.clone();
 
     if ret_expr.is_some() && fn_ret_val.is_none() {
-        panic!("Void functions can't return values");
+        return Err("Void functions can't return values".to_string());
     }
 
     // Return is void
     if ret_expr.is_none() {
         // Returning void on a non-void function
         if fn_ret_val.is_some() {
-            panic!("Non-void functions must return a value");
+            return Err("Non-void functions must return a value".to_string());
         }
 
         if block_type.contains(BlockType::FUNC) {
             compiler.builder.build_return(None);
         } else {
-            panic!("Return statements must be inside a function");
+            return Err("Return statements must be inside a function".to_string());
         }
     }
 
@@ -47,21 +47,21 @@ pub fn codegen_return(
     } = fn_ret_val.unwrap();
 
     let (ret_val, ret_type) = codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type))
-        .expect("Invalid value for function return");
+        .map_err(|_| "Invalid value for function return".to_string())?;
 
     let expected_ret_type: ValueVarType = expected_ret_type;
     if ret_type != expected_ret_type {
-        panic!(
+        return Err(format!(
             "Invalid type for returned value, expected {}, got {}",
             expected_ret_type, ret_type
-        );
+        ));
     }
 
     if block_type.contains(BlockType::FUNC) {
         compiler.builder.build_store(ret_val_ptr, ret_val);
         compiler.builder.build_unconditional_branch(ret_bb);
     } else {
-        panic!("Return statements must be inside a function");
+        return Err("Return statements must be inside a function".to_string());
     }
 
     Ok(())
@@ -78,18 +78,21 @@ pub fn codegen_fn_decl(
         .iter()
         .map(|(d, vvt)| {
             if !matches!(d, Destructure::Id(_)) {
-                panic!("Destructuring of arguments is not supported yet");
+                return Err("Destructuring of arguments is not supported yet".to_string());
             }
-            convert_type_to_metadata(convert_to_type_enum(compiler, vvt))
+
+            Ok(convert_type_to_metadata(convert_to_type_enum(
+                compiler, vvt,
+            )?))
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
 
     let ret_type = fn_decl.ret_type.clone().unwrap_or(ValueVarType {
         vtype: VarType::Void,
         array_dimensions: VecDeque::new(),
         pointer_nesting_level: 0,
     });
-    let basic_ret_type = convert_to_type_enum(compiler, &ret_type);
+    let basic_ret_type = convert_to_type_enum(compiler, &ret_type)?;
     let fn_type = basic_ret_type.fn_type(&param_types, false);
     let linkage = if matches!(block_type, BlockType::GLOBAL) {
         Linkage::External
@@ -117,7 +120,7 @@ pub fn codegen_fn_decl(
     }
     // We store the new return type in case there is some
     if let Some(ret_type) = fn_decl.ret_type {
-        let basic_type = convert_to_type_enum(compiler, &ret_type);
+        let basic_type = convert_to_type_enum(compiler, &ret_type)?;
 
         compiler.curr_func_ret_val = Some(FnRetVal {
             val: compiler.builder.build_alloca(basic_type, "fn_ret_val"),
@@ -139,7 +142,7 @@ pub fn codegen_fn_decl(
     compiler.scope_stack.push(ScopeMarker::ScopeBegin);
     for ((arg_destructure, arg_type), arg_val) in fn_decl.args.into_iter().zip(fun.get_param_iter())
     {
-        let ty = convert_to_type_enum(compiler, &arg_type);
+        let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
             Destructure::Id(id) => {
                 let arg_ptr = compiler.builder.build_alloca(ty, &id.0);
@@ -175,7 +178,7 @@ pub fn codegen_fn_decl(
 
     let ret_val_load = if let Some(ret_val) = compiler.curr_func_ret_val.take() {
         let ret_val_ptr = ret_val.val;
-        let ret_val_ty = convert_to_type_enum(compiler, &ret_val.vtype);
+        let ret_val_ty = convert_to_type_enum(compiler, &ret_val.vtype)?;
         let ret_val_load = compiler
             .builder
             .build_load(ret_val_ty, ret_val_ptr, "ret_val_load");

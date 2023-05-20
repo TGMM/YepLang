@@ -58,27 +58,23 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     expr: Expr,
     expected_type: Option<&ValueVarType>,
-) -> (PointerValue<'ctx>, ValueVarType) {
+) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
     match expr {
         Expr::ParenExpr(None, expr) => codegen_lhs_expr(compiler, *expr, expected_type),
-        Expr::Indexing(indexing) => {
-            codegen_lhs_indexing(compiler, *indexing, expected_type).unwrap()
-        }
+        Expr::Indexing(indexing) => codegen_lhs_indexing(compiler, *indexing, expected_type),
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
             let var_ptr = compiler
                 .curr_scope_vars
                 .get(&var_id.0)
-                // TODO: This should be an user facing error
-                // and not a panic
-                .expect("Undeclared variable or function");
+                .ok_or("Undeclared variable or function".to_string())?;
 
             match var_ptr {
-                ScopedVal::Var(v) => (v.ptr_val, v.var_type.clone()),
+                ScopedVal::Var(v) => Ok((v.ptr_val, v.var_type.clone())),
                 ScopedVal::Fn(_) => todo!(),
             }
         }
-        _ => panic!("Left-hand side of assignment can't be ..."),
+        _ => Err("Left-hand side of assignment can't be ...".to_string()),
     }
 }
 
@@ -131,7 +127,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
                is_var_const {
                 var_val = initializer;
             } else {
-                let var_type = convert_to_type_enum(compiler, &scoped_var.var_type);
+                let var_type = convert_to_type_enum(compiler, &scoped_var.var_type)?;
                 var_val = compiler
                     .builder
                     .build_load(var_type, scoped_var.ptr_val, &instruction_name);
@@ -147,11 +143,11 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
-    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None);
+    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None)?;
 
     if let Some(et) = expected_type {
         if et != &idxd_type {
-            panic!("Assigning array of one type to array of another");
+            return Err("Assigning array of one type to array of another".to_string());
         }
     }
 
@@ -160,7 +156,9 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
-        panic!("Indexing is only supported for arrays, array indexes must be of type u32");
+        return Err(
+            "Indexing is only supported for arrays, array indexes must be of type u32".to_string(),
+        );
     }
 
     let idxr: inkwell::values::IntValue = idxr.into_int_value();
@@ -179,7 +177,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
         .builder
         .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
 
-    let arr_ty = convert_to_type_enum(compiler, &idxd_type);
+    let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
             .builder
@@ -194,11 +192,11 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None);
+    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None)?;
 
     if let Some(et) = expected_type {
         if et != &idxd_type {
-            panic!("Assigning array of one type to array of another");
+            return Err("Assigning array of one type to array of another".to_string());
         }
     }
 
@@ -207,7 +205,9 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
-        panic!("Indexing is only supported for arrays, array indexes must be of type u32");
+        return Err(
+            "Indexing is only supported for arrays, array indexes must be of type u32".to_string(),
+        );
     }
 
     let idxr: inkwell::values::IntValue = idxr.into_int_value();
@@ -218,7 +218,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
 
         et
     };
-    let element_b_type = convert_to_type_enum(compiler, &element_type);
+    let element_b_type = convert_to_type_enum(compiler, &element_type)?;
 
     let target_data = compiler.target_data.get().unwrap();
     let ptr_size_type = compiler.context.ptr_sized_int_type(target_data, None);
@@ -228,7 +228,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
         .builder
         .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
 
-    let arr_ty = convert_to_type_enum(compiler, &idxd_type);
+    let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
             .builder
@@ -321,7 +321,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
             let mut rhs = rhs.0.into_int_value();
 
             let b = compiler.builder;
-            let cast_type = convert_to_type_enum(compiler, &expr_type).into_int_type();
+            let cast_type = convert_to_type_enum(compiler, &expr_type)?.into_int_type();
             if lhs_type != expr_type {
                 lhs = b.build_int_cast(lhs, cast_type, "int_cast");
             }
@@ -369,7 +369,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
             let mut rhs = rhs.0.into_float_value();
 
             let b = compiler.builder;
-            let cast_type = convert_to_type_enum(compiler, &expr_type).into_float_type();
+            let cast_type = convert_to_type_enum(compiler, &expr_type)?.into_float_type();
             if lhs_type != expr_type {
                 lhs = b.build_float_cast(lhs, cast_type, "float_cast");
             }
@@ -406,7 +406,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
 
             bop_res
         }
-        VarType::Void => panic!("Binary operations between void types are invalid"),
+        VarType::Void => return Err("Binary operations between void types are invalid".to_string()),
         VarType::Boolean => {
             // Bool values are i1, so they are ints
             let lhs = lhs.0.into_int_value();
@@ -416,17 +416,19 @@ pub fn codegen_bexpr<'input, 'ctx>(
             let bop_res = match op {
                 BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "bool_eq_cmp"),
                 BOp::Eq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
-                unsupported_operation => panic!(
-                    "Unsupported operation {} between two booleans",
-                    unsupported_operation
-                ),
+                unsupported_operation => {
+                    return Err(format!(
+                        "Unsupported operation {} between two booleans",
+                        unsupported_operation
+                    ))
+                }
             };
 
             bop_res.as_basic_value_enum()
         }
         VarType::Char => todo!(),
         VarType::String => todo!(),
-        VarType::Custom(_) => panic!("Classes are not yet supported"),
+        VarType::Custom(_) => return Err("Classes are not yet supported".to_string()),
     };
 
     let cmp_expr_type = if !op.is_cmp() {
@@ -441,10 +443,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
 
     if let Some(expected_ret_type) = expected_ret_type {
         if expected_ret_type != &cmp_expr_type {
-            panic!(
+            return Err(format!(
                 "Expected {} as result of the expression, found {}",
                 &expected_ret_type, &cmp_expr_type
-            );
+            ));
         }
     }
 

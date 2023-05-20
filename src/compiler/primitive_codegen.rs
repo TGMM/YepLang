@@ -8,8 +8,8 @@ use crate::ast::{
     VarType,
 };
 use inkwell::{
-    types::BasicTypeEnum,
-    values::{BasicValue, BasicValueEnum},
+    types::{BasicType, BasicTypeEnum},
+    values::{ArrayValue, BasicValue, BasicValueEnum},
 };
 use std::{collections::VecDeque, mem::transmute};
 
@@ -25,10 +25,10 @@ pub fn codegen_int_val<'input, 'ctx>(
 
     if let Some(expected_type_ref) = expected_type {
         if expected_type_ref.array_dimensions.len() > 0 {
-            panic!("Unexpected assignment of number to array type");
+            return Err("Unexpected assignment of number to array type".to_string());
         }
         if expected_type_ref.pointer_nesting_level > 0 {
-            panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
         }
 
         match &expected_type_ref.vtype {
@@ -77,7 +77,7 @@ pub fn codegen_int_val<'input, 'ctx>(
                 u64_val_res = int_val;
             }
             VarType::I128 | VarType::U128 => {
-                panic!("128 bit integers are not supported.")
+                return Err("128 bit integers are not supported.".to_string())
             }
             // Since default value is i32, it's the last case
             VarType::I32 | _ => {
@@ -103,7 +103,9 @@ pub fn codegen_int_val<'input, 'ctx>(
         match uop {
             NumericUnaryOp::Minus => {
                 if unsigned {
-                    panic!("Can't apply the minus unary operator to an unsigned integer")
+                    return Err(
+                        "Can't apply the minus unary operator to an unsigned integer".to_string(),
+                    );
                 }
                 let mut i64_val: i64 = unsafe { transmute(u64_val_res) };
                 i64_val = -i64_val;
@@ -129,10 +131,10 @@ pub fn codegen_float_val<'input, 'ctx>(
 
     if let Some(expected_type) = expected_type {
         if expected_type.array_dimensions.len() > 0 {
-            panic!("Unexpected assignment of number to array type");
+            return Err("Unexpected assignment of number to array type".to_string());
         }
         if expected_type.pointer_nesting_level > 0 {
-            panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
         }
 
         match &expected_type.vtype {
@@ -146,7 +148,7 @@ pub fn codegen_float_val<'input, 'ctx>(
                 let float_val = float_str.parse::<f64>().unwrap();
                 f64_val_res = float_val.into();
             }
-            ty => panic!("Invalid int assignment to {}", ty),
+            ty => return Err(format!("Invalid int assignment to {}", ty)),
         }
     } else {
         // Default value is f32
@@ -189,17 +191,17 @@ pub fn codegen_bool_val<'input, 'ctx>(
 
     if let Some(expected_type) = expected_type {
         if expected_type.array_dimensions.len() > 0 {
-            panic!("Unexpected assignment of number to array type");
+            return Err("Unexpected assignment of number to array type".to_string());
         }
         if expected_type.pointer_nesting_level > 0 {
-            panic!("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.");
+            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
         }
 
         match &expected_type.vtype {
             VarType::Boolean => {
                 bool_val_res = bool_literal.0;
             }
-            ty => panic!("Invalid int assignment to {}", ty),
+            ty => return Err(format!("Invalid int assignment to {}", ty)),
         }
     } else {
         bool_val_res = bool_literal.0;
@@ -240,16 +242,16 @@ pub fn codegen_arr_val<'input, 'ctx>(
         .expect("Array dimensions should fit inside an u32");
 
     if exprs.is_empty() && expected_type.is_none() {
-        panic!("Can't infer type of empty array");
+        return Err("Can't infer type of empty array".to_string());
     }
     if let Some(et) = expected_type {
         let expected_dim = et.array_dimensions[0];
 
         if expected_dim != exprs_len {
-            panic!(
+            return Err(format!(
                 "Array declared with {} elements, but assigned value only has {} elements",
                 expected_dim, exprs_len
-            );
+            ));
         }
     }
 
@@ -270,8 +272,8 @@ pub fn codegen_arr_val<'input, 'ctx>(
 
     // By this point we should have a type
     let mut resulting_type = element_type.unwrap();
-    let element_b_type = convert_to_type_enum(compiler, &resulting_type);
-    let array_val = match element_b_type {
+    let element_b_type = convert_to_type_enum(compiler, &resulting_type)?;
+    let array_val: ArrayValue = match element_b_type {
         BasicTypeEnum::ArrayType(at) => {
             let array_vals = vals
                 .into_iter()

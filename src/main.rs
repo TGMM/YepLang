@@ -13,23 +13,17 @@ fn main() {
     let input = r#"
     extern i32 printf(*i8, ...);
 
-    let x = 1;
-    if(x > 3) {
-        printf("> 3\n");
-    } else if(x > 2) {
-        printf("> 2\n");
-    } else if(x > 1) {
-        printf("> 1\n");
-    } else {
-        printf("None\n");
-    }
-
-    printf("End\n");
+    let x = [1, 2, 3];
+    printf("Num: %d\n", x[0]);
     "#;
 
-    compile_yep(
+    let res = compile_yep(
         input,
         "C:/Users/TGMM/Documents/Tareas/Compiladores/yep_lang/tests/compiled",
         "test",
     );
+    match res {
+        Ok(_) => {}
+        Err(err) => eprintln!("{}", err),
+    }
 }

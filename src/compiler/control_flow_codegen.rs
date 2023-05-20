@@ -29,12 +29,12 @@ pub fn codegen_if(
             pointer_nesting_level: 0,
         }),
     )
-    .expect("Invalid expression for if condtition");
+    .map_err(|_| "Invalid expression for if condition")?;
     if if_expr_type.array_dimensions.len() > 0
         || if_expr_type.pointer_nesting_level > 0
         || !matches!(if_expr_type.vtype, VarType::Boolean)
     {
-        panic!("Conditional expression must be of boolean type");
+        return Err("Conditional expression must be of boolean type".to_string());
     }
 
     // Then
@@ -71,7 +71,7 @@ pub fn codegen_if(
             || comp_type.pointer_nesting_level > 0
             || !matches!(comp_type.vtype, VarType::Boolean)
         {
-            panic!("Conditional expression must be of boolean type");
+            return Err("Conditional expression must be of boolean type".to_string());
         }
 
         compiler.builder.build_conditional_branch(
