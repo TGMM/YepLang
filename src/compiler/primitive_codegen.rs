@@ -131,7 +131,7 @@ pub fn codegen_int_val<'input, 'ctx>(
 
     let basic_val = int_type.const_int(int_val, false).as_basic_value_enum();
 
-    Ok((basic_val, expected_type.unwrap().clone()))
+    Ok((basic_val, var_type))
 }
 
 pub fn codegen_float_val<'input, 'ctx>(
