@@ -1,6 +1,6 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{Compiler, CompilerError, DEFAULT_TYPES},
+    helpers::{create_default_type, Compiler, CompilerError},
     main_codegen::convert_to_type_enum,
 };
 use crate::ast::{
@@ -8,7 +8,7 @@ use crate::ast::{
     VarType,
 };
 use inkwell::{
-    types::{BasicTypeEnum, FloatType},
+    types::{BasicTypeEnum, FloatType, IntType},
     values::{ArrayValue, BasicValue, BasicValueEnum},
 };
 use std::{collections::VecDeque, mem::transmute};
@@ -17,105 +17,119 @@ pub fn codegen_int_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     int_str: &str,
     uop: Option<NumericUnaryOp>,
-    mut expected_type: Option<&ValueVarType>,
+    expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let int_type;
-    let mut u64_val_res: u64;
-    let mut unsigned = false;
+    let (mut int_val, int_type, var_type): (u64, IntType, ValueVarType) = match expected_type {
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::I8 => {
+            let i8_type = compiler.context.i8_type();
+            let i8_val = int_str.parse::<i8>().unwrap();
+            let i64_val: i64 = i8_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
 
-    if let Some(expected_type_ref) = expected_type {
-        if expected_type_ref.array_dimensions.len() > 0 {
-            return Err("Unexpected assignment of number to array type".to_string());
+            (u64_val, i8_type, create_default_type(vtype.clone()))
         }
-        if expected_type_ref.pointer_nesting_level > 0 {
-            return Err("Unexpected assignment of number to pointer type. Explicit address assignment is not supported.".to_string());
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::U8 => {
+            let u8_type = compiler.context.i8_type();
+            let u8_val = int_str.parse::<u8>().unwrap();
+            let i64_val: i64 = u8_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
+
+            (u64_val, u8_type, create_default_type(vtype.clone()))
         }
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::I16 => {
+            let i16_type = compiler.context.i16_type();
+            let i16_val = int_str.parse::<i16>().unwrap();
+            let i64_val: i64 = i16_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
 
-        match &expected_type_ref.vtype {
-            VarType::I8 => {
-                int_type = compiler.context.i8_type();
-                let int_val = int_str.parse::<i8>().unwrap();
-                let i64_val: i64 = int_val.into();
-                u64_val_res = unsafe { transmute(i64_val) };
-            }
-            VarType::U8 => {
-                int_type = compiler.context.i8_type();
-                let int_val = int_str.parse::<u8>().unwrap();
-                let u64_val: u64 = int_val.into();
-                unsigned = true;
-                u64_val_res = unsafe { transmute(u64_val) };
-            }
-            VarType::I16 => {
-                int_type = compiler.context.i16_type();
-                let int_val = int_str.parse::<i16>().unwrap();
-                let i64_val: i64 = int_val.into();
-                u64_val_res = unsafe { transmute(i64_val) };
-            }
-            VarType::U16 => {
-                int_type = compiler.context.i16_type();
-                let int_val = int_str.parse::<u16>().unwrap();
-                let u64_val: u64 = int_val.into();
-                unsigned = true;
-                u64_val_res = unsafe { transmute(u64_val) };
-            }
-            VarType::U32 => {
-                int_type = compiler.context.i32_type();
-                let int_val = int_str.parse::<u32>().unwrap();
-                let u64_val: u64 = int_val.into();
-                unsigned = true;
-                u64_val_res = unsafe { transmute(u64_val) };
-            }
-            VarType::I64 => {
-                int_type = compiler.context.i64_type();
-                let int_val = int_str.parse::<i64>().unwrap();
-                u64_val_res = unsafe { transmute(int_val) };
-            }
-            VarType::U64 => {
-                int_type = compiler.context.i64_type();
-                let int_val = int_str.parse::<u64>().unwrap();
-                unsigned = true;
-                u64_val_res = int_val;
-            }
-            VarType::I128 | VarType::U128 => {
-                return Err("128 bit integers are not supported.".to_string())
-            }
-            // Since default value is i32, it's the last case
-            VarType::I32 | _ => {
-                int_type = compiler.context.i32_type();
-                let int_val = int_str.parse::<i32>().unwrap();
-                let i64_val: i64 = int_val.into();
-                u64_val_res = unsafe { transmute(i64_val) };
-
-                let _ = expected_type.insert(&DEFAULT_TYPES.get(&VarType::I32).unwrap());
-            }
+            (u64_val, i16_type, create_default_type(vtype.clone()))
         }
-    } else {
-        // Default value is i32
-        int_type = compiler.context.i32_type();
-        let int_val = int_str.parse::<i32>().unwrap();
-        let i64_val: i64 = int_val.into();
-        u64_val_res = unsafe { transmute(i64_val) };
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::U16 => {
+            let i16_type = compiler.context.i16_type();
+            let i16_val = int_str.parse::<i16>().unwrap();
+            let i64_val: i64 = i16_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
 
-        let _ = expected_type.insert(&DEFAULT_TYPES.get(&VarType::I32).unwrap());
+            (u64_val, i16_type, create_default_type(vtype.clone()))
+        }
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::U32 => {
+            let u32_type = compiler.context.i32_type();
+            let u32_val = int_str.parse::<u32>().unwrap();
+            let i64_val: i64 = u32_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
+
+            (u64_val, u32_type, create_default_type(vtype.clone()))
+        }
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::I64 => {
+            let i64_type = compiler.context.i64_type();
+            let i64_val = int_str.parse::<i64>().unwrap();
+            let u64_val = unsafe { transmute(i64_val) };
+
+            (u64_val, i64_type, create_default_type(vtype.clone()))
+        }
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::U64 => {
+            let u64_type = compiler.context.i64_type();
+            let u64_val = int_str.parse::<u64>().unwrap();
+
+            (u64_val, u64_type, create_default_type(vtype.clone()))
+        }
+        Some(ValueVarType {
+            vtype,
+            array_dimensions: _,
+            pointer_nesting_level: _,
+        }) if vtype == &VarType::I128 || vtype == &VarType::U128 => {
+            return Err("128 bit integers are not supported".to_string());
+        }
+        _ => {
+            // Default value is i32
+            let i32_type = compiler.context.i32_type();
+            let i32_val = int_str.parse::<i32>().unwrap();
+            let i64_val: i64 = i32_val.into();
+            let u64_val = unsafe { transmute(i64_val) };
+
+            (u64_val, i32_type, create_default_type(VarType::I32))
+        }
+    };
+
+    let unsigned = !var_type.vtype.is_signed();
+    if matches!(uop, Some(NumericUnaryOp::Minus)) {
+        if unsigned {
+            return Err("Can't apply the minus unary operator to an unsigned integer".to_string());
+        }
+        let mut i64_val: i64 = unsafe { transmute(int_val) };
+        i64_val = -i64_val;
+        int_val = unsafe { transmute(i64_val) }
     }
 
-    if let Some(uop) = uop {
-        match uop {
-            NumericUnaryOp::Minus => {
-                if unsigned {
-                    return Err(
-                        "Can't apply the minus unary operator to an unsigned integer".to_string(),
-                    );
-                }
-                let mut i64_val: i64 = unsafe { transmute(u64_val_res) };
-                i64_val = -i64_val;
-                u64_val_res = unsafe { transmute(i64_val) }
-            }
-            _ => {}
-        }
-    }
-
-    let basic_val = int_type.const_int(u64_val_res, false).as_basic_value_enum();
+    let basic_val = int_type.const_int(int_val, false).as_basic_value_enum();
 
     Ok((basic_val, expected_type.unwrap().clone()))
 }

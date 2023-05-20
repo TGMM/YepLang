@@ -14,32 +14,9 @@ use inkwell::{
 use std::{
     cell::OnceCell,
     collections::{HashMap, VecDeque},
-    sync::LazyLock,
 };
 
 pub type CompilerError = String;
-
-pub static DEFAULT_TYPES: LazyLock<HashMap<VarType, ValueVarType>> = LazyLock::new(|| {
-    let mut hm = HashMap::new();
-    hm.insert(
-        VarType::I32,
-        ValueVarType {
-            vtype: VarType::I32,
-            array_dimensions: VecDeque::new(),
-            pointer_nesting_level: 0,
-        },
-    );
-    hm.insert(
-        VarType::U32,
-        ValueVarType {
-            vtype: VarType::U32,
-            array_dimensions: VecDeque::new(),
-            pointer_nesting_level: 0,
-        },
-    );
-
-    hm
-});
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeMarker<'ctx> {
@@ -161,4 +138,12 @@ pub fn semantic_cube(lhs: &ValueVarType, rhs: &ValueVarType) -> Result<ValueVarT
         array_dimensions: lhs.array_dimensions.clone(),
         pointer_nesting_level: lhs.pointer_nesting_level,
     })
+}
+
+pub fn create_default_type(vtype: VarType) -> ValueVarType {
+    ValueVarType {
+        vtype,
+        array_dimensions: VecDeque::new(),
+        pointer_nesting_level: 0,
+    }
 }

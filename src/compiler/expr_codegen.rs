@@ -1,7 +1,7 @@
 use super::{
     helpers::{
-        convert_value_to_metadata, semantic_cube, Compiler, CompilerError, ExpectedExprType,
-        ScopedVal, DEFAULT_TYPES,
+        convert_value_to_metadata, create_default_type, semantic_cube, Compiler, CompilerError,
+        ExpectedExprType, ScopedVal,
     },
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
@@ -152,7 +152,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     }
 
     // Array dimensions are u32
-    let u32_type = DEFAULT_TYPES.get(&VarType::U32).unwrap();
+    let u32_type = &create_default_type(VarType::U32);
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
@@ -201,7 +201,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     }
 
     // Array dimensions are u32
-    let u32_type = DEFAULT_TYPES.get(&VarType::U32).unwrap();
+    let u32_type = &create_default_type(VarType::U32);
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
