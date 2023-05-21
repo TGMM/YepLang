@@ -297,6 +297,7 @@ pub fn compile_to_x86<'input, 'ctx>(
     top_block: TopBlock,
     path: &str,
     file_name: &str,
+    compile_extras: bool,
 ) -> Result<String, CompilerError> {
     Target::initialize_x86(&InitializationConfig::default());
     let triple = TargetTriple::create("x86_64-pc-windows-msvc");
@@ -326,20 +327,22 @@ pub fn compile_to_x86<'input, 'ctx>(
         .module
         .print_to_file(&format!("{out_path}.ll"))
         .unwrap();
-    target_machine
-        .write_to_file(
-            compiler.module,
-            FileType::Object,
-            Path::new(&format!("{out_path}.o")),
-        )
-        .unwrap();
-    target_machine
-        .write_to_file(
-            compiler.module,
-            FileType::Assembly,
-            Path::new(&format!("{out_path}.asm")),
-        )
-        .unwrap();
+    if compile_extras {
+        target_machine
+            .write_to_file(
+                compiler.module,
+                FileType::Object,
+                Path::new(&format!("{out_path}.o")),
+            )
+            .unwrap();
+        target_machine
+            .write_to_file(
+                compiler.module,
+                FileType::Assembly,
+                Path::new(&format!("{out_path}.asm")),
+            )
+            .unwrap();
+    }
 
     Ok(out_path)
 }
@@ -378,7 +381,7 @@ pub fn compile_yep(
         func_ret_val_stack: vec![],
     };
 
-    compile_to_x86(&mut compiler, top_block, path, out_name)?;
+    compile_to_x86(&mut compiler, top_block, path, out_name, false)?;
 
     Ok(())
 }
