@@ -82,8 +82,6 @@ pub struct Compiler<'input, 'ctx> {
     /// if we're inside a function, and its respective return type
     pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
     pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
-    /// This should be initialized before codegen
-    pub target_data: OnceCell<TargetData>,
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {

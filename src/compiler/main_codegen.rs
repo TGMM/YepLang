@@ -318,10 +318,6 @@ pub fn compile_to_x86<'input, 'ctx>(
         .module
         .set_data_layout(&target_machine.get_target_data().get_data_layout());
 
-    compiler
-        .target_data
-        .set(target_machine.get_target_data())
-        .unwrap();
     codegen_top_block(compiler, top_block)?;
 
     let out_path = format!("{path}\\{file_name}");
@@ -379,7 +375,6 @@ pub fn compile_yep(
         scope_stack: Vec::new(),
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
-        target_data: OnceCell::new(),
     };
 
     compile_to_x86(&mut compiler, top_block, path, out_name)?;

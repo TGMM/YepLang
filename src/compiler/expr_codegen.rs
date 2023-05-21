@@ -174,19 +174,13 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
 
         et
     };
-    let target_data = compiler.target_data.get().unwrap();
-    let ptr_size_type = compiler.context.ptr_sized_int_type(target_data, None);
-    let zero_ptr = ptr_size_type.const_zero();
 
-    let idxr_ptr = compiler
-        .builder
-        .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
-
+    let zero_ptr = compiler.context.i64_type().const_zero();
     let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
             .builder
-            .build_gep(arr_ty, idxd, &[zero_ptr, idxr_ptr], "indexing")
+            .build_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
     };
 
     Ok((ret_val_ptr, element_type))
@@ -225,19 +219,12 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     };
     let element_b_type = convert_to_type_enum(compiler, &element_type)?;
 
-    let target_data = compiler.target_data.get().unwrap();
-    let ptr_size_type = compiler.context.ptr_sized_int_type(target_data, None);
-    let zero_ptr = ptr_size_type.const_zero();
-
-    let idxr_ptr = compiler
-        .builder
-        .build_int_cast(idxr, ptr_size_type, "ptr_size_cast");
-
+    let zero_ptr = compiler.context.i64_type().const_zero();
     let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
             .builder
-            .build_gep(arr_ty, idxd, &[zero_ptr, idxr_ptr], "indexing")
+            .build_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
     };
     let ret_val = compiler
         .builder
