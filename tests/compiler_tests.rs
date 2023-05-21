@@ -119,9 +119,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: i32 = 10 + 10;
-    printf("Result is %d\n", x);
+    printf("x is %d\n", x);
     "#,
-    output: "Result is 20\n"
+    output: "x is 20\n"
 );
 
 compiler_test!(
@@ -130,9 +130,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: i32 = 0 - 10;
-    printf("Result is %d\n", x);
+    printf("x is %d\n", x);
     "#,
-    output: "Result is -10\n"
+    output: "x is -10\n"
 );
 
 compiler_test!(
@@ -141,9 +141,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: i32 = -10 * 10;
-    printf("Result is %d\n", x);
+    printf("x is %d\n", x);
     "#,
-    output: "Result is -100\n"
+    output: "x is -100\n"
 );
 
 compiler_test!(
@@ -152,9 +152,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: i32 = 10 / 3;
-    printf("Result is %d\n", x);
+    printf("x is %d\n", x);
     "#,
-    output: "Result is 3\n"
+    output: "x is 3\n"
 );
 
 compiler_test!(
@@ -163,9 +163,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: f64 = 1.1 + 1.1;
-    printf("Result is %.1f\n", x);
+    printf("x is %.1f\n", x);
     "#,
-    output: "Result is 2.2\n"
+    output: "x is 2.2\n"
 );
 
 compiler_test!(
@@ -174,9 +174,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: f64 = 1.1 - 1.1;
-    printf("Result is %.0f\n", x);
+    printf("x is %.0f\n", x);
     "#,
-    output: "Result is 0\n"
+    output: "x is 0\n"
 );
 
 compiler_test!(
@@ -185,9 +185,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: f64 = 1.5 * 1.5;
-    printf("Result is %.2f\n", x);
+    printf("x is %.2f\n", x);
     "#,
-    output: "Result is 2.25\n"
+    output: "x is 2.25\n"
 );
 
 compiler_test!(
@@ -196,9 +196,9 @@ compiler_test!(
     extern i32 printf(*i8, ...);
 
     let x: f64 = -1.5 / 2.0;
-    printf("Result is %.2f\n", x);
+    printf("x is %.2f\n", x);
     "#,
-    output: "Result is -0.75\n"
+    output: "x is -0.75\n"
 );
 
 compiler_test!(
@@ -208,11 +208,11 @@ compiler_test!(
 
     let x = 0;
     while(x <= 5) {
-        printf("Result is %d\n", x);
-        x = x + 1; 
+        printf("x is %d\n", x);
+        x += 1; 
     }
     "#,
-    output: "Result is 0\nResult is 1\nResult is 2\nResult is 3\nResult is 4\nResult is 5\n"
+    output: "x is 0\nx is 1\nx is 2\nx is 3\nx is 4\nx is 5\n"
 );
 
 compiler_test!(
@@ -222,9 +222,209 @@ compiler_test!(
 
     let x = 5;
     while(x < 5) {
-        printf("Result is %d\n", x);
-        x = x + 1; 
+        printf("x is %d\n", x);
+        x += 1; 
     }
     "#,
     output: ""
+);
+
+compiler_test!(
+    do_while_true,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x = 0;
+    do {
+        printf("x is %d\n", x);
+        x += 1; 
+    }
+    while(x <= 5);
+    "#,
+    output: "x is 0\nx is 1\nx is 2\nx is 3\nx is 4\nx is 5\n"
+);
+
+compiler_test!(
+    do_while_false,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x = 5;
+    do {
+        printf("x is %d\n", x);
+        x += 1; 
+    }
+    while(x < 5);
+    "#,
+    output: "x is 5\n"
+);
+
+compiler_test!(
+    for_true,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    for(let x: u32 = 0; x < 5; x += 1) {
+        printf("x is %d\n", x);
+    }
+    "#,
+    output: "x is 0\nx is 1\nx is 2\nx is 3\nx is 4\n"
+);
+
+compiler_test!(
+    for_false,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    for(let x: u32 = 5; x < 5; x += 1) {
+        printf("x is %d\n", x);
+    }
+    "#,
+    output: ""
+);
+
+compiler_test!(
+    for_array,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let arr = [10, 20, 30];
+    for(let i: u32 = 0; i < 3; i += 1) {
+        printf("i is %d\n", arr[i]);
+    }
+    "#,
+    output: "i is 10\ni is 20\ni is 30\n"
+);
+
+compiler_test!(
+    for_array_no_postfix,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let arr = [10, 20, 30];
+    for(let i: u32 = 0; i < 3;) {
+        printf("i is %d\n", arr[i]);
+        i += 1;
+    }
+    "#,
+    output: "i is 10\ni is 20\ni is 30\n"
+);
+
+compiler_test!(
+    for_array_no_decl,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let arr = [10, 20, 30];
+    let i: u32 = 0;
+    for(; i < 3; i += 1) {
+        printf("i is %d\n", arr[i]);
+    }
+    "#,
+    output: "i is 10\ni is 20\ni is 30\n"
+);
+
+compiler_test!(
+    for_array_no_decl_no_postfix,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let arr = [10, 20, 30];
+    let i: u32 = 0;
+    for(; i < 3;) {
+        printf("i is %d\n", arr[i]);
+        i += 1;
+    }
+    "#,
+    output: "i is 10\ni is 20\ni is 30\n"
+);
+
+compiler_test!(
+    for_if_else,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let i: u32 = 1;
+    for(; i < 3;) {
+        if(i == 1){
+            printf("i is 1\n");
+            i += 1;
+        } else {
+            printf("i is 2\n");
+            i += 1;
+        }
+    }
+    "#,
+    output: "i is 1\ni is 2\n"
+);
+
+compiler_test!(
+    fib,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    function fib(val: i32): i32 {
+        if(val < 1) {
+            return 0;
+        }
+        if(val < 2) {
+            return 1;
+        }
+        return fib(val - 2) + fib(val - 1);
+    }
+
+    for(let i = 0; i < 10; i += 1){
+        let val = fib(i);
+        printf("fib is %d\n", val);
+    }
+    "#,
+    output: "fib is 0\nfib is 1\nfib is 1\nfib is 2\nfib is 3\nfib is 5\nfib is 8\nfib is 13\nfib is 21\nfib is 34\n"
+);
+
+compiler_test!(
+    arithmetic_expr_mul,
+    input: r#"
+    extern i32 printf(*i8, ...);
+    
+    let x = 5 + 3 * 2;
+    printf("x is %d\n", x);
+
+    "#,
+    output: "x is 11\n"
+);
+
+compiler_test!(
+    arithmetic_expr_div,
+    input: r#"
+    extern i32 printf(*i8, ...);
+    
+    let x = 5 + 3 / 3;
+    printf("x is %d\n", x);
+
+    "#,
+    output: "x is 6\n"
+);
+
+compiler_test!(
+    arithmetic_expr_parenthesis,
+    input: r#"
+    extern i32 printf(*i8, ...);
+    
+    let x = (5 + 3) * 2;
+    printf("x is %d\n", x);
+
+    "#,
+    output: "x is 16\n"
+);
+
+compiler_test!(
+    hard_arithmetic_expr_parenthesis,
+    input: r#"
+    extern i32 printf(*i8, ...);
+    
+    let x = -10 / (20 / 4 * 5 / 5) * 8 - 2;
+    printf("x is %d\n", x);
+
+    "#,
+    output: "x is -18\n"
 );
