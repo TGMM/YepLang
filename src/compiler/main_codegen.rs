@@ -19,7 +19,7 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum},
     AddressSpace, OptimizationLevel,
 };
-use std::{cell::OnceCell, collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 
@@ -101,12 +101,8 @@ pub fn codegen_top_block(
 pub fn codegen_block(
     compiler: &mut Compiler,
     block: Block,
-    mut block_type: BlockType,
+    block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    // Entering a block means the block type is not global anymore
-    block_type.remove(BlockType::GLOBAL);
-    block_type.insert(BlockType::LOCAL);
-
     if !(block_type == BlockType::FUNC) {
         compiler.scope_stack.push(ScopeMarker::ScopeBegin);
     }
@@ -138,7 +134,7 @@ pub fn codegen_block(
 pub fn codegen_stmt(
     compiler: &mut Compiler,
     stmt: Stmt,
-    block_type: BlockType,
+    mut block_type: BlockType,
 ) -> Result<(), CompilerError> {
     match stmt {
         Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment),
@@ -149,7 +145,12 @@ pub fn codegen_stmt(
         Stmt::While(while_) => codegen_while(compiler, while_, block_type),
         Stmt::DoWhile(do_while) => codegen_do_while(compiler, do_while, block_type),
         Stmt::If(if_) => codegen_if(compiler, if_, block_type),
-        Stmt::Block(block) => codegen_block(compiler, block, block_type),
+        Stmt::Block(block) => {
+            // Entering a block means the block type is not global anymore
+            block_type.remove(BlockType::GLOBAL);
+            block_type.insert(BlockType::LOCAL);
+            codegen_block(compiler, block, block_type)
+        }
         Stmt::VarDecl(var_decl) => codegen_var_decl(compiler, var_decl, block_type),
         Stmt::ExternDecl(extern_decl) => codegen_extern_decl(compiler, extern_decl),
         Stmt::Return(return_) => codegen_return(compiler, return_, block_type),

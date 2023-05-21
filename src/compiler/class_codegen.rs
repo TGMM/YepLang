@@ -101,7 +101,7 @@ pub fn codegen_fn_decl(
     let linkage = if matches!(block_type, BlockType::GLOBAL) {
         Linkage::External
     } else {
-        Linkage::External
+        Linkage::Internal
     };
     let fun = compiler
         .module
