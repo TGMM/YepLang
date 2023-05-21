@@ -9,7 +9,7 @@ macro_rules! compiler_test {
 
             let project_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compiled");
             let test_name = stringify!($test_name);
-            compile_yep(input, project_dir, test_name);
+            compile_yep(input, project_dir, test_name).unwrap();
             let out_path = Path::new(project_dir).join(format!("{}.ll", test_name));
 
             let output = Command::new("lli")
