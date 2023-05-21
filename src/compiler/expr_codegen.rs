@@ -175,7 +175,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
         et
     };
 
-    let zero_ptr = compiler.context.i64_type().const_zero();
+    let zero_ptr = compiler.context.i32_type().const_zero();
     let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
@@ -219,7 +219,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     };
     let element_b_type = convert_to_type_enum(compiler, &element_type)?;
 
-    let zero_ptr = compiler.context.i64_type().const_zero();
+    let zero_ptr = compiler.context.i32_type().const_zero();
     let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
     let ret_val_ptr = unsafe {
         compiler
