@@ -140,7 +140,7 @@ pub fn codegen_float_val<'input, 'ctx>(
     uop: Option<NumericUnaryOp>,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let (mut float_val, float_type, var_type): (f64, FloatType, ValueVarType) = match expected_type
+    let (mut double_val, float_type, var_type): (f64, FloatType, ValueVarType) = match expected_type
     {
         Some(ValueVarType {
             vtype,
@@ -148,12 +148,12 @@ pub fn codegen_float_val<'input, 'ctx>(
             pointer_nesting_level: _,
         }) if vtype == &VarType::F64 => {
             let float_type = compiler.context.f64_type();
-            let float_val = float_str.parse::<f64>().unwrap();
+            let double_val = float_str.parse::<f64>().unwrap();
             (
-                float_val.into(),
+                double_val.into(),
                 float_type,
                 ValueVarType {
-                    vtype: VarType::F32,
+                    vtype: VarType::F64,
                     array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 },
@@ -162,11 +162,12 @@ pub fn codegen_float_val<'input, 'ctx>(
         _ => {
             let float_type = compiler.context.f32_type();
             let float_val = float_str.parse::<f32>().unwrap();
+            let double_val: f64 = float_val.into();
             (
-                float_val.into(),
+                double_val,
                 float_type,
                 ValueVarType {
-                    vtype: VarType::F64,
+                    vtype: VarType::F32,
                     array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0,
                 },
@@ -177,13 +178,13 @@ pub fn codegen_float_val<'input, 'ctx>(
     if let Some(uop) = uop {
         match uop {
             NumericUnaryOp::Minus => {
-                float_val = -float_val;
+                double_val = -double_val;
             }
             NumericUnaryOp::Plus => {}
         }
     }
 
-    let basic_val = float_type.const_float(float_val).as_basic_value_enum();
+    let basic_val = float_type.const_float(double_val).as_basic_value_enum();
     Ok((basic_val, var_type))
 }
 

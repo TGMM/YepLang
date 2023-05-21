@@ -269,6 +269,16 @@ mod test {
     }
 
     #[test]
+    fn negative_float_test() {
+        let tokens = stream_token_vec(vec![Token::FloatVal("-10.0")]);
+        let res = number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let float_val = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("-10.0"))
+    }
+
+    #[test]
     fn float_scientific_notation_test() {
         let tokens = stream_token_vec(vec![Token::FloatVal("1e+10")]);
 

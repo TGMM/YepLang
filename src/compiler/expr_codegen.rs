@@ -123,20 +123,11 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
 
             let instruction_name = format!("load_{}", var_id.0);
 
-            let ptr_val = scoped_var.ptr_val;
-            let var_val;
-
-            let is_var_const = ptr_val.is_const();
-            if let Some(global_var) = compiler.module.get_global(var_name) &&
-               let Some(initializer) = global_var.get_initializer() &&
-               is_var_const {
-                var_val = initializer;
-            } else {
-                let var_type = convert_to_type_enum(compiler, &scoped_var.var_type)?;
-                var_val = compiler
+            let var_type = convert_to_type_enum(compiler, &scoped_var.var_type)?;
+            let var_val =
+                compiler
                     .builder
                     .build_load(var_type, scoped_var.ptr_val, &instruction_name);
-            }
 
             Ok((var_val, scoped_var.var_type))
         }

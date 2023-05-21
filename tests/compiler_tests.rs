@@ -52,3 +52,179 @@ compiler_test!(
     "#,
     output: "Array element 0 is 1\nArray element 1 is 2\nArray element 2 is 3\nArray element 3 is 4\nArray element 4 is 5\n"
 );
+
+compiler_test!(
+    if_true,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    if(true) {
+        printf("Condition is true\n");
+    }
+    "#,
+    output: "Condition is true\n"
+);
+
+compiler_test!(
+    if_false,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    if(false) {
+        
+    } else {
+        printf("Condition is false\n");
+    }
+    "#,
+    output: "Condition is false\n"
+);
+
+compiler_test!(
+    else_if,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    if(false) {
+
+    } else if(true) {
+        printf("Second condition is true\n");
+    } else {
+
+    }
+    "#,
+    output: "Second condition is true\n"
+);
+
+compiler_test!(
+    else_if_2,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    if(false) {
+
+    } else if(false) {
+        
+    } else if(true) {
+        printf("Third condition is true\n");
+    } else {
+
+    }
+    "#,
+    output: "Third condition is true\n"
+);
+
+compiler_test!(
+    int_add,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: i32 = 10 + 10;
+    printf("Result is %d\n", x);
+    "#,
+    output: "Result is 20\n"
+);
+
+compiler_test!(
+    int_sub,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: i32 = 0 - 10;
+    printf("Result is %d\n", x);
+    "#,
+    output: "Result is -10\n"
+);
+
+compiler_test!(
+    int_mul,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: i32 = -10 * 10;
+    printf("Result is %d\n", x);
+    "#,
+    output: "Result is -100\n"
+);
+
+compiler_test!(
+    int_div,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: i32 = 10 / 3;
+    printf("Result is %d\n", x);
+    "#,
+    output: "Result is 3\n"
+);
+
+compiler_test!(
+    float_add,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: f64 = 1.1 + 1.1;
+    printf("Result is %.1f\n", x);
+    "#,
+    output: "Result is 2.2\n"
+);
+
+compiler_test!(
+    float_sub,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: f64 = 1.1 - 1.1;
+    printf("Result is %.0f\n", x);
+    "#,
+    output: "Result is 0\n"
+);
+
+compiler_test!(
+    float_mul,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: f64 = 1.5 * 1.5;
+    printf("Result is %.2f\n", x);
+    "#,
+    output: "Result is 2.25\n"
+);
+
+compiler_test!(
+    float_div,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x: f64 = -1.5 / 2.0;
+    printf("Result is %.2f\n", x);
+    "#,
+    output: "Result is -0.75\n"
+);
+
+compiler_test!(
+    while_true,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x = 0;
+    while(x <= 5) {
+        printf("Result is %d\n", x);
+        x = x + 1; 
+    }
+    "#,
+    output: "Result is 0\nResult is 1\nResult is 2\nResult is 3\nResult is 4\nResult is 5\n"
+);
+
+compiler_test!(
+    while_false,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    let x = 5;
+    while(x < 5) {
+        printf("Result is %d\n", x);
+        x = x + 1; 
+    }
+    "#,
+    output: ""
+);
