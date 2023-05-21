@@ -47,10 +47,15 @@ pub fn codegen_fn_call<'input, 'ctx>(
         .build_call(function_ptr, &args, &instruction_name);
     let ret_val = call.try_as_basic_value();
 
-    ret_val
-        .left()
-        .map(|rv| (rv, func_ret_ty))
-        .ok_or("Fn call returned void".to_string())
+    // This default value is just there to ensure we
+    // can call void functions.
+    // It's never actually codegen'd
+    let default_value = compiler
+        .context
+        .i8_type()
+        .const_zero()
+        .as_basic_value_enum();
+    Ok((ret_val.left().unwrap_or(default_value), func_ret_ty))
 }
 
 /// Codegen an expression when it's used on the left-hand side of an operation.

@@ -92,12 +92,16 @@ pub fn codegen_fn_decl(
         array_dimensions: VecDeque::new(),
         pointer_nesting_level: 0,
     });
-    let basic_ret_type = convert_to_type_enum(compiler, &ret_type)?;
-    let fn_type = basic_ret_type.fn_type(&param_types, false);
+
+    let fn_type = if ret_type.vtype == VarType::Void {
+        compiler.context.void_type().fn_type(&param_types, false)
+    } else {
+        convert_to_type_enum(compiler, &ret_type)?.fn_type(&param_types, false)
+    };
     let linkage = if matches!(block_type, BlockType::GLOBAL) {
         Linkage::External
     } else {
-        Linkage::Internal
+        Linkage::External
     };
     let fun = compiler
         .module
