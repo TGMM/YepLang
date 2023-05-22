@@ -14,10 +14,10 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
 
     let mut is_var_args = false;
     let mut param_types = vec![];
-    for arg_type in extern_decl.arg_types {
+    for arg_type in extern_decl.arg_types.iter() {
         match arg_type {
             ExternType::Type(vvt) => {
-                let ty = convert_to_type_enum(compiler, &vvt)?;
+                let ty = convert_to_type_enum(compiler, vvt)?;
                 let metadata = convert_type_to_metadata(ty);
                 param_types.push(metadata);
             }
@@ -35,6 +35,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
         fn_name.to_string(),
         ScopedVal::Fn(ScopedFunc {
             ptr_val: fun,
+            arg_types: extern_decl.arg_types,
             ret_type: extern_decl.ret_type,
         }),
     );

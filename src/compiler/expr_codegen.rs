@@ -21,15 +21,13 @@ pub fn codegen_fn_call<'input, 'ctx>(
         Expr::Id(id) => id.0,
         _ => return Err("Functions as values are not yet supported".to_string()),
     };
-    // TODO: Handle this error user-side
     let function = compiler
         .curr_scope_vars
         .get(&fn_name)
-        .ok_or(format!("Function {} does not exist", &fn_name))
-        .unwrap()
+        .ok_or(format!("Function {} does not exist", &fn_name))?
         .clone()
         .into_fn()
-        .unwrap();
+        .map_err(|_| format!("Variable is not a function"))?;
     let function_ptr = function.ptr_val;
     let func_ret_ty = function.ret_type;
 

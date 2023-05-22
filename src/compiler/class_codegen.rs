@@ -3,7 +3,7 @@ use super::{
     helpers::{convert_type_to_metadata, BlockType, Compiler, ScopeMarker, ScopedVal, ScopedVar},
 };
 use crate::{
-    ast::{Destructure, FnDecl, Return, ValueVarType, VarType},
+    ast::{Destructure, ExternType, FnDecl, Return, ValueVarType, VarType},
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
         main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
@@ -73,7 +73,8 @@ pub fn codegen_fn_decl(
     block_type: BlockType,
 ) -> Result<(), String> {
     let fn_name = fn_decl.fn_id.0;
-    let param_types = fn_decl
+
+    let arg_types = fn_decl
         .args
         .iter()
         .map(|(d, vvt)| {
@@ -81,6 +82,12 @@ pub fn codegen_fn_decl(
                 return Err("Destructuring of arguments is not supported yet".to_string());
             }
 
+            Ok(vvt)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let param_types = arg_types
+        .iter()
+        .map(|vvt| {
             Ok(convert_type_to_metadata(convert_to_type_enum(
                 compiler, vvt,
             )?))
@@ -133,12 +140,16 @@ pub fn codegen_fn_decl(
         });
     };
 
-    // TODO: The current function call searches for it on
-    // the module instead of the var map
+    let arg_types = arg_types
+        .into_iter()
+        .map(|vvt| ExternType::Type(vvt.clone()))
+        .collect::<Vec<_>>();
+
     compiler.curr_scope_vars.insert(
         fn_name,
         ScopedVal::Fn(ScopedFunc {
             ptr_val: fun,
+            arg_types,
             ret_type,
         }),
     );

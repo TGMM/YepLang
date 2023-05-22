@@ -1,4 +1,4 @@
-use crate::ast::{ValueVarType, VarType};
+use crate::ast::{ExternType, ValueVarType, VarType};
 use bitflags::bitflags;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
@@ -7,14 +7,10 @@ use inkwell::{
     context::Context,
     module::Module,
     passes::PassManager,
-    targets::TargetData,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
-use std::{
-    cell::OnceCell,
-    collections::{HashMap, VecDeque},
-};
+use std::collections::{HashMap, VecDeque};
 
 pub type CompilerError = String;
 
@@ -33,6 +29,7 @@ pub struct ScopedVar<'ctx> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopedFunc<'ctx> {
     pub ptr_val: FunctionValue<'ctx>,
+    pub arg_types: Vec<ExternType>,
     pub ret_type: ValueVarType,
 }
 
