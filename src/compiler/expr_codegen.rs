@@ -6,7 +6,7 @@ use super::{
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
 };
-use crate::ast::{BExpr, BOp, Expr, FnCall, Indexing, ValueVarType, VarType};
+use crate::ast::{BExpr, BOp, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
 use inkwell::{
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
     FloatPredicate, IntPredicate,
@@ -31,10 +31,27 @@ pub fn codegen_fn_call<'input, 'ctx>(
     let function_ptr = function.ptr_val;
     let func_ret_ty = function.ret_type;
 
+    let mut arg_types_iter: Box<dyn Iterator<Item = &ExternType>> =
+        Box::new(function.arg_types.iter());
+    if function.arg_types.last() == Some(&ExternType::Spread) {
+        arg_types_iter =
+            Box::new(arg_types_iter.chain(std::iter::once(&ExternType::Spread).cycle()));
+    }
+
     let mut args = vec![];
-    for arg_expr in fn_call.args {
-        // TODO: Match argument expressions to expected types
+    for (arg_expr, arg_expected_type) in fn_call.args.into_iter().zip(arg_types_iter) {
         let (arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None)?;
+
+        // TODO: Enable this when the as operator is done
+        // if let ExternType::Type(expected_vvt) = arg_expected_type {
+        //     if expected_vvt != &arg_type {
+        //         return Err(format!(
+        //             "Incorrect type for argument, expected {} got {}",
+        //             expected_vvt, arg_type
+        //         ));
+        //     }
+        // }
+
         let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val);
         args.push(arg_metadata);
     }
