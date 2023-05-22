@@ -14,7 +14,9 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
 
     let mut is_var_args = false;
     let mut param_types = vec![];
-    for arg_type in extern_decl.arg_types.iter() {
+
+    let mut arg_type_it = extern_decl.arg_types.iter().peekable();
+    while let Some(arg_type) = arg_type_it.next() {
         match arg_type {
             ExternType::Type(vvt) => {
                 let ty = convert_to_type_enum(compiler, vvt)?;
@@ -22,7 +24,18 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
                 param_types.push(metadata);
             }
             // TODO: This should only apply if the var_args is last
-            ExternType::Spread => is_var_args = true,
+            ExternType::Spread => {
+                // This is not the last element
+                // throw an error
+                if !arg_type_it.peek().is_none() {
+                    return Err(
+                        "The var args specifier must be at the end of the argument list"
+                            .to_string(),
+                    );
+                }
+
+                is_var_args = true;
+            }
         }
     }
 
