@@ -347,6 +347,54 @@ pub fn compile_to_x86<'input, 'ctx>(
     Ok(out_path)
 }
 
+pub fn compile_to_wasm<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+    top_block: TopBlock,
+    path: &str,
+    file_name: &str,
+    compile_extras: bool,
+) -> Result<String, CompilerError> {
+    Target::initialize_webassembly(&InitializationConfig::default());
+    let triple = TargetTriple::create("wasm32-unknown-unknown");
+    let target = Target::from_triple(&triple).unwrap();
+    let cpu = "generic";
+    let features = "";
+    let target_machine = target
+        .create_target_machine(
+            &triple,
+            cpu,
+            features,
+            OptimizationLevel::None,
+            RelocMode::Default,
+            CodeModel::Default,
+        )
+        .unwrap();
+
+    compiler.module.set_triple(&triple);
+    compiler
+        .module
+        .set_data_layout(&target_machine.get_target_data().get_data_layout());
+
+    codegen_top_block(compiler, top_block)?;
+
+    let out_path = format!("{path}\\{file_name}");
+    compiler
+        .module
+        .print_to_file(&format!("{out_path}.ll"))
+        .unwrap();
+    if compile_extras {
+        target_machine
+            .write_to_file(
+                compiler.module,
+                FileType::Object,
+                Path::new(&format!("{out_path}.o")),
+            )
+            .unwrap();
+    }
+
+    Ok(out_path)
+}
+
 pub fn compile_yep(
     input: &'static str,
     path: &'static str,
@@ -381,7 +429,7 @@ pub fn compile_yep(
         func_ret_val_stack: vec![],
     };
 
-    compile_to_x86(&mut compiler, top_block, path, out_name, false)?;
+    compile_to_x86(&mut compiler, top_block, path, out_name, true)?;
 
     Ok(())
 }
