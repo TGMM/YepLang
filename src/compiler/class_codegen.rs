@@ -160,7 +160,10 @@ pub fn codegen_fn_decl(
         let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
             Destructure::Id(id) => {
-                let arg_ptr = compiler.builder.build_alloca(ty, &id.0);
+                arg_val.set_name(&id.0);
+                let arg_ptr = compiler
+                    .builder
+                    .build_alloca(ty, &format!("local_{}", &id.0));
                 compiler.builder.build_store(arg_ptr, arg_val);
                 declare_variable(
                     compiler,
