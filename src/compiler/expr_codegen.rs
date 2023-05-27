@@ -8,7 +8,7 @@ use super::{
 };
 use crate::ast::{BExpr, BOp, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
 use inkwell::{
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
+    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, PointerValue},
     FloatPredicate, IntPredicate,
 };
 use std::collections::VecDeque;
@@ -40,7 +40,49 @@ pub fn codegen_fn_call<'input, 'ctx>(
 
     let mut args = vec![];
     for (arg_expr, arg_expected_type) in fn_call.args.into_iter().zip(arg_types_iter) {
-        let (arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None)?;
+        let (mut arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None)?;
+
+        // Variadic argument promotions
+        if ExternType::Spread == *arg_expected_type
+            && arg_type.array_dimensions.is_empty()
+            && arg_type.pointer_nesting_level == 0
+        {
+            match arg_val {
+                BasicValueEnum::IntValue(_) => 'promotion: {
+                    let default_type = VarType::I32;
+                    // We only promote values smaller than i32
+                    if arg_type.vtype >= default_type {
+                        break 'promotion;
+                    }
+
+                    let promotion_type = compiler.context.i32_type();
+                    let opcode = if arg_type.vtype.is_signed() {
+                        InstructionOpcode::SExt
+                    } else {
+                        InstructionOpcode::ZExt
+                    };
+
+                    arg_val = compiler.builder.build_cast(
+                        opcode,
+                        arg_val,
+                        promotion_type,
+                        "int_promotion",
+                    );
+                }
+                BasicValueEnum::FloatValue(fv) => {
+                    let promotion_type = compiler.context.f64_type();
+                    if fv.get_type() != promotion_type {
+                        arg_val = compiler.builder.build_cast(
+                            InstructionOpcode::FPExt,
+                            arg_val,
+                            promotion_type,
+                            "float_promotion",
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
 
         // TODO: Enable this when the as operator is done
         // if let ExternType::Type(expected_vvt) = arg_expected_type {

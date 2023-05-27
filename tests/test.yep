@@ -1,7 +1,4 @@
 extern i32 printf(*i8, ...);
 
-if(10 > 5 && 5 < 4) {
-    printf("If test\n");
-} else {
-    printf("If test 2\n");
-}
+let x = 10.0;
+printf("x is %f\n", x);
