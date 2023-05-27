@@ -232,7 +232,10 @@ pub fn codegen_arr_val<'input, 'ctx>(
         return Err("Can't infer type of empty array".to_string());
     }
     if let Some(et) = expected_type {
-        let expected_dim = et.array_dimensions[0];
+        let expected_dim = *et
+            .array_dimensions
+            .get(0)
+            .ok_or(format!("Expected {}, got array insted", et))?;
 
         if expected_dim != exprs_len {
             return Err(format!(

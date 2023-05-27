@@ -43,10 +43,14 @@ pub fn codegen_fn_call<'input, 'ctx>(
         let (mut arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None)?;
 
         // Variadic argument promotions
-        if ExternType::Spread == *arg_expected_type
-            && arg_type.array_dimensions.is_empty()
-            && arg_type.pointer_nesting_level == 0
-        {
+        if ExternType::Spread == *arg_expected_type {
+            if !arg_type.array_dimensions.is_empty() {
+                return Err(
+                    "Arrays should not be passed to functions with variadic arguments, cast it to a pointer instead"
+                        .to_string()
+                );
+            }
+
             match arg_val {
                 BasicValueEnum::IntValue(_) => 'promotion: {
                     let default_type = VarType::I32;

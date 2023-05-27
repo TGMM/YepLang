@@ -1,4 +1,4 @@
 extern i32 printf(*i8, ...);
 
-let x = 10.0;
+let x: f64[1] = [10.0];
 printf("x is %f\n", x);
