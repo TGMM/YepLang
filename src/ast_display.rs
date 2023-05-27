@@ -43,6 +43,8 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Dot => write!(f, "."),
             Token::Extern => write!(f, "extern"),
             Token::Spread => write!(f, "..."),
+            Token::At => write!(f, "@"),
+            Token::LlvmIr(_) => write!(f, "inline llvm"),
         }
     }
 }

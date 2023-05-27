@@ -1,11 +1,62 @@
 use crate::ast::{str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp};
 use crate::ast::{BOp, ScopeSpecifier, VarType};
-use logos::Logos;
+use logos::internal::LexerInternal;
+use logos::{Lexer, Logos};
+
+pub fn set_decorator_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) {
+    // If we find an @ symbol we start parsing a decorator
+    lex.extras.is_parsing_decorator = true;
+}
+
+pub fn check_for_llvm_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) -> &'input str {
+    let decorator_id = lex.slice();
+
+    // After the first decorator id, we're no longer searching for
+    // the LLVM decorator
+    lex.extras.is_parsing_decorator = false;
+    if decorator_id == "llvm" {
+        lex.extras.is_llvm_decorator = true;
+    }
+
+    decorator_id
+}
+
+pub fn parse_llvm_str<'input>(lex: &mut Lexer<'input, Token<'input>>) {
+    lex.extras.is_llvm_decorator = false;
+
+    let mut lbracket_count = 0;
+    for c in lex.remainder().chars() {
+        if c == '{' {
+            lbracket_count += 1;
+        } else if c == '}' && lbracket_count == 0 {
+            break;
+        } else if c == '}' {
+            lbracket_count -= 1;
+        }
+
+        lex.bump(1);
+    }
+}
+
+pub struct LexerExtras {
+    pub is_parsing_decorator: bool,
+    pub is_llvm_decorator: bool,
+}
+
+impl Default for LexerExtras {
+    fn default() -> Self {
+        Self {
+            is_parsing_decorator: false,
+            is_llvm_decorator: false,
+        }
+    }
+}
 
 #[derive(Logos, Clone, Debug, PartialEq)]
+#[logos(extras = LexerExtras)]
 #[logos(skip r"[\s\f\r]+")]
 pub enum Token<'input> {
-    #[regex(r#"[\p{L}_][\p{L}\d_]*"#)]
+    #[regex(r#"[\p{L}_][\p{L}\d_]*"#, check_for_llvm_parsing)]
     Id(&'input str),
     #[regex(r#""(?:[^"\\]|\\t|\\u|\\n|\\")*""#)]
     Str(&'input str),
@@ -62,7 +113,7 @@ pub enum Token<'input> {
     Colon,
     #[token(",")]
     Comma,
-    #[token("{")]
+    #[token("{", parse_llvm_str)]
     LBracket,
     #[token("}")]
     RBracket,
@@ -102,6 +153,9 @@ pub enum Token<'input> {
     Extern,
     #[token("...")]
     Spread,
+    #[token("@", set_decorator_parsing)]
+    At,
+    LlvmIr(&'input str),
 }
 
 #[cfg(test)]
