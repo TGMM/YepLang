@@ -1,6 +1,5 @@
 use crate::ast::{str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp};
 use crate::ast::{BOp, ScopeSpecifier, VarType};
-use logos::internal::LexerInternal;
 use logos::{Lexer, Logos};
 
 pub fn set_decorator_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) {
@@ -22,20 +21,37 @@ pub fn check_for_llvm_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) ->
 }
 
 pub fn parse_llvm_str<'input>(lex: &mut Lexer<'input, Token<'input>>) {
-    lex.extras.is_llvm_decorator = false;
+    if lex.extras.is_llvm_decorator {
+        lex.extras.is_llvm_decorator = false;
 
-    let mut lbracket_count = 0;
-    for c in lex.remainder().chars() {
-        if c == '{' {
-            lbracket_count += 1;
-        } else if c == '}' && lbracket_count == 0 {
-            break;
-        } else if c == '}' {
-            lbracket_count -= 1;
+        let start = lex.span().start + 1;
+        let mut end: usize = start;
+
+        let mut lbracket_count = 0;
+        for c in lex.remainder().chars() {
+            if c == '{' {
+                lbracket_count += 1;
+            } else if c == '}' && lbracket_count == 0 {
+                break;
+            } else if c == '}' {
+                lbracket_count -= 1;
+            }
+
+            lex.bump_no_span(c.len_utf8());
+            end += 1;
         }
 
-        lex.bump(1);
+        lex.add_intermediate_token(
+            Some(Ok(Token::LlvmIr(&lex.source()[start..end]))),
+            start..end,
+        );
     }
+}
+
+// If we ever find the zero width char
+// error it anyway
+pub fn error_zero_width_char<'input>(_: &Lexer<'input, Token<'input>>) -> Result<&'input str, ()> {
+    Err(())
 }
 
 pub struct LexerExtras {
@@ -155,6 +171,8 @@ pub enum Token<'input> {
     Spread,
     #[token("@", set_decorator_parsing)]
     At,
+    // Put a zero-width space here since it asks for something
+    #[token("​", error_zero_width_char)]
     LlvmIr(&'input str),
 }
 

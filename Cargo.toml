@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 ariadne = "0.2.0"
 chumsky = { git = "https://github.com/TGMM/chumsky/", version = "1.0.0-alpha.3", features = ["label", "sync"] }
-logos = "0.13.0"
+logos = { version = "0.13.0", git = "https://github.com/TGMM/logos" }
 snailquote = "0.3.1"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0"] }
 enum-as-inner = "0.5.1"
