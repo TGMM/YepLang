@@ -1,9 +1,7 @@
 extern i32 printf(*i8, ...);
 
-@llvm
-function test(a: i32, b: i32): i32 {
-    %res = add i32 %a, %b
-    ret i32 %res
+if(10 > 5 && 5 < 4) {
+    printf("If test\n");
+} else {
+    printf("If test 2\n");
 }
-
-printf("%d\n", test(3, 2));

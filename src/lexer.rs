@@ -120,6 +120,8 @@ pub enum Token<'input> {
     #[token("<=", str_to_bop)]
     #[token("!=", str_to_bop)]
     #[token("==", str_to_bop)]
+    #[token("&&", str_to_bop)]
+    #[token("||", str_to_bop)]
     BOp(BOp),
     #[token("=")]
     AssignmentEq,
@@ -273,7 +275,7 @@ mod test {
                 Ok(BOp(BOp::Lt)),
                 Ok(BOp(BOp::Lte)),
                 Ok(BOp(BOp::Ne)),
-                Ok(BOp(BOp::Eq)),
+                Ok(BOp(BOp::CmpEq)),
             ]
         );
     }

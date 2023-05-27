@@ -263,7 +263,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
 
         match op {
-            BOp::Eq => {
+            BOp::CmpEq => {
                 return Err("Comparing two arrays for equality is not yet supported".to_string());
             }
             unsupported_op => {
@@ -279,7 +279,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
 
     if lhs_type.pointer_nesting_level > 0 || rhs_type.pointer_nesting_level > 0 {
         match op {
-            BOp::Eq => {
+            BOp::CmpEq => {
                 return Err("Comparing two pointers for equality is not yet supported".to_string());
             }
             unsupported_op => {
@@ -357,7 +357,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 }
                 BOp::Lte => b.build_int_compare(IntPredicate::ULE, lhs, rhs, "int_ule_cmp"),
                 BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "int_ne_cmp"),
-                BOp::Eq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
+                BOp::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
+                BOp::And | BOp::Or => {
+                    return Err("Invalid && or || comparison for int value".to_string())
+                }
             };
 
             bop_res.as_basic_value_enum()
@@ -397,9 +400,12 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 BOp::Ne => b
                     .build_float_compare(FloatPredicate::ONE, lhs, rhs, "flt_ne_cmp")
                     .as_basic_value_enum(),
-                BOp::Eq => b
+                BOp::CmpEq => b
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "flt_eq_cmp")
                     .as_basic_value_enum(),
+                BOp::And | BOp::Or => {
+                    return Err("Invalid && or || comparison for float value".to_string())
+                }
             };
 
             bop_res
@@ -413,7 +419,9 @@ pub fn codegen_bexpr<'input, 'ctx>(
 
             let bop_res = match op {
                 BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "bool_eq_cmp"),
-                BOp::Eq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
+                BOp::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
+                BOp::And => b.build_and(lhs, rhs, "bool_and"),
+                BOp::Or => b.build_or(lhs, rhs, "bool_or"),
                 unsupported_operation => {
                     return Err(format!(
                         "Unsupported operation {} between two booleans",

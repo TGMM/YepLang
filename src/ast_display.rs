@@ -65,7 +65,9 @@ impl fmt::Display for BOp {
             Lt => write!(f, "<"),
             Lte => write!(f, "<="),
             Ne => write!(f, "!="),
-            Eq => write!(f, "=="),
+            CmpEq => write!(f, "=="),
+            And => write!(f, "&&"),
+            Or => write!(f, "||"),
         }
     }
 }

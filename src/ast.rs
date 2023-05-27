@@ -36,6 +36,12 @@ impl VarType {
         }
     }
 
+    pub fn is_bool(&self) -> bool {
+        use VarType::*;
+
+        matches!(self, Boolean)
+    }
+
     pub fn is_int(&self) -> bool {
         use VarType::*;
 
@@ -108,6 +114,10 @@ impl PartialOrd for VarType {
             return self.get_float_val().partial_cmp(&other.get_float_val());
         }
 
+        if self.is_bool() && other.is_bool() {
+            return Some(Ordering::Equal);
+        }
+
         None
     }
 
@@ -118,6 +128,10 @@ impl PartialOrd for VarType {
 
         if self.is_float() && other.is_float() {
             return self.get_float_val() < other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
         }
 
         panic!("Incompatible types")
@@ -132,6 +146,10 @@ impl PartialOrd for VarType {
             return self.get_float_val() <= other.get_float_val();
         }
 
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
         panic!("Incompatible types")
     }
 
@@ -144,6 +162,10 @@ impl PartialOrd for VarType {
             return self.get_float_val() > other.get_float_val();
         }
 
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
         panic!("Incompatible types")
     }
 
@@ -154,6 +176,10 @@ impl PartialOrd for VarType {
 
         if self.is_float() && other.is_float() {
             return self.get_float_val() >= other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
         }
 
         panic!("Incompatible types")
@@ -378,12 +404,14 @@ pub enum BOp {
     Lt,
     Lte,
     Ne,
-    Eq,
+    CmpEq,
+    And,
+    Or,
 }
 impl BOp {
     pub fn is_cmp(&self) -> bool {
         match self {
-            BOp::Gt | BOp::Gte | BOp::Lt | BOp::Lte | BOp::Ne | BOp::Eq => true,
+            BOp::Gt | BOp::Gte | BOp::Lt | BOp::Lte | BOp::Ne | BOp::CmpEq => true,
             _ => false,
         }
     }
@@ -395,10 +423,11 @@ impl<'input> InfixOperator<Expr<'input>> for BOp {
     fn precedence(&self) -> InfixPrecedence<Self::Strength> {
         use BOp::*;
         match self {
-            Add | Sub => InfixPrecedence::new(3, Associativity::Left),
-            Mul | Div | Mod => InfixPrecedence::new(5, Associativity::Left),
-            Pow => InfixPrecedence::new(7, Associativity::Left),
-            Gt | Gte | Lt | Lte | Ne | Eq => InfixPrecedence::new(1, Associativity::Left),
+            Add | Sub => InfixPrecedence::new(5, Associativity::Left),
+            Mul | Div | Mod => InfixPrecedence::new(7, Associativity::Left),
+            Pow => InfixPrecedence::new(9, Associativity::Left),
+            Gt | Gte | Lt | Lte | Ne | CmpEq => InfixPrecedence::new(3, Associativity::Left),
+            And | Or => InfixPrecedence::new(1, Associativity::Left),
         }
     }
 
@@ -421,7 +450,9 @@ impl From<&str> for BOp {
             "<" => BOp::Lt,
             "<=" => BOp::Lte,
             "!=" => BOp::Ne,
-            "==" => BOp::Eq,
+            "==" => BOp::CmpEq,
+            "&&" => BOp::And,
+            "||" => BOp::Or,
             _ => todo!(),
         }
     }
