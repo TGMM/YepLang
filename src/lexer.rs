@@ -169,6 +169,8 @@ pub enum Token<'input> {
     Extern,
     #[token("...")]
     Spread,
+    #[token("as")]
+    As,
     #[token("@", set_decorator_parsing)]
     At,
     // Put a zero-width space here since it asks for something

@@ -45,6 +45,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Spread => write!(f, "..."),
             Token::At => write!(f, "@"),
             Token::LlvmIr(_) => write!(f, "inline llvm"),
+            Token::As => write!(f, "as"),
         }
     }
 }
