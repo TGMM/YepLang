@@ -1,5 +1,9 @@
+extern i32 printf(*i8, ...);
+
 @llvm
 function test(a: i32, b: i32): i32 {
     %res = add i32 %a, %b
     ret i32 %res
 }
+
+printf("%d\n", test(3, 2));

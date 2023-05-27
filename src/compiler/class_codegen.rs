@@ -12,7 +12,13 @@ use crate::{
         main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
     },
 };
-use inkwell::{module::Linkage, types::BasicType, values::BasicValue};
+use inkwell::{
+    module::{Linkage, Module},
+    support::to_c_str,
+    types::BasicType,
+    values::BasicValue,
+};
+use llvm_sys::assembly::LLVMParseAssemblyString;
 use std::collections::VecDeque;
 
 pub fn codegen_return(
@@ -77,15 +83,11 @@ pub fn codegen_fn_decl(
 ) -> Result<(), CompilerError> {
     match fn_decl {
         FnDecl::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
-        FnDecl::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn, block_type),
+        FnDecl::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn),
     }
 }
 
-pub fn codegen_llvm_fn(
-    compiler: &mut Compiler,
-    llvm_fn: LlvmFn,
-    block_type: BlockType,
-) -> Result<(), CompilerError> {
+pub fn codegen_llvm_fn(compiler: &mut Compiler, llvm_fn: LlvmFn) -> Result<(), CompilerError> {
     let LlvmFn {
         fn_id,
         args,
@@ -94,6 +96,7 @@ pub fn codegen_llvm_fn(
     } = llvm_fn;
 
     let id_args = args
+        .clone()
         .into_iter()
         .map(|(arg, arg_type)| match arg {
             Destructure::Id(id) => Ok((id, arg_type)),
@@ -102,6 +105,7 @@ pub fn codegen_llvm_fn(
             }
         })
         .collect::<Result<Vec<_>, CompilerError>>()?;
+
     let args_str = id_args
         .into_iter()
         .map(|(id, vvt)| {
@@ -113,15 +117,72 @@ pub fn codegen_llvm_fn(
         .join(", ");
 
     let ret_type_str = ret_type
+        .as_ref()
         .map(|vvt| vvt.to_string())
         .unwrap_or("void".to_string());
 
+    let fn_name = fn_id.0;
     let fun_def = format!(
         "define {} @{}({}) {{{}}}",
-        ret_type_str, fn_id.0, args_str, ir
+        ret_type_str, fn_name, args_str, ir
     );
 
-    println!("{}", fun_def);
+    let ir_str = to_c_str(&fun_def);
+    let data_layout = compiler
+        .data_layout
+        .as_ref()
+        .ok_or("Can't compile inline LLVM IR without a data layout".to_string())?;
+    let data_layout_str = to_c_str(data_layout.as_str().to_str().unwrap());
+    let m = unsafe {
+        LLVMParseAssemblyString(
+            ir_str.as_ptr(),
+            ir_str.to_bytes().len(),
+            data_layout_str.as_ptr(),
+            data_layout_str.to_bytes().len(),
+            compiler.context.as_mut_ptr(),
+        )
+    };
+
+    // Link newly created inline module
+    let inline_module = unsafe { Module::new(m) };
+    compiler
+        .module
+        .link_in_module(inline_module)
+        .expect("Error linking inline LLVM IR");
+
+    let arg_vvtypes = args
+        .iter()
+        .map(|(d, vvt)| {
+            if !matches!(d, Destructure::Id(_)) {
+                return Err("Destructuring of arguments is not supported yet".to_string());
+            }
+
+            Ok(vvt)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let arg_extypes = arg_vvtypes
+        .into_iter()
+        .map(|vvt| ExternType::Type(vvt.clone()))
+        .collect::<Vec<_>>();
+
+    let ret_type = ret_type.unwrap_or(ValueVarType {
+        vtype: VarType::Void,
+        array_dimensions: VecDeque::new(),
+        pointer_nesting_level: 0,
+    });
+
+    let fn_ptr = compiler
+        .module
+        .get_function(&fn_name)
+        .expect("Could not find LLVM inlined function");
+    compiler.curr_scope_vars.insert(
+        fn_name,
+        ScopedVal::Fn(ScopedFunc {
+            ptr_val: fn_ptr,
+            arg_types: arg_extypes,
+            ret_type,
+        }),
+    );
 
     Ok(())
 }

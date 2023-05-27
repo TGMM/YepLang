@@ -5,6 +5,7 @@ use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
+    data_layout::DataLayout,
     module::Module,
     passes::PassManager,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
@@ -79,6 +80,7 @@ pub struct Compiler<'input, 'ctx> {
     /// if we're inside a function, and its respective return type
     pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
     pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
+    pub data_layout: Option<DataLayout>,
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {

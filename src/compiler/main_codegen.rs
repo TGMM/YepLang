@@ -316,9 +316,9 @@ pub fn compile_to_x86<'input, 'ctx>(
         .unwrap();
 
     compiler.module.set_triple(&triple);
-    compiler
-        .module
-        .set_data_layout(&target_machine.get_target_data().get_data_layout());
+    let data_layout = target_machine.get_target_data().get_data_layout();
+    compiler.module.set_data_layout(&data_layout);
+    _ = compiler.data_layout.insert(data_layout);
 
     codegen_top_block(compiler, top_block)?;
 
@@ -371,9 +371,9 @@ pub fn compile_to_wasm<'input, 'ctx>(
         .unwrap();
 
     compiler.module.set_triple(&triple);
-    compiler
-        .module
-        .set_data_layout(&target_machine.get_target_data().get_data_layout());
+    let data_layout = target_machine.get_target_data().get_data_layout();
+    compiler.module.set_data_layout(&data_layout);
+    _ = compiler.data_layout.insert(data_layout);
 
     codegen_top_block(compiler, top_block)?;
 
@@ -427,6 +427,7 @@ pub fn compile_yep(
         scope_stack: Vec::new(),
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
+        data_layout: None,
     };
 
     compile_to_x86(&mut compiler, top_block, path, out_name, true)?;
