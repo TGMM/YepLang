@@ -1,7 +1,5 @@
-extern i32 printf(*i8, ...);
-
-let x = 5;
-while(x <= 5) {
-    printf("Result is %d\n", x);
-    x = x + 1; 
+@llvm
+function test(a: i32, b: i32): i32 {
+    %res = add i32 %a, %b
+    ret i32 %res
 }

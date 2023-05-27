@@ -1,9 +1,12 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{convert_type_to_metadata, BlockType, Compiler, ScopeMarker, ScopedVal, ScopedVar},
+    helpers::{
+        convert_type_to_metadata, BlockType, Compiler, CompilerError, ScopeMarker, ScopedVal,
+        ScopedVar,
+    },
 };
 use crate::{
-    ast::{Destructure, ExternType, FnDecl, NativeFn, Return, ValueVarType, VarType},
+    ast::{Destructure, ExternType, FnDecl, LlvmFn, NativeFn, Return, ValueVarType, VarType},
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
         main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
@@ -16,7 +19,7 @@ pub fn codegen_return(
     compiler: &Compiler,
     return_: Return,
     block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     let ret_expr = return_.0;
     let fn_ret_val = compiler.curr_func_ret_val.clone();
 
@@ -71,18 +74,63 @@ pub fn codegen_fn_decl(
     compiler: &mut Compiler,
     fn_decl: FnDecl,
     block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     match fn_decl {
         FnDecl::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
-        FnDecl::InlineLlvm(_) => todo!("Inline LLVM is WIP"),
+        FnDecl::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn, block_type),
     }
+}
+
+pub fn codegen_llvm_fn(
+    compiler: &mut Compiler,
+    llvm_fn: LlvmFn,
+    block_type: BlockType,
+) -> Result<(), CompilerError> {
+    let LlvmFn {
+        fn_id,
+        args,
+        ret_type,
+        ir,
+    } = llvm_fn;
+
+    let id_args = args
+        .into_iter()
+        .map(|(arg, arg_type)| match arg {
+            Destructure::Id(id) => Ok((id, arg_type)),
+            _ => {
+                return Err("Destructuring is not supported inside LLVM IR".to_string());
+            }
+        })
+        .collect::<Result<Vec<_>, CompilerError>>()?;
+    let args_str = id_args
+        .into_iter()
+        .map(|(id, vvt)| {
+            let ty = convert_to_type_enum(compiler, &vvt)?.to_string();
+            let trimmed_ty = ty.trim_matches('"');
+            Ok(format!("{} %{}", trimmed_ty, id.0))
+        })
+        .collect::<Result<Vec<_>, CompilerError>>()?
+        .join(", ");
+
+    let ret_type_str = ret_type
+        .map(|vvt| vvt.to_string())
+        .unwrap_or("void".to_string());
+
+    let fun_def = format!(
+        "define {} @{}({}) {{{}}}",
+        ret_type_str, fn_id.0, args_str, ir
+    );
+
+    println!("{}", fun_def);
+
+    Ok(())
 }
 
 pub fn codegen_native_fn(
     compiler: &mut Compiler,
     native_fn: NativeFn,
     block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     let fn_name = native_fn.fn_id.0;
 
     let arg_types = native_fn
