@@ -3,7 +3,7 @@ use super::{
     helpers::{convert_type_to_metadata, BlockType, Compiler, ScopeMarker, ScopedVal, ScopedVar},
 };
 use crate::{
-    ast::{Destructure, ExternType, FnDecl, Return, ValueVarType, VarType},
+    ast::{Destructure, ExternType, FnDecl, NativeFn, Return, ValueVarType, VarType},
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
         main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
@@ -72,9 +72,20 @@ pub fn codegen_fn_decl(
     fn_decl: FnDecl,
     block_type: BlockType,
 ) -> Result<(), String> {
-    let fn_name = fn_decl.fn_id.0;
+    match fn_decl {
+        FnDecl::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
+        FnDecl::InlineLlvm(_) => todo!("Inline LLVM is WIP"),
+    }
+}
 
-    let arg_types = fn_decl
+pub fn codegen_native_fn(
+    compiler: &mut Compiler,
+    native_fn: NativeFn,
+    block_type: BlockType,
+) -> Result<(), String> {
+    let fn_name = native_fn.fn_id.0;
+
+    let arg_types = native_fn
         .args
         .iter()
         .map(|(d, vvt)| {
@@ -94,7 +105,7 @@ pub fn codegen_fn_decl(
         })
         .collect::<Result<Vec<_>, String>>()?;
 
-    let ret_type = fn_decl.ret_type.clone().unwrap_or(ValueVarType {
+    let ret_type = native_fn.ret_type.clone().unwrap_or(ValueVarType {
         vtype: VarType::Void,
         array_dimensions: VecDeque::new(),
         pointer_nesting_level: 0,
@@ -114,7 +125,7 @@ pub fn codegen_fn_decl(
         .module
         .add_function(&fn_name, fn_type, Some(linkage));
 
-    assert_eq!(fun.count_params() as usize, fn_decl.args.len());
+    assert_eq!(fun.count_params() as usize, native_fn.args.len());
 
     let basic_block_name = format!("{}_bb", fn_name);
     let fn_basic_block = compiler.context.append_basic_block(fun, &basic_block_name);
@@ -130,7 +141,7 @@ pub fn codegen_fn_decl(
         compiler.func_ret_val_stack.push(curr_fn);
     }
     // We store the new return type in case there is some
-    if let Some(ret_type) = fn_decl.ret_type {
+    if let Some(ret_type) = native_fn.ret_type {
         let basic_type = convert_to_type_enum(compiler, &ret_type)?;
 
         compiler.curr_func_ret_val = Some(FnRetVal {
@@ -155,7 +166,8 @@ pub fn codegen_fn_decl(
     );
 
     compiler.scope_stack.push(ScopeMarker::ScopeBegin);
-    for ((arg_destructure, arg_type), arg_val) in fn_decl.args.into_iter().zip(fun.get_param_iter())
+    for ((arg_destructure, arg_type), arg_val) in
+        native_fn.args.into_iter().zip(fun.get_param_iter())
     {
         let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
@@ -180,7 +192,7 @@ pub fn codegen_fn_decl(
         };
     }
 
-    codegen_block(compiler, fn_decl.block, BlockType::FUNC)?;
+    codegen_block(compiler, native_fn.block, BlockType::FUNC)?;
 
     // Building the return
     // Every block must end with a br statement, so we jump to the return block

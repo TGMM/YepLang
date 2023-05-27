@@ -6,12 +6,15 @@ use super::{
     },
     primitive_parser::{id_parser, type_specifier_parser},
 };
-use crate::{ast::Return, parser::main_parser::BLOCK_PARSER};
 use crate::{
-    ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl},
+    ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, LlvmFn, MethodDecl, PropertyDecl},
     lexer::Token,
 };
-use chumsky::{primitive::just, IterParser, Parser};
+use crate::{
+    ast::{NativeFn, Return},
+    parser::main_parser::BLOCK_PARSER,
+};
+use chumsky::{primitive::just, select, IterParser, Parser};
 
 pub fn method_decl_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, MethodDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
@@ -49,11 +52,59 @@ pub fn method_decl_parser<'i: 'static>(
     method_decl
 }
 
-pub fn fn_decl_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, FnDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+pub fn llvm_fn_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, LlvmFn<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
+
+    // Main definition
+    let llvm_decorator =
+        just(Token::At).then(select! { Token::Id(id) => id }.filter(|id| *id == "llvm"));
+
+    let args = destructure
+        .clone()
+        .then(type_specifier_parser())
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>();
+    let llvm_fn = llvm_decorator
+        .ignore_then(just(Token::Function))
+        .ignore_then(id_parser())
+        .then_ignore(just(Token::LParen))
+        .then(args)
+        .then_ignore(just(Token::RParen))
+        .then(type_specifier_parser().or_not())
+        .then(
+            select! { Token::LlvmIr(ir) => ir }
+                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+        )
+        .map(|(((fn_id, args), ret_type), ir)| LlvmFn {
+            fn_id,
+            args,
+            ret_type,
+            ir: ir.to_string(),
+        });
+
+    // Definitions
+    if !destructure.is_defined() {
+        destructure_parser();
+    }
+
+    llvm_fn
+}
+
+pub fn native_fn_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, NativeFn<'i>, ParserError<'i, Token<'i>>> + Clone {
     just(Token::Function)
         .ignore_then(method_decl_parser())
         .map(|md| md.into())
+}
+
+pub fn fn_decl_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let native = native_fn_parser().map(FnDecl::Native);
+    let llvm = llvm_fn_parser().map(FnDecl::InlineLlvm);
+
+    llvm.or(native)
 }
 
 pub fn class_prop_decl_parser<'i: 'static>(
@@ -130,8 +181,8 @@ mod test {
 
     use crate::{
         ast::{
-            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDecl, MethodDecl,
-            NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
+            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDecl, LlvmFn, MethodDecl,
+            NativeFn, NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
@@ -192,7 +243,7 @@ mod test {
         let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
-            FnDecl {
+            FnDecl::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![],
                 ret_type: Some(ValueVarType {
@@ -201,7 +252,7 @@ mod test {
                     pointer_nesting_level: 0
                 }),
                 block: Block { stmts: vec![] }
-            }
+            })
         )
     }
 
@@ -222,12 +273,12 @@ mod test {
         let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
-            FnDecl {
+            FnDecl::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![],
                 ret_type: None,
                 block: Block { stmts: vec![] }
-            }
+            })
         )
     }
 
@@ -253,7 +304,7 @@ mod test {
         let fn_decl = res.unwrap();
         assert_eq!(
             fn_decl,
-            FnDecl {
+            FnDecl::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![(
                     Destructure::Id("x".into()),
@@ -269,7 +320,7 @@ mod test {
                     pointer_nesting_level: 0
                 }),
                 block: Block { stmts: vec![] }
-            }
+            })
         )
     }
 
@@ -386,6 +437,65 @@ mod test {
                     ]
                 }
             }
+        )
+    }
+
+    #[test]
+    fn llvm_ir_test() {
+        let tokens = stream_token_vec(vec![
+            Token::At,
+            Token::Id("llvm".into()),
+            Token::Function,
+            Token::Id("myFunction".into()),
+            Token::LParen,
+            Token::Id("a".into()),
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::Comma,
+            Token::Id("b".into()),
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::RParen,
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::LBracket,
+            Token::LlvmIr("%res = add i32 %a, %b\nret i32 %res"),
+            Token::RBracket,
+        ]);
+
+        let res = fn_decl_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let fn_decl = res.unwrap();
+        assert_eq!(
+            fn_decl,
+            FnDecl::InlineLlvm(LlvmFn {
+                fn_id: "myFunction".into(),
+                args: vec![
+                    (
+                        Destructure::Id("a".into()),
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                    ),
+                    (
+                        Destructure::Id("b".into()),
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                    )
+                ],
+                ret_type: Some(ValueVarType {
+                    vtype: VarType::I32,
+                    array_dimensions: VecDeque::new(),
+                    pointer_nesting_level: 0
+                }),
+                ir: "%res = add i32 %a, %b\nret i32 %res".to_string()
+            })
         )
     }
 }

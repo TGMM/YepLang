@@ -535,7 +535,19 @@ pub struct MemberAcess<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FnDecl<'a> {
+pub enum FnDecl<'a> {
+    Native(NativeFn<'a>),
+    InlineLlvm(LlvmFn<'a>),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlvmFn<'a> {
+    pub fn_id: Id,
+    pub args: Vec<(Destructure<'a>, ValueVarType)>,
+    pub ret_type: Option<ValueVarType>,
+    pub ir: String,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct NativeFn<'a> {
     pub fn_id: Id,
     pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
@@ -548,9 +560,9 @@ pub struct MethodDecl<'a> {
     pub ret_type: Option<ValueVarType>,
     pub block: Block<'a>,
 }
-impl<'a> From<MethodDecl<'a>> for FnDecl<'a> {
+impl<'a> From<MethodDecl<'a>> for NativeFn<'a> {
     fn from(method_decl: MethodDecl<'a>) -> Self {
-        FnDecl {
+        NativeFn {
             fn_id: method_decl.method_id,
             args: method_decl.args,
             ret_type: method_decl.ret_type,
