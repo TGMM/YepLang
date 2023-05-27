@@ -45,10 +45,8 @@ pub fn codegen_fn_call<'input, 'ctx>(
         // Variadic argument promotions
         if ExternType::Spread == *arg_expected_type {
             if !arg_type.array_dimensions.is_empty() {
-                return Err(
-                    "Arrays should not be passed to functions with variadic arguments, cast it to a pointer instead"
-                        .to_string()
-                );
+                let err = "Arrays should not be passed to functions with variadic arguments, cast it to a pointer instead";
+                return Err(err.to_string());
             }
 
             match arg_val {
@@ -192,6 +190,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
 
             Ok((var_val, scoped_var.var_type))
         }
+        Expr::Cast(casting) => todo!(),
     }
 }
 

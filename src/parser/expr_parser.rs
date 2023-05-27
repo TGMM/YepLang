@@ -1,6 +1,10 @@
 use super::main_parser::{ParserError, ParserInput};
-use super::primitive_parser::{bop_parser, id_parser, primitive_val_parser, PRIMITIVE_VAL_PARSER};
-use crate::ast::{BOp, BoolUnaryOp, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp};
+use super::primitive_parser::{
+    bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
+};
+use crate::ast::{
+    BOp, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
+};
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
 use crate::{ast::Expr, recursive_parser};
@@ -96,6 +100,11 @@ pub fn member_access_prop_parser<'i>(
     just(Token::Dot).ignore_then(id_parser())
 }
 
+pub fn as_casting_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+    just(Token::As).ignore_then(value_var_type_parser())
+}
+
 enum PExprSuffix<'i> {
     Index(Expr<'i>),
     FnCall(Vec<Expr<'i>>),
@@ -138,10 +147,16 @@ recursive_parser!(
             PExprSuffix::MemberAccess(property) => Expr::MemberAccess(Box::new(MemberAcess {
                 accessed: pexpr,
                 property,
-            })),
+            }))
         });
 
-        suffixed_pexpr
+        let cast_suffix = as_casting_parser().repeated();
+        let casted_pexpr = suffixed_pexpr.foldl(cast_suffix, |pexpr, cast_type| Expr::Cast(Box::new(Casting {
+            casted: pexpr,
+            cast_type
+        })));
+
+        casted_pexpr
     },
     definitions {
         if !paren_expr.is_defined() {

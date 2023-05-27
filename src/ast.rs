@@ -487,6 +487,13 @@ pub enum Expr<'input> {
     Indexing(Box<Indexing<'input>>),
     MemberAccess(Box<MemberAcess<'input>>),
     Id(Id),
+    Cast(Box<Casting<'input>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Casting<'a> {
+    pub casted: Expr<'a>,
+    pub cast_type: ValueVarType,
 }
 
 #[derive(Debug, Clone, PartialEq)]

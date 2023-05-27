@@ -400,7 +400,7 @@ pub fn compile_yep(
     path: &'static str,
     out_name: &'static str,
 ) -> Result<(), CompilerError> {
-    let top_block = parse(input, "input.file").expect("Invalid code");
+    let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
 
     let context = Context::create();
     let module = context.create_module("TODO_file_name");
