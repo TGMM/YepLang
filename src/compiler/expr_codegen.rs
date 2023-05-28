@@ -198,6 +198,8 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // Non matching dimensions
     if cast_to_type.array_dimensions != cast_from_type.array_dimensions
     // Allow casting from array to ptr
+    // Note that the actual cast logic is done below since we need the 
+    // cast_to_val variable set
         && cast_to_type.pointer_nesting_level == 0
     {
         return Err("Cast mismatch: Array dimensions do not match".to_string());
@@ -256,7 +258,7 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     let cast_from_vtype = &cast_from_type.vtype;
 
     // Both ints
-    if cast_to_vtype.is_int() && cast_from_vtype.is_int() {
+    if cast_from_vtype.is_int() && cast_to_vtype.is_int() {
         let cast_from_int_val = cast_from_val.into_int_value();
         let cast_to_int_type = cast_to_b_type.into_int_type();
 
@@ -273,7 +275,7 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     }
 
     // Both floats
-    if cast_to_vtype.is_float() && cast_from_vtype.is_float() {
+    if cast_from_vtype.is_float() && cast_to_vtype.is_float() {
         let cast_from_float_val = cast_from_val.into_float_value();
         let cast_to_float_type = cast_to_b_type.into_float_type();
 
@@ -288,7 +290,56 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
         return Ok((cast_to_val, cast_to_type));
     }
 
+    // Float to int
+    if cast_from_vtype.is_float() && cast_to_vtype.is_int() {
+        let cast_from_float_val = cast_from_val.into_float_value();
+        let cast_to_int_type = cast_to_b_type.into_int_type();
+
+        let op = if cast_to_type.vtype.is_signed() {
+            InstructionOpcode::FPToSI
+        } else {
+            InstructionOpcode::FPToUI
+        };
+
+        cast_to_val = compiler
+            .builder
+            .build_cast(
+                op,
+                cast_from_float_val,
+                cast_to_int_type,
+                "float_to_int_cast",
+            )
+            .as_basic_value_enum();
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
+    // Int to float
+    if cast_from_vtype.is_int() && cast_to_vtype.is_float() {
+        let cast_from_int_val = cast_from_val.into_int_value();
+        let cast_to_float_type = cast_to_b_type.into_float_type();
+
+        let op = if cast_from_type.vtype.is_signed() {
+            InstructionOpcode::SIToFP
+        } else {
+            InstructionOpcode::UIToFP
+        };
+
+        cast_to_val = compiler
+            .builder
+            .build_cast(
+                op,
+                cast_from_int_val,
+                cast_to_float_type,
+                "int_to_float_cast",
+            )
+            .as_basic_value_enum();
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
     // TODO: Struct types
+    // TODO: Ptr to arr?
 
     Ok((cast_to_val, cast_to_type))
 }
