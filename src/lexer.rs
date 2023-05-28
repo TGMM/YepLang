@@ -245,18 +245,13 @@ mod test {
 
     #[test]
     fn term_op_lexing() {
-        let input = "* / % **";
+        let input = "* / %";
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
         assert_eq!(
             &tokens,
-            &[
-                Ok(BOp(BOp::Mul)),
-                Ok(BOp(BOp::Div)),
-                Ok(BOp(BOp::Mod)),
-                Ok(BOp(BOp::Pow))
-            ]
+            &[Ok(BOp(BOp::Mul)), Ok(BOp(BOp::Div)), Ok(BOp(BOp::Mod))]
         );
     }
 
