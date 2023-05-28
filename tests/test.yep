@@ -1,3 +1,5 @@
 extern i32 printf(*i8, ...);
-
-let x = 10 as i64;
+{
+    let x: f32 = -1.5 / 2;
+    printf("Result is %f\n" as *i8, x);
+}

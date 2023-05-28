@@ -463,10 +463,9 @@ pub fn codegen_bexpr<'input, 'ctx>(
     } = expected_type;
 
     let BExpr { lhs, op, rhs } = bexpr;
-    let lhs = codegen_rhs_expr(compiler, lhs, expected_lhs_type)?;
-    let rhs = codegen_rhs_expr(compiler, rhs, expected_rhs_type)?;
+    let (lhs_val, lhs_type) = codegen_rhs_expr(compiler, lhs, expected_lhs_type)?;
+    let (rhs_val, rhs_type) = codegen_rhs_expr(compiler, rhs, expected_rhs_type)?;
 
-    let (lhs_type, rhs_type) = (lhs.1, rhs.1);
     if lhs_type.array_dimensions.len() > 0 || rhs_type.array_dimensions.len() > 0 {
         if lhs_type.array_dimensions.len() != rhs_type.array_dimensions.len() {
             return Err(
@@ -514,6 +513,14 @@ pub fn codegen_bexpr<'input, 'ctx>(
     } else {
         semantic_cube(&lhs_type, &rhs_type)?
     };
+
+    if lhs_val.get_type() != rhs_val.get_type() {
+        return Err(format!(
+            "Incompatible types {} and {} for operation '{}'. If both types are numeric, try casting one side of the operation",
+            lhs_type, rhs_type, op
+        ));
+    }
+
     let operand_type = expr_type.vtype.clone();
     // Primitive BOp
     let basic_val = match operand_type {
@@ -527,8 +534,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
         | VarType::U64
         | VarType::I128
         | VarType::U128 => {
-            let mut lhs = lhs.0.into_int_value();
-            let mut rhs = rhs.0.into_int_value();
+            let mut lhs = lhs_val.into_int_value();
+            let mut rhs = rhs_val.into_int_value();
 
             let b = compiler.builder;
             let cast_type = convert_to_type_enum(compiler, &expr_type)?.into_int_type();
@@ -578,8 +585,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
             bop_res.as_basic_value_enum()
         }
         VarType::F32 | VarType::F64 => {
-            let mut lhs = lhs.0.into_float_value();
-            let mut rhs = rhs.0.into_float_value();
+            let mut lhs = lhs_val.into_float_value();
+            let mut rhs = rhs_val.into_float_value();
 
             let b = compiler.builder;
             let cast_type = convert_to_type_enum(compiler, &expr_type)?.into_float_type();
@@ -625,8 +632,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
         VarType::Void => return Err("Binary operations between void types are invalid".to_string()),
         VarType::Boolean => {
             // Bool values are i1, so they are ints
-            let lhs = lhs.0.into_int_value();
-            let rhs = rhs.0.into_int_value();
+            let lhs = lhs_val.into_int_value();
+            let rhs = rhs_val.into_int_value();
             let b = compiler.builder;
 
             let bop_res = match op {
