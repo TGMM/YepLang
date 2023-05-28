@@ -118,11 +118,11 @@ pub fn semantic_cube(lhs: &ValueVarType, rhs: &ValueVarType) -> Result<ValueVarT
     }
 
     if lhs.vtype.is_int() != rhs.vtype.is_int() {
-        return Err("Incompatible types".to_string());
+        return Err(format!("Incompatible types: {} and {}", lhs, rhs));
     }
 
     if lhs.vtype.is_float() != rhs.vtype.is_float() {
-        return Err("Incompatible types".to_string());
+        return Err(format!("Incompatible types: {} and {}", lhs, rhs));
     }
 
     let mut resulting_type: VarType = lhs.vtype.clone().max(rhs.vtype.clone());
