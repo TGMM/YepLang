@@ -1,7 +1,8 @@
 extern i32 printf(*i8, ...);
 
 {
-    let x = 10;
-    let y = 10 as f32;
-    printf("Float is %f\n", y);
+    let x = [10];
+    let y = x as *i32;
+
+    printf("Add: %x", y);
 }

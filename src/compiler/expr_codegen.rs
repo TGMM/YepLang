@@ -193,7 +193,7 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
         casted,
         cast_type: cast_to_type,
     } = casting;
-    let (cast_from_val, cast_from_type) = codegen_rhs_expr(compiler, casted, None)?;
+    let (cast_from_val, cast_from_type) = codegen_rhs_expr(compiler, casted.clone(), None)?;
 
     // Non matching dimensions
     if cast_to_type.array_dimensions != cast_from_type.array_dimensions
@@ -246,12 +246,27 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
 
     // Allow casting from arr to ptr
     if cast_to_b_type.is_pointer_type() && cast_from_b_type.is_array_type() {
+        // Casting from array requires the pointer instead of the value
+        let (cast_from_val, _) = codegen_lhs_expr(compiler, casted, None).map_err(|_| {
+            "Casting from a const array is not supported. Please store it in a variable first"
+                .to_string()
+        })?;
+
         cast_to_val =
             compiler
                 .builder
                 .build_bitcast(cast_from_val, cast_to_b_type, "arr_to_ptr_bitcast");
 
         return Ok((cast_to_val, cast_to_type));
+    }
+
+    // None of the above was true, thus it's an invalid cast
+    // if one of the types is a pointer or an array
+    if cast_from_type.pointer_nesting_level > 0 || cast_to_type.pointer_nesting_level > 0 {
+        return Err(format!(
+            "Invalid cast from {} to {}",
+            cast_from_type, cast_to_type
+        ));
     }
 
     let cast_to_vtype = &cast_to_type.vtype;
@@ -341,7 +356,10 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // TODO: Struct types
     // TODO: Ptr to arr?
 
-    Ok((cast_to_val, cast_to_type))
+    Err(format!(
+        "Invalid cast from {} to {}",
+        cast_from_type, cast_to_type
+    ))
 }
 
 pub fn codegen_lhs_indexing<'input, 'ctx>(
