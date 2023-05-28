@@ -77,15 +77,14 @@ pub fn codegen_fn_call<'input, 'ctx>(
             }
         }
 
-        // TODO: Enable this when the as operator is done
-        // if let ExternType::Type(expected_vvt) = arg_expected_type {
-        //     if expected_vvt != &arg_type {
-        //         return Err(format!(
-        //             "Incorrect type for argument, expected {} got {}",
-        //             expected_vvt, arg_type
-        //         ));
-        //     }
-        // }
+        if let ExternType::Type(expected_vvt) = arg_expected_type {
+            if expected_vvt != &arg_type {
+                return Err(format!(
+                    "Incorrect type for argument, expected {} got {}",
+                    expected_vvt, arg_type
+                ));
+            }
+        }
 
         let arg_metadata: BasicMetadataValueEnum = convert_value_to_metadata(arg_val);
         args.push(arg_metadata);
