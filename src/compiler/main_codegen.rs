@@ -17,6 +17,7 @@ use inkwell::{
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{BasicType, BasicTypeEnum},
+    values::BasicValue,
     AddressSpace, OptimizationLevel,
 };
 use std::{collections::HashMap, path::Path};
@@ -173,6 +174,7 @@ fn codegen_var_decl<'input, 'ctx>(
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
             codegen_rhs_expr(compiler, initial_expr, decl_as.var_type.as_ref())
         });
+
         let (initial_val, inferred_var_type) = match initial_expr_val {
             Some(Ok((bve, vvt))) => (Some(bve), Some(vvt)),
             Some(Err(err)) => return Err(err),
@@ -200,10 +202,17 @@ fn codegen_var_decl<'input, 'ctx>(
             return Err("Variables must have an explicit type or an initial value".to_string());
         }
 
+        // Global variable
         if matches!(block_type, BlockType::GLOBAL) {
             let new_global = compiler.module.add_global(type_, None, &id.0);
 
             if let Some(initial_val) = initial_val {
+                // Return error if initial_val comes from an instruction
+                // That likely means that it's not constant
+                if let Some(_) = initial_val.as_instruction_value() {
+                    return Err("Initializer element is not a compile-time constant".to_string());
+                }
+
                 new_global.set_initializer(&initial_val);
             } else {
                 let default_value = type_.const_zero();

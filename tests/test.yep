@@ -1,8 +1,3 @@
 extern i32 printf(*i8, ...);
 
-{
-    let x = [10];
-    let y = x as *i32;
-
-    printf("Add: %x", y);
-}
+let x = 10 as i64;
