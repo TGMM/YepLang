@@ -1,5 +1,6 @@
 extern i32 printf(*i8, ...);
-{
-    let x: f32 = -1.5 / 2;
-    printf("Result is %f\n" as *i8, x);
+
+let arr = [10, 20, 30];
+for(let i = 0; i < 3; i += 1) {
+    printf("i is %d\n" as *i8, arr[i as u32]);
 }

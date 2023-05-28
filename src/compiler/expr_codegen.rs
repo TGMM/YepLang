@@ -240,7 +240,7 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // ptr doesn't have a type in LLVM16
         || cast_to_type.pointer_nesting_level > 0 && cast_from_type.pointer_nesting_level > 0
     {
-        return Ok((cast_from_val, cast_from_type));
+        return Ok((cast_from_val, cast_to_type));
     }
 
     // Allow casting from arr to ptr
