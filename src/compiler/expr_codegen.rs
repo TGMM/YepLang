@@ -6,7 +6,7 @@ use super::{
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
 };
-use crate::ast::{BExpr, BOp, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
+use crate::ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
 use inkwell::{
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, PointerValue},
     FloatPredicate, IntPredicate,
@@ -50,7 +50,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
             }
 
             match arg_val {
-                BasicValueEnum::IntValue(_) => 'promotion: {
+                BasicValueEnum::IntValue(int_arg_val) => 'promotion: {
                     let default_type = VarType::I32;
                     // We only promote values smaller than i32
                     if arg_type.vtype >= default_type {
@@ -58,28 +58,19 @@ pub fn codegen_fn_call<'input, 'ctx>(
                     }
 
                     let promotion_type = compiler.context.i32_type();
-                    let opcode = if arg_type.vtype.is_signed() {
-                        InstructionOpcode::SExt
-                    } else {
-                        InstructionOpcode::ZExt
-                    };
 
-                    arg_val = compiler.builder.build_cast(
-                        opcode,
-                        arg_val,
-                        promotion_type,
-                        "int_promotion",
-                    );
+                    arg_val = compiler
+                        .builder
+                        .build_int_cast(int_arg_val, promotion_type, "int_promotion")
+                        .as_basic_value_enum();
                 }
-                BasicValueEnum::FloatValue(fv) => {
+                BasicValueEnum::FloatValue(float_arg_val) => {
                     let promotion_type = compiler.context.f64_type();
-                    if fv.get_type() != promotion_type {
-                        arg_val = compiler.builder.build_cast(
-                            InstructionOpcode::FPExt,
-                            arg_val,
-                            promotion_type,
-                            "float_promotion",
-                        );
+                    if float_arg_val.get_type() != promotion_type {
+                        arg_val = compiler
+                            .builder
+                            .build_float_cast(float_arg_val, promotion_type, "float_promotion")
+                            .as_basic_value_enum();
                     }
                 }
                 _ => {}
@@ -190,8 +181,116 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
 
             Ok((var_val, scoped_var.var_type))
         }
-        Expr::Cast(casting) => todo!(),
+        Expr::Cast(casting) => codegen_rhs_casting(compiler, *casting),
     }
+}
+
+pub fn codegen_rhs_casting<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+    casting: Casting,
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let Casting {
+        casted,
+        cast_type: cast_to_type,
+    } = casting;
+    let (cast_from_val, cast_from_type) = codegen_rhs_expr(compiler, casted, None)?;
+
+    // Non matching dimensions
+    if cast_to_type.array_dimensions != cast_from_type.array_dimensions
+    // Allow casting from array to ptr
+        && cast_to_type.pointer_nesting_level == 0
+    {
+        return Err("Cast mismatch: Array dimensions do not match".to_string());
+    } else if !cast_to_type.array_dimensions.is_empty()
+        && !cast_from_type.array_dimensions.is_empty()
+    {
+        return Err("Casting arrays is not yet supported".to_string());
+    }
+
+    if cast_to_type.vtype == VarType::String {
+        return Err("Casting to string is not allowed".to_string());
+    }
+
+    let mut cast_to_val = cast_from_val;
+    let cast_to_b_type = convert_to_type_enum(compiler, &cast_to_type)?;
+
+    // Allow string to ptr
+    if cast_from_type.vtype == VarType::String && cast_to_type.pointer_nesting_level > 0 {
+        if cast_to_type.pointer_nesting_level > 1 || cast_to_type.vtype != VarType::I8 {
+            println!(
+                "WARNING: String can only be safely cast to an *i8, casting to a {}",
+                cast_to_type
+            );
+
+            cast_to_val =
+                compiler
+                    .builder
+                    .build_bitcast(cast_from_val, cast_to_b_type, "str_to_ptr_bitcast");
+        }
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
+    let cast_from_b_type = cast_from_val.get_type();
+
+    // If types are the same don't do anything
+    if cast_to_b_type == cast_from_b_type
+    // Allow casting from ptr to ptr, we also don't do anything since
+    // ptr doesn't have a type in LLVM16
+        || cast_to_type.pointer_nesting_level > 0 && cast_from_type.pointer_nesting_level > 0
+    {
+        return Ok((cast_from_val, cast_from_type));
+    }
+
+    // Allow casting from arr to ptr
+    if cast_to_b_type.is_pointer_type() && cast_from_b_type.is_array_type() {
+        cast_to_val =
+            compiler
+                .builder
+                .build_bitcast(cast_from_val, cast_to_b_type, "arr_to_ptr_bitcast");
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
+    let cast_to_vtype = &cast_to_type.vtype;
+    let cast_from_vtype = &cast_from_type.vtype;
+
+    // Both ints
+    if cast_to_vtype.is_int() && cast_from_vtype.is_int() {
+        let cast_from_int_val = cast_from_val.into_int_value();
+        let cast_to_int_type = cast_to_b_type.into_int_type();
+
+        // Same number of bits just means the sign is different
+        // But that gets handled by LLVM with our VType
+        if cast_from_vtype.get_int_val() != cast_to_vtype.get_int_val() {
+            cast_to_val = compiler
+                .builder
+                .build_int_cast(cast_from_int_val, cast_to_int_type, "int_cast")
+                .as_basic_value_enum();
+        }
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
+    // Both floats
+    if cast_to_vtype.is_float() && cast_from_vtype.is_float() {
+        let cast_from_float_val = cast_from_val.into_float_value();
+        let cast_to_float_type = cast_to_b_type.into_float_type();
+
+        // Same as above
+        if cast_from_vtype.get_float_val() != cast_to_vtype.get_float_val() {
+            cast_to_val = compiler
+                .builder
+                .build_float_cast(cast_from_float_val, cast_to_float_type, "float_cast")
+                .as_basic_value_enum();
+        }
+
+        return Ok((cast_to_val, cast_to_type));
+    }
+
+    // TODO: Struct types
+
+    Ok((cast_to_val, cast_to_type))
 }
 
 pub fn codegen_lhs_indexing<'input, 'ctx>(

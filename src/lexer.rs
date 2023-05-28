@@ -111,7 +111,6 @@ pub enum Token<'input> {
     #[token("+", str_to_bop)]
     #[token("-", str_to_bop)]
     #[token("*", str_to_bop)]
-    #[token("**", str_to_bop)]
     #[token("/", str_to_bop)]
     #[token("%", str_to_bop)]
     #[token(">", str_to_bop)]

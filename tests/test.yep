@@ -1,2 +1,3 @@
-let x = [10];
-let y = x as *i32;
+extern i32 printf(*i8, ...);
+
+printf("Float is %f\n", 10.0);
