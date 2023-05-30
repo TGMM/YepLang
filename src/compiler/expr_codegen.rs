@@ -379,9 +379,10 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
-        return Err(
-            "Indexing is only supported for arrays, array indexes must be of type u32".to_string(),
-        );
+        let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
+        let line_two = "If index type is numeric, try casting (as u32)";
+
+        return Err(format!("{} {}", line_one, line_two));
     }
 
     let idxr: inkwell::values::IntValue = idxr.into_int_value();
@@ -398,7 +399,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     let ret_val_ptr = unsafe {
         compiler
             .builder
-            .build_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
+            .build_in_bounds_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
     };
 
     Ok((ret_val_ptr, element_type))
@@ -422,9 +423,10 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
 
     if idxr_type != *u32_type {
-        return Err(
-            "Indexing is only supported for arrays, array indexes must be of type u32".to_string(),
-        );
+        let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
+        let line_two = "If index type is numeric, try casting (as u32)";
+
+        return Err(format!("{} {}", line_one, line_two));
     }
 
     let idxr: inkwell::values::IntValue = idxr.into_int_value();
@@ -442,7 +444,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     let ret_val_ptr = unsafe {
         compiler
             .builder
-            .build_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
+            .build_in_bounds_gep(arr_ty, idxd, &[zero_ptr, idxr], "indexing")
     };
     let ret_val = compiler
         .builder
