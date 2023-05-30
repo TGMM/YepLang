@@ -11,7 +11,8 @@ use inkwell::{
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
-use std::collections::{HashMap, VecDeque};
+use rustc_hash::FxHashMap;
+use std::collections::VecDeque;
 
 pub type CompilerError = String;
 
@@ -62,7 +63,7 @@ pub struct FnRetVal<'ctx> {
     pub ret_bb: BasicBlock<'ctx>,
 }
 
-pub type Scope<'ctx> = HashMap<String, ScopedVal<'ctx>>;
+pub type Scope<'ctx> = FxHashMap<String, ScopedVal<'ctx>>;
 pub struct Compiler<'input, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'input Builder<'ctx>,

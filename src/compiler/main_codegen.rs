@@ -18,7 +18,8 @@ use inkwell::{
     values::BasicValue,
     AddressSpace, OptimizationLevel,
 };
-use std::{collections::HashMap, path::Path};
+use rustc_hash::FxHashMap;
+use std::path::Path;
 
 const MAIN_FN_NAME: &str = "main";
 
@@ -91,7 +92,7 @@ pub fn codegen_block(
 ) -> Result<(), CompilerError> {
     // When we enter a block, we push a new variable scope
     if !(block_type == BlockType::FUNC) {
-        compiler.var_scopes.push(HashMap::new());
+        compiler.var_scopes.push(FxHashMap::default());
     }
 
     for stmt in block.stmts {

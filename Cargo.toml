@@ -12,3 +12,4 @@ inkwell = { features = ["llvm16-0"], version = "0.2.0", git = "https://github.co
 enum-as-inner = "0.5.1"
 bitflags = "2.2.1"
 llvm-sys = { git = "https://github.com/TGMM/llvm-sys.rs", version = "160.1.0" }
+rustc-hash = "1.1.0"

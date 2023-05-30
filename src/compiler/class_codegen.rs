@@ -19,7 +19,8 @@ use inkwell::{
     values::{BasicValue, FunctionValue, InstructionOpcode},
 };
 use llvm_sys::assembly::LLVMParseAssemblyString;
-use std::collections::{HashMap, VecDeque};
+use rustc_hash::FxHashMap;
+use std::collections::VecDeque;
 
 pub fn codegen_return(
     compiler: &Compiler,
@@ -299,7 +300,7 @@ pub fn codegen_native_fn(
         });
     };
 
-    compiler.var_scopes.push(HashMap::new());
+    compiler.var_scopes.push(FxHashMap::default());
     for ((arg_destructure, arg_type), arg_val) in
         fn_signature.args.into_iter().zip(fun.get_param_iter())
     {
