@@ -56,8 +56,9 @@ pub fn codegen_return(
         ret_bb,
     } = fn_ret_val.unwrap();
 
-    let (ret_val, ret_type) = codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type))
-        .map_err(|_| "Invalid value for function return".to_string())?;
+    let (ret_val, ret_type) =
+        codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type), block_type)
+            .map_err(|_| "Invalid value for function return".to_string())?;
 
     let expected_ret_type: ValueVarType = expected_ret_type;
     if ret_type != expected_ret_type {

@@ -111,8 +111,8 @@ pub fn codegen_stmt(
     mut block_type: BlockType,
 ) -> Result<(), CompilerError> {
     match stmt {
-        Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment),
-        Stmt::Expr(expr) => codegen_rhs_expr(compiler, expr, None).map(|(_, _)| ()),
+        Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment, block_type),
+        Stmt::Expr(expr) => codegen_rhs_expr(compiler, expr, None, block_type).map(|(_, _)| ()),
         Stmt::ClassDecl(_) => todo!(),
         Stmt::FnDef(fn_def) => codegen_fn_def(compiler, fn_def, block_type),
         Stmt::For(for_) => codegen_for(compiler, for_, block_type),
@@ -154,7 +154,12 @@ fn codegen_var_decl<'input, 'ctx>(
         };
 
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
-            codegen_rhs_expr(compiler, initial_expr, decl_as.var_type.as_ref())
+            codegen_rhs_expr(
+                compiler,
+                initial_expr,
+                decl_as.var_type.as_ref(),
+                block_type,
+            )
         });
 
         let (initial_val, inferred_var_type) = match initial_expr_val {
@@ -238,9 +243,10 @@ fn codegen_var_decl<'input, 'ctx>(
 pub fn codegen_assignment(
     compiler: &Compiler,
     assignment: Assignment,
+    block_type: BlockType,
 ) -> Result<(), CompilerError> {
     let (assignee_ptr, expected_type) =
-        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None)?;
+        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None, block_type)?;
 
     let new_val = if let Some(bop) = assignment.bop {
         let bexpr = BExpr {
@@ -257,6 +263,7 @@ pub fn codegen_assignment(
                 expected_rhs_type: None,
                 expected_ret_type: Some(&expected_type),
             },
+            block_type,
         )
         .unwrap();
 
@@ -270,7 +277,7 @@ pub fn codegen_assignment(
         bop_val
     } else {
         let (new_val, new_val_type) =
-            codegen_rhs_expr(compiler, assignment.assigned_expr, None).unwrap();
+            codegen_rhs_expr(compiler, assignment.assigned_expr, None, block_type).unwrap();
 
         if expected_type != new_val_type {
             return Err(format!(

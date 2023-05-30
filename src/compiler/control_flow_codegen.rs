@@ -28,6 +28,7 @@ pub fn codegen_if(
             array_dimensions: VecDeque::new(),
             pointer_nesting_level: 0,
         }),
+        block_type,
     )
     .map_err(|_| "Invalid expression for if condition")?;
     if if_expr_type.array_dimensions.len() > 0
@@ -66,7 +67,8 @@ pub fn codegen_if(
     {
         // Condition
         compiler.builder.position_at_end(else_if_cond_bb);
-        let (comp, comp_type) = codegen_rhs_expr(compiler, else_if.else_expr, None).unwrap();
+        let (comp, comp_type) =
+            codegen_rhs_expr(compiler, else_if.else_expr, None, block_type).unwrap();
         if comp_type.array_dimensions.len() > 0
             || comp_type.pointer_nesting_level > 0
             || !matches!(comp_type.vtype, VarType::Boolean)
@@ -140,6 +142,7 @@ pub fn codegen_while(
             array_dimensions: VecDeque::new(),
             pointer_nesting_level: 0,
         }),
+        block_type,
     )
     .expect("Invalid expression for while condtition")
     .0
@@ -198,6 +201,7 @@ pub fn codegen_do_while(
             array_dimensions: VecDeque::new(),
             pointer_nesting_level: 0,
         }),
+        block_type,
     )
     .expect("Invalid expression for do while condtition")
     .0
@@ -273,6 +277,7 @@ pub fn codegen_for(
                 array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0,
             }),
+            block_type,
         )
         .expect("Invalid condtition expression in for loop")
         .0

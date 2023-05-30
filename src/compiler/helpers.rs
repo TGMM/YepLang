@@ -85,7 +85,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .ok_or("ICE: No variable scopes".to_string())
     }
 
-    pub fn get_scoped_val(&self, name: &str) -> Option<&ScopedVal<'ctx>> {
+    pub fn get_scoped_val(&self, name: &str, block_type: BlockType) -> Option<&ScopedVal<'ctx>> {
         for scope in self.var_scopes.iter().rev() {
             if let Some(scoped_val) = scope.get(name) {
                 return Some(scoped_val);

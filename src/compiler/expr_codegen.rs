@@ -1,7 +1,7 @@
 use super::{
     helpers::{
-        convert_value_to_metadata, create_default_type, semantic_cube, Compiler, CompilerError,
-        ExpectedExprType, ScopedVal,
+        convert_value_to_metadata, create_default_type, semantic_cube, BlockType, Compiler,
+        CompilerError, ExpectedExprType, ScopedVal,
     },
     main_codegen::convert_to_type_enum,
     primitive_codegen::codegen_primitive_val,
@@ -16,13 +16,14 @@ use std::collections::VecDeque;
 pub fn codegen_fn_call<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     fn_call: FnCall,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let fn_name = match fn_call.fn_expr {
         Expr::Id(id) => id.0,
         _ => return Err("Functions as values are not yet supported".to_string()),
     };
     let function = compiler
-        .get_scoped_val(&fn_name)
+        .get_scoped_val(&fn_name, block_type)
         .ok_or(format!("Function {} does not exist", &fn_name))?
         .clone()
         .into_fn()
@@ -39,7 +40,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
 
     let mut args = vec![];
     for (arg_expr, arg_expected_type) in fn_call.args.into_iter().zip(arg_types_iter) {
-        let (mut arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None)?;
+        let (mut arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None, block_type)?;
 
         // Variadic argument promotions
         if ExternType::Spread == *arg_expected_type {
@@ -111,14 +112,17 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     expr: Expr,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
     match expr {
-        Expr::ParenExpr(None, expr) => codegen_lhs_expr(compiler, *expr, expected_type),
-        Expr::Indexing(indexing) => codegen_lhs_indexing(compiler, *indexing, expected_type),
+        Expr::ParenExpr(None, expr) => codegen_lhs_expr(compiler, *expr, expected_type, block_type),
+        Expr::Indexing(indexing) => {
+            codegen_lhs_indexing(compiler, *indexing, expected_type, block_type)
+        }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
             let var_ptr = compiler
-                .get_scoped_val(&var_id.0)
+                .get_scoped_val(&var_id.0, block_type)
                 .ok_or("Undeclared variable or function".to_string())?;
 
             match var_ptr {
@@ -138,10 +142,11 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     expr: Expr,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     match expr {
         // TODO: Handle expr unary operator
-        Expr::ParenExpr(_, expr) => codegen_rhs_expr(compiler, *expr, expected_type),
+        Expr::ParenExpr(_, expr) => codegen_rhs_expr(compiler, *expr, expected_type, block_type),
         Expr::BinaryExpr(bexpr) => codegen_bexpr(
             compiler,
             *bexpr,
@@ -150,17 +155,20 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
                 expected_rhs_type: None,
                 expected_ret_type: expected_type,
             },
+            block_type,
         ),
         Expr::PrimitiveVal(primitive_val) => {
-            codegen_primitive_val(compiler, primitive_val, expected_type)
+            codegen_primitive_val(compiler, primitive_val, expected_type, block_type)
         }
-        Expr::FnCall(fn_call) => codegen_fn_call(compiler, *fn_call),
-        Expr::Indexing(indexing) => codegen_rhs_indexing(compiler, *indexing, expected_type),
+        Expr::FnCall(fn_call) => codegen_fn_call(compiler, *fn_call, block_type),
+        Expr::Indexing(indexing) => {
+            codegen_rhs_indexing(compiler, *indexing, expected_type, block_type)
+        }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
             let var_name = &var_id.0;
             let scoped_val = compiler
-                .get_scoped_val(var_name)
+                .get_scoped_val(var_name, block_type)
                 .ok_or("Undeclared variable")?;
             let scoped_var = scoped_val
                 .clone()
@@ -177,19 +185,21 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
 
             Ok((var_val, scoped_var.var_type))
         }
-        Expr::Cast(casting) => codegen_rhs_casting(compiler, *casting),
+        Expr::Cast(casting) => codegen_rhs_casting(compiler, *casting, block_type),
     }
 }
 
 pub fn codegen_rhs_casting<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     casting: Casting,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let Casting {
         casted,
         cast_type: cast_to_type,
     } = casting;
-    let (cast_from_val, cast_from_type) = codegen_rhs_expr(compiler, casted.clone(), None)?;
+    let (cast_from_val, cast_from_type) =
+        codegen_rhs_expr(compiler, casted.clone(), None, block_type)?;
 
     // Non matching dimensions
     if cast_to_type.array_dimensions != cast_from_type.array_dimensions
@@ -243,10 +253,11 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // Allow casting from arr to ptr
     if cast_to_b_type.is_pointer_type() && cast_from_b_type.is_array_type() {
         // Casting from array requires the pointer instead of the value
-        let (cast_from_val, _) = codegen_lhs_expr(compiler, casted, None).map_err(|_| {
-            "Casting from a const array is not supported. Please store it in a variable first"
-                .to_string()
-        })?;
+        let (cast_from_val, _) =
+            codegen_lhs_expr(compiler, casted, None, block_type).map_err(|_| {
+                "Casting from a const array is not supported. Please store it in a variable first"
+                    .to_string()
+            })?;
 
         cast_to_val =
             compiler
@@ -362,8 +373,9 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
-    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None)?;
+    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(et) = expected_type {
         if et != &idxd_type {
@@ -373,7 +385,8 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
 
     // Array dimensions are u32
     let u32_type = &create_default_type(VarType::U32);
-    let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
+    let (idxr, idxr_type) =
+        codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type), block_type)?;
 
     if idxr_type != *u32_type {
         let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
@@ -406,8 +419,9 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     indexing: Indexing,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None)?;
+    let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(et) = expected_type {
         if et != &idxd_type {
@@ -417,7 +431,8 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
 
     // Array dimensions are u32
     let u32_type = &create_default_type(VarType::U32);
-    let (idxr, idxr_type) = codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type))?;
+    let (idxr, idxr_type) =
+        codegen_rhs_expr(compiler, indexing.indexer, Some(u32_type), block_type)?;
 
     if idxr_type != *u32_type {
         let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
@@ -454,6 +469,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     bexpr: BExpr,
     expected_type: ExpectedExprType,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let ExpectedExprType {
         expected_lhs_type,
@@ -462,8 +478,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
     } = expected_type;
 
     let BExpr { lhs, op, rhs } = bexpr;
-    let (lhs_val, lhs_type) = codegen_rhs_expr(compiler, lhs, expected_lhs_type)?;
-    let (rhs_val, rhs_type) = codegen_rhs_expr(compiler, rhs, expected_rhs_type)?;
+    let (lhs_val, lhs_type) = codegen_rhs_expr(compiler, lhs, expected_lhs_type, block_type)?;
+    let (rhs_val, rhs_type) = codegen_rhs_expr(compiler, rhs, expected_rhs_type, block_type)?;
 
     if lhs_type.array_dimensions.len() > 0 || rhs_type.array_dimensions.len() > 0 {
         if lhs_type.array_dimensions.len() != rhs_type.array_dimensions.len() {

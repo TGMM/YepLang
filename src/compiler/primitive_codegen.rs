@@ -1,6 +1,6 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{create_default_type, Compiler, CompilerError},
+    helpers::{create_default_type, BlockType, Compiler, CompilerError},
     main_codegen::convert_to_type_enum,
 };
 use crate::ast::{
@@ -221,6 +221,7 @@ pub fn codegen_arr_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     arr_val: ArrayVal,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let exprs = arr_val.0;
     let exprs_len: u32 = exprs
@@ -255,7 +256,8 @@ pub fn codegen_arr_val<'input, 'ctx>(
 
     let mut vals = vec![];
     for expr in exprs {
-        let (val, ty_) = codegen_rhs_expr(compiler, expr, element_type.as_ref()).unwrap();
+        let (val, ty_) =
+            codegen_rhs_expr(compiler, expr, element_type.as_ref(), block_type).unwrap();
         element_type.get_or_insert(ty_);
         vals.push(val);
     }
@@ -318,6 +320,7 @@ pub fn codegen_primitive_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     primitive_val: PrimitiveVal,
     expected_type: Option<&ValueVarType>,
+    block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (bv, vvt) = match primitive_val {
         PrimitiveVal::Number(uop, numeric_literal) => match numeric_literal {
@@ -341,7 +344,9 @@ pub fn codegen_primitive_val<'input, 'ctx>(
                 },
             ))
         }
-        PrimitiveVal::Array(arr_val) => codegen_arr_val(compiler, arr_val, expected_type),
+        PrimitiveVal::Array(arr_val) => {
+            codegen_arr_val(compiler, arr_val, expected_type, block_type)
+        }
         PrimitiveVal::Struct(_) => todo!(),
     }?;
 
