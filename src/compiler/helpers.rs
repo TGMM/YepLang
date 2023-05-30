@@ -85,14 +85,18 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             .ok_or("ICE: No variable scopes".to_string())
     }
 
-    pub fn get_scoped_val(&self, name: &str, block_type: BlockType) -> Option<&ScopedVal<'ctx>> {
+    pub fn get_scoped_val(
+        &self,
+        name: &str,
+        block_type: BlockType,
+    ) -> Result<&ScopedVal<'ctx>, CompilerError> {
         for scope in self.var_scopes.iter().rev() {
             if let Some(scoped_val) = scope.get(name) {
-                return Some(scoped_val);
+                return Ok(scoped_val);
             }
         }
 
-        None
+        Err(format!("Undeclared variable or function {}", name))
     }
 }
 

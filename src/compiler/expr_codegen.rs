@@ -23,8 +23,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
         _ => return Err("Functions as values are not yet supported".to_string()),
     };
     let function = compiler
-        .get_scoped_val(&fn_name, block_type)
-        .ok_or(format!("Function {} does not exist", &fn_name))?
+        .get_scoped_val(&fn_name, block_type)?
         .clone()
         .into_fn()
         .map_err(|_| format!("Attempting to call {}, which is not a function", fn_name))?;
@@ -121,9 +120,7 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
         }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
-            let var_ptr = compiler
-                .get_scoped_val(&var_id.0, block_type)
-                .ok_or("Undeclared variable or function".to_string())?;
+            let var_ptr = compiler.get_scoped_val(&var_id.0, block_type)?;
 
             match var_ptr {
                 ScopedVal::Var(v) => Ok((v.ptr_val, v.var_type.clone())),
@@ -167,9 +164,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
             let var_name = &var_id.0;
-            let scoped_val = compiler
-                .get_scoped_val(var_name, block_type)
-                .ok_or("Undeclared variable")?;
+            let scoped_val = compiler.get_scoped_val(var_name, block_type)?;
             let scoped_var = scoped_val
                 .clone()
                 .into_var()
