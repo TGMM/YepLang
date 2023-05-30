@@ -1,6 +1,6 @@
 use super::{
     helpers::{convert_type_to_metadata, Compiler, ScopedVal},
-    main_codegen::convert_to_type_enum,
+    main_codegen::{convert_to_type_enum, declare_scoped_val},
 };
 use crate::{
     ast::{ExternDecl, ExternType},
@@ -44,14 +44,15 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
         .module
         .add_function(fn_name, fn_type, Some(Linkage::External));
 
-    compiler.curr_scope_vars.insert(
+    declare_scoped_val(
+        compiler,
         fn_name.to_string(),
         ScopedVal::Fn(ScopedFunc {
             ptr_val: fun,
             arg_types: extern_decl.arg_types,
             ret_type: extern_decl.ret_type,
         }),
-    );
+    )?;
 
     Ok(())
 }

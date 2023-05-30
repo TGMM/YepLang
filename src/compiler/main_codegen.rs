@@ -3,15 +3,10 @@ use super::{
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
-    helpers::{
-        BlockType, Compiler, CompilerError, ExpectedExprType, ScopeMarker, ScopedFunc, ScopedVal,
-        ScopedVar,
-    },
+    helpers::{BlockType, Compiler, CompilerError, ExpectedExprType, ScopedVal, ScopedVar},
 };
 use crate::{
-    ast::{
-        Assignment, BExpr, Block, Destructure, Id, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
-    },
+    ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
     parser::main_parser::parse,
 };
 use inkwell::{
@@ -61,22 +56,11 @@ pub fn declare_scoped_val<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_name: String,
     value: ScopedVal<'ctx>,
-) {
-    if let Some(redeclared_var) = compiler.curr_scope_vars.remove(&var_name) {
-        // Var was already declared so we push it to the stack
-        // to recover it later
-        compiler
-            .scope_stack
-            .push(ScopeMarker::Var(var_name.clone(), Some(redeclared_var)))
-    } else {
-        // Var was not declared so we push it to the stack
-        // to delete it later
-        compiler
-            .scope_stack
-            .push(ScopeMarker::Var(var_name.clone(), None))
-    }
+) -> Result<(), CompilerError> {
+    let curr_scope_mut = compiler.get_curr_scope_mut()?;
+    curr_scope_mut.insert(var_name, value);
 
-    compiler.curr_scope_vars.insert(var_name, value);
+    Ok(())
 }
 
 pub fn codegen_top_block(
@@ -105,30 +89,17 @@ pub fn codegen_block(
     block: Block,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
+    // When we enter a block, we push a new variable scope
     if !(block_type == BlockType::FUNC) {
-        compiler.scope_stack.push(ScopeMarker::ScopeBegin);
+        compiler.var_scopes.push(HashMap::new());
     }
 
     for stmt in block.stmts {
         codegen_stmt(compiler, stmt, block_type)?;
     }
 
-    // Now we swap
-    while let Some(sm) = compiler.scope_stack.pop() {
-        // Scope has ended, exit loop
-        match sm {
-            ScopeMarker::ScopeBegin => break,
-            ScopeMarker::Var(id, Some(var_val)) => {
-                // Var existed before, we return it to it's previous value
-                compiler.curr_scope_vars.remove(&id);
-                compiler.curr_scope_vars.insert(id, var_val);
-            }
-            ScopeMarker::Var(id, None) => {
-                // Var didn't exist before, we just remove it from var map
-                compiler.curr_scope_vars.remove(&id);
-            }
-        }
-    }
+    // Then after we're done with it, we pop it
+    compiler.var_scopes.pop();
 
     Ok(())
 }
@@ -230,13 +201,15 @@ fn codegen_var_decl<'input, 'ctx>(
             }
 
             let global_ptr = new_global.as_pointer_value();
-            compiler.curr_scope_vars.insert(
+
+            declare_scoped_val(
+                compiler,
                 id.0,
                 ScopedVal::Var(ScopedVar {
                     ptr_val: global_ptr,
                     var_type,
                 }),
-            );
+            )?;
 
             return Ok(());
         }
@@ -255,7 +228,7 @@ fn codegen_var_decl<'input, 'ctx>(
                 ptr_val: new_local,
                 var_type,
             }),
-        );
+        )?;
     }
 
     Ok(())
@@ -442,9 +415,8 @@ pub fn compile_yep(
         module: &module,
         context: &context,
         fpm: &fpm,
-        curr_scope_vars: HashMap::new(),
+        var_scopes: Vec::new(),
         basic_block_stack: Vec::new(),
-        scope_stack: Vec::new(),
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
         data_layout: None,

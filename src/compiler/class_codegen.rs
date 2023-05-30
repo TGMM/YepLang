@@ -1,9 +1,6 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{
-        convert_type_to_metadata, BlockType, Compiler, CompilerError, ScopeMarker, ScopedVal,
-        ScopedVar,
-    },
+    helpers::{convert_type_to_metadata, BlockType, Compiler, CompilerError, ScopedVal, ScopedVar},
 };
 use crate::{
     ast::{
@@ -22,7 +19,7 @@ use inkwell::{
     values::{BasicValue, FunctionValue},
 };
 use llvm_sys::assembly::LLVMParseAssemblyString;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 pub fn codegen_return(
     compiler: &Compiler,
@@ -131,26 +128,15 @@ pub fn codegen_fn_decl<'input, 'ctx>(
         .map(|vvt| ExternType::Type(vvt.clone()))
         .collect::<Vec<_>>();
 
-    if block_type.contains(BlockType::GLOBAL) {
-        compiler.curr_scope_vars.insert(
-            fn_name.to_string(),
-            ScopedVal::Fn(ScopedFunc {
-                ptr_val: fun,
-                arg_types,
-                ret_type,
-            }),
-        );
-    } else {
-        declare_scoped_val(
-            compiler,
-            fn_name.to_string(),
-            ScopedVal::Fn(ScopedFunc {
-                ptr_val: fun,
-                arg_types,
-                ret_type,
-            }),
-        );
-    }
+    declare_scoped_val(
+        compiler,
+        fn_name.to_string(),
+        ScopedVal::Fn(ScopedFunc {
+            ptr_val: fun,
+            arg_types,
+            ret_type,
+        }),
+    )?;
 
     Ok(fun)
 }
@@ -265,14 +251,15 @@ pub fn codegen_llvm_fn(
         .module
         .get_function(&fn_name)
         .expect("Could not find LLVM inlined function");
-    compiler.curr_scope_vars.insert(
+    declare_scoped_val(
+        compiler,
         fn_name,
         ScopedVal::Fn(ScopedFunc {
             ptr_val: fn_ptr,
             arg_types: arg_extypes,
             ret_type,
         }),
-    );
+    )?;
 
     Ok(())
 }
@@ -312,7 +299,7 @@ pub fn codegen_native_fn(
         });
     };
 
-    compiler.scope_stack.push(ScopeMarker::ScopeBegin);
+    compiler.var_scopes.push(HashMap::new());
     for ((arg_destructure, arg_type), arg_val) in
         fn_signature.args.into_iter().zip(fun.get_param_iter())
     {
@@ -331,7 +318,7 @@ pub fn codegen_native_fn(
                         ptr_val: arg_ptr,
                         var_type: arg_type,
                     }),
-                );
+                )?;
 
                 arg_ptr
             }

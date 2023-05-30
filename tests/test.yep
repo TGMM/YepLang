@@ -1,22 +1,14 @@
 extern i32 printf(*i8, ...);
 
 let x = 10;
+printf("x is %d\n" as *i8, x);
 let x = 20;
+printf("x is %d\n" as *i8, x);
 
-function test() {
-    printf("This is a test %d\n" as *i8, x);
-}
-
-test();
 {
+    printf("x is %d\n" as *i8, x);
     let x = 30;
-
-    function test() {
-        printf("This is also a test %d\n" as *i8, x);
-    }   
-
-    test();
+    printf("x is %d\n" as *i8, x);
 }
 
-let x = 40;
-test();
+printf("x is %d\n" as *i8, x);

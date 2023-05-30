@@ -16,12 +16,6 @@ use std::collections::{HashMap, VecDeque};
 pub type CompilerError = String;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ScopeMarker<'ctx> {
-    ScopeBegin,
-    Var(String, Option<ScopedVal<'ctx>>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct ScopedVar<'ctx> {
     pub ptr_val: PointerValue<'ctx>,
     pub var_type: ValueVarType,
@@ -68,19 +62,37 @@ pub struct FnRetVal<'ctx> {
     pub ret_bb: BasicBlock<'ctx>,
 }
 
+pub type Scope<'ctx> = HashMap<String, ScopedVal<'ctx>>;
 pub struct Compiler<'input, 'ctx> {
     pub context: &'ctx Context,
     pub builder: &'input Builder<'ctx>,
     pub fpm: &'input PassManager<FunctionValue<'ctx>>,
     pub module: &'input Module<'ctx>,
-    pub curr_scope_vars: HashMap<String, ScopedVal<'ctx>>,
-    pub scope_stack: Vec<ScopeMarker<'ctx>>,
+    pub var_scopes: Vec<Scope<'ctx>>,
     pub basic_block_stack: Vec<BasicBlock<'ctx>>,
     /// Used only for return statements that need to know
     /// if we're inside a function, and its respective return type
     pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
     pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
     pub data_layout: Option<DataLayout>,
+}
+
+impl<'input, 'ctx> Compiler<'input, 'ctx> {
+    pub fn get_curr_scope_mut(&mut self) -> Result<&mut Scope<'ctx>, CompilerError> {
+        self.var_scopes
+            .last_mut()
+            .ok_or("ICE: No variable scopes".to_string())
+    }
+
+    pub fn get_scoped_val(&self, name: &str) -> Option<&ScopedVal<'ctx>> {
+        for scope in self.var_scopes.iter().rev() {
+            if let Some(scoped_val) = scope.get(name) {
+                return Some(scoped_val);
+            }
+        }
+
+        None
+    }
 }
 
 pub fn convert_type_to_metadata(ty: BasicTypeEnum) -> BasicMetadataTypeEnum {
