@@ -1,3 +1,22 @@
 extern i32 printf(*i8, ...);
 
-let this = 10;
+let x = 10;
+let x = 20;
+
+function test() {
+    printf("This is a test %d\n" as *i8, x);
+}
+
+test();
+{
+    let x = 30;
+
+    function test() {
+        printf("This is also a test %d\n" as *i8, x);
+    }   
+
+    test();
+}
+
+let x = 40;
+test();

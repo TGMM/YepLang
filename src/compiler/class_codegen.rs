@@ -12,14 +12,14 @@ use crate::{
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
-        main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
+        main_codegen::{codegen_block, convert_to_type_enum, declare_scoped_val},
     },
 };
 use inkwell::{
     module::{Linkage, Module},
     support::to_c_str,
     types::BasicType,
-    values::BasicValue,
+    values::{BasicValue, FunctionValue},
 };
 use llvm_sys::assembly::LLVMParseAssemblyString;
 use std::collections::VecDeque;
@@ -77,6 +77,82 @@ pub fn codegen_return(
     }
 
     Ok(())
+}
+
+pub fn codegen_fn_decl<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+    fn_signature: &FnSignature,
+    block_type: BlockType,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let fn_name = fn_signature.fn_id.0.as_str();
+
+    let arg_types = fn_signature
+        .args
+        .iter()
+        .map(|(d, vvt)| {
+            if !matches!(d, Destructure::Id(_)) {
+                return Err("Destructuring of arguments is not supported yet".to_string());
+            }
+
+            Ok(vvt)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let param_types = arg_types
+        .iter()
+        .map(|vvt| {
+            Ok(convert_type_to_metadata(convert_to_type_enum(
+                compiler, vvt,
+            )?))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let ret_type = fn_signature.ret_type.clone().unwrap_or(ValueVarType {
+        vtype: VarType::Void,
+        array_dimensions: VecDeque::new(),
+        pointer_nesting_level: 0,
+    });
+
+    let fn_type = if ret_type.vtype == VarType::Void {
+        compiler.context.void_type().fn_type(&param_types, false)
+    } else {
+        convert_to_type_enum(compiler, &ret_type)?.fn_type(&param_types, false)
+    };
+    let linkage = if matches!(block_type, BlockType::GLOBAL) {
+        Linkage::External
+    } else {
+        Linkage::Internal
+    };
+    let fun = compiler
+        .module
+        .add_function(&fn_name, fn_type, Some(linkage));
+
+    let arg_types = arg_types
+        .into_iter()
+        .map(|vvt| ExternType::Type(vvt.clone()))
+        .collect::<Vec<_>>();
+
+    if block_type.contains(BlockType::GLOBAL) {
+        compiler.curr_scope_vars.insert(
+            fn_name.to_string(),
+            ScopedVal::Fn(ScopedFunc {
+                ptr_val: fun,
+                arg_types,
+                ret_type,
+            }),
+        );
+    } else {
+        declare_scoped_val(
+            compiler,
+            fn_name.to_string(),
+            ScopedVal::Fn(ScopedFunc {
+                ptr_val: fun,
+                arg_types,
+                ret_type,
+            }),
+        );
+    }
+
+    Ok(fun)
 }
 
 pub fn codegen_fn_def(
@@ -207,47 +283,8 @@ pub fn codegen_native_fn(
     fn_block: Block,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
+    let fun = codegen_fn_decl(compiler, &fn_signature, block_type)?;
     let fn_name = fn_signature.fn_id.0;
-
-    let arg_types = fn_signature
-        .args
-        .iter()
-        .map(|(d, vvt)| {
-            if !matches!(d, Destructure::Id(_)) {
-                return Err("Destructuring of arguments is not supported yet".to_string());
-            }
-
-            Ok(vvt)
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let param_types = arg_types
-        .iter()
-        .map(|vvt| {
-            Ok(convert_type_to_metadata(convert_to_type_enum(
-                compiler, vvt,
-            )?))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    let ret_type = fn_signature.ret_type.clone().unwrap_or(ValueVarType {
-        vtype: VarType::Void,
-        array_dimensions: VecDeque::new(),
-        pointer_nesting_level: 0,
-    });
-
-    let fn_type = if ret_type.vtype == VarType::Void {
-        compiler.context.void_type().fn_type(&param_types, false)
-    } else {
-        convert_to_type_enum(compiler, &ret_type)?.fn_type(&param_types, false)
-    };
-    let linkage = if matches!(block_type, BlockType::GLOBAL) {
-        Linkage::External
-    } else {
-        Linkage::Internal
-    };
-    let fun = compiler
-        .module
-        .add_function(&fn_name, fn_type, Some(linkage));
 
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
 
@@ -275,20 +312,6 @@ pub fn codegen_native_fn(
         });
     };
 
-    let arg_types = arg_types
-        .into_iter()
-        .map(|vvt| ExternType::Type(vvt.clone()))
-        .collect::<Vec<_>>();
-
-    compiler.curr_scope_vars.insert(
-        fn_name,
-        ScopedVal::Fn(ScopedFunc {
-            ptr_val: fun,
-            arg_types,
-            ret_type,
-        }),
-    );
-
     compiler.scope_stack.push(ScopeMarker::ScopeBegin);
     for ((arg_destructure, arg_type), arg_val) in
         fn_signature.args.into_iter().zip(fun.get_param_iter())
@@ -301,13 +324,13 @@ pub fn codegen_native_fn(
                     .builder
                     .build_alloca(ty, &format!("local_{}", &id.0));
                 compiler.builder.build_store(arg_ptr, arg_val);
-                declare_variable(
+                declare_scoped_val(
                     compiler,
                     id.0,
-                    ScopedVar {
+                    ScopedVal::Var(ScopedVar {
                         ptr_val: arg_ptr,
                         var_type: arg_type,
-                    },
+                    }),
                 );
 
                 arg_ptr

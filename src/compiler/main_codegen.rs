@@ -4,7 +4,8 @@ use super::{
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
     helpers::{
-        BlockType, Compiler, CompilerError, ExpectedExprType, ScopeMarker, ScopedVal, ScopedVar,
+        BlockType, Compiler, CompilerError, ExpectedExprType, ScopeMarker, ScopedFunc, ScopedVal,
+        ScopedVar,
     },
 };
 use crate::{
@@ -56,10 +57,10 @@ pub fn convert_to_type_enum<'input, 'ctx>(
     Ok(final_type)
 }
 
-pub fn declare_variable<'input, 'ctx>(
+pub fn declare_scoped_val<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_name: String,
-    value: ScopedVar<'ctx>,
+    value: ScopedVal<'ctx>,
 ) {
     if let Some(redeclared_var) = compiler.curr_scope_vars.remove(&var_name) {
         // Var was already declared so we push it to the stack
@@ -75,9 +76,7 @@ pub fn declare_variable<'input, 'ctx>(
             .push(ScopeMarker::Var(var_name.clone(), None))
     }
 
-    compiler
-        .curr_scope_vars
-        .insert(var_name, ScopedVal::Var(value));
+    compiler.curr_scope_vars.insert(var_name, value);
 }
 
 pub fn codegen_top_block(
@@ -248,13 +247,14 @@ fn codegen_var_decl<'input, 'ctx>(
             compiler.builder.build_store(new_local, initial_val);
         }
 
-        declare_variable(
+        // Only applies to local variables
+        declare_scoped_val(
             compiler,
             id.0,
-            ScopedVar {
+            ScopedVal::Var(ScopedVar {
                 ptr_val: new_local,
                 var_type,
-            },
+            }),
         );
     }
 
