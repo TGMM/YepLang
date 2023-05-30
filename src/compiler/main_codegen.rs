@@ -8,7 +8,9 @@ use super::{
     },
 };
 use crate::{
-    ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
+    ast::{
+        Assignment, BExpr, Block, Destructure, Id, Stmt, TopBlock, ValueVarType, VarDecl, VarType,
+    },
     parser::main_parser::parse,
 };
 use inkwell::{
@@ -167,7 +169,16 @@ fn codegen_var_decl<'input, 'ctx>(
     for decl_as in var_decl.decl_assignments {
         // TODO: Handle destructures instead of only ids
         let id = match decl_as.destructure {
-            Destructure::Id(id) => id,
+            Destructure::Id(id) => {
+                if id.0.as_str() == "this" {
+                    return Err(
+                        "'this' is a reserved keyword and can't be used as a variable name"
+                            .to_string(),
+                    );
+                }
+
+                id
+            }
             _ => return Err("Destructures are not supported yet".to_string()),
         };
 
@@ -439,7 +450,7 @@ pub fn compile_yep(
         data_layout: None,
     };
 
-    compile_to_x86(&mut compiler, top_block, path, out_name, true)?;
+    compile_to_x86(&mut compiler, top_block, path, out_name, false)?;
 
     Ok(())
 }
