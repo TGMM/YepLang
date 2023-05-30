@@ -556,7 +556,7 @@ pub struct ClassBlock<'a> {
 pub struct PropertyDecl<'a> {
     pub id: Id,
     pub vtype: Option<ValueVarType>,
-    pub assigned_expr: Expr<'a>,
+    pub assigned_expr: Option<Expr<'a>>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassStmt<'a> {

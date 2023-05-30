@@ -116,7 +116,7 @@ pub fn class_prop_decl_parser<'i: 'static>(
     let class_prop = id_parser()
         .then(type_specifier_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
-        .then(expr.clone())
+        .then(expr.clone().or_not())
         .map(|((id, vtype), assigned_expr)| PropertyDecl {
             id,
             vtype,
@@ -369,10 +369,10 @@ mod test {
                             array_dimensions: VecDeque::new(),
                             pointer_nesting_level: 0
                         }),
-                        assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
+                        assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
-                        )),
+                        ))),
                     })
                 ]
             }
@@ -429,10 +429,10 @@ mod test {
                                 array_dimensions: VecDeque::new(),
                                 pointer_nesting_level: 0
                             }),
-                            assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
+                            assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
-                            )),
+                            ))),
                         })
                     ]
                 }
