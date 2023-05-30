@@ -3,7 +3,9 @@ use super::{
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
-    helpers::{BlockType, Compiler, CompilerError, ExpectedExprType, ScopedVal, ScopedVar},
+    helpers::{
+        BlockType, Compiler, CompilerError, ExpectedExprType, RuntimeErrors, ScopedVal, ScopedVar,
+    },
 };
 use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
@@ -14,8 +16,8 @@ use inkwell::{
     module::Linkage,
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{BasicType, BasicTypeEnum},
-    values::BasicValue,
+    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType},
+    values::{BasicMetadataValueEnum, BasicValue, FunctionValue},
     AddressSpace, OptimizationLevel,
 };
 use rustc_hash::FxHashMap;
@@ -71,6 +73,48 @@ pub fn declare_scoped_val<'input, 'ctx>(
     Ok(())
 }
 
+pub fn codegen_panic_fn<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    // TODO: This only works on environments with a libc
+    let bmt_i32 = BasicMetadataTypeEnum::IntType(compiler.context.i32_type());
+    let exit_fn_ty = compiler.context.void_type().fn_type(&[bmt_i32], false);
+    let exit_fn = compiler
+        .module
+        .add_function("exit", exit_fn_ty, Some(Linkage::External));
+
+    let bmt_i8ptr = BasicMetadataTypeEnum::PointerType(
+        compiler.context.i8_type().ptr_type(AddressSpace::default()),
+    );
+    let printf_fn_ty = compiler.context.i32_type().fn_type(&[bmt_i8ptr], true);
+    let printf_fn = compiler
+        .module
+        .add_function("printf", printf_fn_ty, Some(Linkage::External));
+
+    // TODO: This function should only be declared once on another module
+    let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    let panic_fn = compiler
+        .module
+        // TODO: Get this name from another place so it's not duplicated
+        .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
+    compiler.builder.position_at_end(panic_fn_bb);
+
+    let exit_code =
+        BasicMetadataValueEnum::IntValue(compiler.context.i32_type().const_int(1, false));
+    // Print error
+    // compiler
+    //     .builder
+    //     .build_call(printf_fn, &[], "call_panic_printf");
+    // Exit program
+    compiler
+        .builder
+        .build_call(exit_fn, &[exit_code], "call_panic_exit");
+    compiler.builder.build_unreachable();
+
+    Ok(panic_fn)
+}
+
 pub fn codegen_top_block(
     compiler: &mut Compiler,
     top_block: TopBlock,
@@ -80,13 +124,25 @@ pub fn codegen_top_block(
         .module
         .add_function(MAIN_FN_NAME, fn_type, Some(Linkage::External));
     let entry_basic_block = compiler.context.append_basic_block(fun, "entry");
-    compiler.builder.position_at_end(entry_basic_block);
     compiler.basic_block_stack.push(entry_basic_block);
 
+    let panic_fn = codegen_panic_fn(compiler)?;
+    // Codegen out of bounds error block
+    let out_of_bounds_bb = compiler
+        .context
+        .append_basic_block(fun, "out_of_bounds_err");
+    compiler.builder.position_at_end(out_of_bounds_bb);
+    // Platform-dependend run-time error
+    compiler.builder.build_call(panic_fn, &[], "call_panic");
+    compiler.builder.build_unreachable();
+    _ = compiler.runtime_errors.oob.insert(out_of_bounds_bb);
+
+    compiler.builder.position_at_end(entry_basic_block);
     // Codegen all statements
     codegen_block(compiler, top_block.0, BlockType::GLOBAL)?;
 
-    let int_zero = compiler.context.i32_type().const_zero();
+    let main_ret_ty = compiler.context.i32_type();
+    let int_zero = main_ret_ty.const_zero();
     compiler.builder.build_return(Some(&int_zero));
 
     Ok(())
@@ -102,6 +158,7 @@ pub fn codegen_block(
         compiler.var_scopes.push(FxHashMap::default());
     }
 
+    // Function forward-declaration
     for fn_def in block.stmts.iter() {
         match fn_def {
             Stmt::FnDef(fn_def) => {
@@ -444,6 +501,7 @@ pub fn compile_yep(
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
         data_layout: None,
+        runtime_errors: RuntimeErrors { oob: None },
     };
 
     compile_to_x86(&mut compiler, top_block, path, out_name, false)?;

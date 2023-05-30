@@ -8,7 +8,10 @@ use super::{
 };
 use crate::ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
 use inkwell::{
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, PointerValue},
+    values::{
+        BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, IntValue,
+        PointerValue,
+    },
     FloatPredicate, IntPredicate,
 };
 use std::collections::VecDeque;
@@ -418,8 +421,8 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
-    if let Some(et) = expected_type {
-        if et != &idxd_type {
+    if let Some(exp_ty) = expected_type {
+        if exp_ty != &idxd_type {
             return Err("Assigning array of one type to array of another".to_string());
         }
     }
@@ -436,7 +439,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
         return Err(format!("{} {}", line_one, line_two));
     }
 
-    let idxr: inkwell::values::IntValue = idxr.into_int_value();
+    let idxr: IntValue = idxr.into_int_value();
 
     let element_type = {
         let mut et = idxd_type.clone();
@@ -445,9 +448,39 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
         et
     };
     let element_b_type = convert_to_type_enum(compiler, &element_type)?;
+    let arr_dim = *idxd_type
+        .array_dimensions
+        .front()
+        .ok_or("Indexing a non-array value")?;
+    let arr_dim_val = compiler.context.i32_type().const_int(arr_dim.into(), false);
 
+    // Current block
+    let curr_bb = compiler.builder.get_insert_block().unwrap();
+    // Current fn
+    let curr_fn = curr_bb.get_parent().unwrap();
+
+    let success_bb = compiler
+        .context
+        .append_basic_block(curr_fn, "bounds_check_success");
+    let oob_bb = compiler
+        .runtime_errors
+        .oob
+        .ok_or("ICE: Undeclared OOB block".to_string())?;
+    let cmp = compiler.builder.build_int_compare(
+        IntPredicate::ULT,
+        idxr,
+        arr_dim_val,
+        "bounds_check_cmp",
+    );
+    compiler
+        .builder
+        .build_conditional_branch(cmp, success_bb, oob_bb);
+
+    compiler.builder.position_at_end(success_bb);
+    // Success block instructions
     let zero_ptr = compiler.context.i32_type().const_zero();
     let arr_ty = convert_to_type_enum(compiler, &idxd_type)?;
+
     let ret_val_ptr = unsafe {
         compiler
             .builder

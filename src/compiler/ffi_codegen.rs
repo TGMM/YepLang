@@ -3,14 +3,14 @@ use super::{
     main_codegen::{convert_to_type_enum, declare_scoped_val},
 };
 use crate::{
-    ast::{ExternDecl, ExternType},
+    ast::{ExternDecl, ExternType, VarType},
     compiler::helpers::ScopedFunc,
 };
 use inkwell::{module::Linkage, types::BasicType};
 
 pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> Result<(), String> {
     let fn_name = &extern_decl.fn_id.0;
-    let ret_type = convert_to_type_enum(compiler, &extern_decl.ret_type)?;
+    let vvt_ret_type = &extern_decl.ret_type;
 
     let mut is_var_args = false;
     let mut param_types = vec![];
@@ -39,10 +39,43 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
         }
     }
 
-    let fn_type = ret_type.fn_type(&param_types, is_var_args);
-    let fun = compiler
-        .module
-        .add_function(fn_name, fn_type, Some(Linkage::External));
+    // If this is true, function is void
+    let fn_type = if vvt_ret_type.array_dimensions.is_empty()
+        && vvt_ret_type.pointer_nesting_level == 0
+        && vvt_ret_type.vtype == VarType::Void
+    {
+        compiler
+            .context
+            .void_type()
+            .fn_type(&param_types, is_var_args)
+    } else {
+        let ret_type = convert_to_type_enum(compiler, vvt_ret_type)?;
+        ret_type.fn_type(&param_types, is_var_args)
+    };
+
+    // Extern functions might be declared in run-time errors
+    // we need to check that first
+    let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
+        let line_one = format!(
+            "The extern declaration of '{}' does not correspond with a previous existing one.",
+            fn_name
+        );
+        let line_two = "This might be because the extern'd function is a libc defined function.";
+        let line_three =
+            "The compiler internally links to some libc functions for run-time error handling.";
+
+        if fn_type != fun.get_type() {
+            return Err(format!("{}\n{}\n{}", line_one, line_two, line_three));
+        }
+
+        fun
+    } else {
+        let fun = compiler
+            .module
+            .add_function(fn_name, fn_type, Some(Linkage::External));
+
+        fun
+    };
 
     declare_scoped_val(
         compiler,

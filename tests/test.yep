@@ -1,10 +1,7 @@
 extern i32 printf(*i8, ...);
+extern void exit(i32);
 
-printf("x is %d\n" as *i8, test());
-
-function test(): i32 {
-    let x = 10;
-    return x;
+let arr = [1, 2, 3];
+{
+    let x = arr[3];
 }
-
-printf("x is %d\n" as *i8, test());
