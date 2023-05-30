@@ -561,7 +561,7 @@ pub struct PropertyDecl<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassStmt<'a> {
     // This includes the constructor
-    Method(MethodDef<'a>),
+    Method(FnDef<'a>),
     Accessor,
     Property(PropertyDecl<'a>),
 }
@@ -573,38 +573,39 @@ pub struct MemberAcess<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FnDef<'a> {
-    Native(NativeFn<'a>),
-    InlineLlvm(LlvmFn<'a>),
+pub struct FnDef<'a> {
+    pub fn_signature: FnSignature<'a>,
+    pub fn_type: FnType<'a>,
+    pub fn_scope: FnScope,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FnType<'a> {
+    Native(NativeFn<'a>),
+    InlineLlvm(LlvmFn),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FnScope {
+    Function,
+    Method,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnSignature<'a> {
     pub fn_id: Id,
     pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
 }
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct LlvmFn<'a> {
-    pub fn_signature: FnSignature<'a>,
+pub struct LlvmFn {
     pub ir: String,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NativeFn<'a> {
-    pub fn_signature: FnSignature<'a>,
     pub block: Block<'a>,
-}
-#[derive(Debug, Clone, PartialEq)]
-pub struct MethodDef<'a> {
-    pub fn_signature: FnSignature<'a>,
-    pub block: Block<'a>,
-}
-impl<'a> From<MethodDef<'a>> for NativeFn<'a> {
-    fn from(method_def: MethodDef<'a>) -> Self {
-        NativeFn {
-            fn_signature: method_def.fn_signature,
-            block: method_def.block,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -7,8 +7,8 @@ use super::{
 };
 use crate::{
     ast::{
-        Destructure, ExternType, FnDef, FnSignature, LlvmFn, NativeFn, Return, ValueVarType,
-        VarType,
+        Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, LlvmFn, NativeFn, Return,
+        ValueVarType, VarType,
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
@@ -84,14 +84,26 @@ pub fn codegen_fn_def(
     fn_def: FnDef,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    match fn_def {
-        FnDef::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
-        FnDef::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn),
+    let fn_signature = fn_def.fn_signature;
+    match (fn_def.fn_scope, fn_def.fn_type) {
+        (FnScope::Function, FnType::Native(native_fn)) => {
+            codegen_native_fn(compiler, fn_signature, native_fn, block_type)
+        }
+        (FnScope::Function, FnType::InlineLlvm(llvm_fn)) => {
+            codegen_llvm_fn(compiler, fn_signature, llvm_fn, block_type)
+        }
+        (FnScope::Method, FnType::Native(_)) => todo!(),
+        (FnScope::Method, FnType::InlineLlvm(_)) => todo!(),
     }
 }
 
-pub fn codegen_llvm_fn(compiler: &mut Compiler, llvm_fn: LlvmFn) -> Result<(), CompilerError> {
-    let LlvmFn { fn_signature, ir } = llvm_fn;
+pub fn codegen_llvm_fn(
+    compiler: &mut Compiler,
+    fn_signature: FnSignature,
+    llvm_fn: LlvmFn,
+    block_type: BlockType,
+) -> Result<(), CompilerError> {
+    let LlvmFn { ir } = llvm_fn;
     let FnSignature {
         fn_id,
         args,
@@ -192,10 +204,10 @@ pub fn codegen_llvm_fn(compiler: &mut Compiler, llvm_fn: LlvmFn) -> Result<(), C
 
 pub fn codegen_native_fn(
     compiler: &mut Compiler,
+    fn_signature: FnSignature,
     native_fn: NativeFn,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    let fn_signature = native_fn.fn_signature;
     let fn_name = fn_signature.fn_id.0;
 
     let arg_types = fn_signature

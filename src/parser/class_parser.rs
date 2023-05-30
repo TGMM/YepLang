@@ -7,7 +7,9 @@ use super::{
     primitive_parser::{id_parser, type_specifier_parser},
 };
 use crate::{
-    ast::{ClassBlock, ClassDecl, ClassStmt, FnDef, FnSignature, LlvmFn, MethodDef, PropertyDecl},
+    ast::{
+        ClassBlock, ClassDecl, ClassStmt, FnDef, FnScope, FnSignature, FnType, LlvmFn, PropertyDecl,
+    },
     lexer::Token,
 };
 use crate::{
@@ -46,17 +48,26 @@ pub fn fn_signature_parser<'i: 'static>(
     fn_signature
 }
 
-pub fn method_def_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, MethodDef<'i>, ParserError<'i, Token<'i>>> + Clone {
+pub fn fn_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
     // Declarations
     let block = BLOCK_PARSER.read().unwrap().clone();
 
     // Main definition
-    let method_def = fn_signature_parser()
+    let fn_def = just(Token::Function)
+        .or_not()
+        .then(fn_signature_parser())
         .then(block.clone())
-        .map(|(fn_sign, block)| MethodDef {
+        .map(|((function_kw, fn_sign), block)| FnDef {
             fn_signature: fn_sign,
-            block,
+            fn_type: FnType::Native(NativeFn { block }),
+            // If function keyword is not present,
+            // then this is a method
+            fn_scope: if function_kw.is_some() {
+                FnScope::Function
+            } else {
+                FnScope::Method
+            },
         });
 
     // Definitions
@@ -64,11 +75,11 @@ pub fn method_def_parser<'i: 'static>(
         block_parser();
     }
 
-    method_def
+    fn_def
 }
 
 pub fn llvm_fn_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, LlvmFn<'i>, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
     // Declarations
     let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
 
@@ -77,15 +88,22 @@ pub fn llvm_fn_parser<'i: 'static>(
         just(Token::At).then(select! { Token::Id(id) => id }.filter(|id| *id == "llvm"));
 
     let llvm_fn = llvm_decorator
-        .ignore_then(just(Token::Function))
-        .ignore_then(fn_signature_parser())
+        .ignore_then(just(Token::Function).or_not())
+        .then(fn_signature_parser())
         .then(
             select! { Token::LlvmIr(ir) => ir }
                 .delimited_by(just(Token::LBracket), just(Token::RBracket)),
         )
-        .map(|(fn_signature, ir)| LlvmFn {
+        .map(|((function_kw, fn_signature), ir)| FnDef {
             fn_signature,
-            ir: ir.to_string(),
+            fn_type: FnType::InlineLlvm(LlvmFn { ir: ir.to_string() }),
+            // If function keyword is not present,
+            // then this is a method
+            fn_scope: if function_kw.is_some() {
+                FnScope::Function
+            } else {
+                FnScope::Method
+            },
         });
 
     // Definitions
@@ -96,17 +114,10 @@ pub fn llvm_fn_parser<'i: 'static>(
     llvm_fn
 }
 
-pub fn native_fn_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, NativeFn<'i>, ParserError<'i, Token<'i>>> + Clone {
-    just(Token::Function)
-        .ignore_then(method_def_parser())
-        .map(|md| md.into())
-}
-
 pub fn fn_def_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let native = native_fn_parser().map(FnDef::Native);
-    let llvm = llvm_fn_parser().map(FnDef::InlineLlvm);
+    let native = fn_parser();
+    let llvm = llvm_fn_parser();
 
     llvm.or(native)
 }
@@ -137,7 +148,7 @@ pub fn class_prop_decl_parser<'i: 'static>(
 
 pub fn class_stmt_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassStmt<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let method = method_def_parser().map(ClassStmt::Method);
+    let method = fn_def_parser().map(ClassStmt::Method);
     let _accessor = {}; // TODO?: Maybe won't be doing this
     let property = class_prop_decl_parser()
         .then_ignore(stmt_end_parser())
@@ -185,14 +196,13 @@ mod test {
 
     use crate::{
         ast::{
-            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, FnSignature, LlvmFn,
-            MethodDef, NativeFn, NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
+            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, FnScope,
+            FnSignature, FnType, LlvmFn, NativeFn, NumericLiteral, PrimitiveVal, PropertyDecl,
+            ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
-            class_parser::{
-                class_block_parser, class_decl_parser, fn_def_parser, method_def_parser,
-            },
+            class_parser::{class_block_parser, class_decl_parser, fn_def_parser},
             helpers::test::stream_token_vec,
         },
     };
@@ -209,13 +219,13 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = method_def_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
         let method_def = res.unwrap();
         assert_eq!(
             method_def,
-            MethodDef {
+            FnDef {
                 fn_signature: FnSignature {
                     fn_id: "myMethod".into(),
                     args: vec![],
@@ -225,7 +235,10 @@ mod test {
                         pointer_nesting_level: 0
                     })
                 },
-                block: Block { stmts: vec![] }
+                fn_scope: FnScope::Method,
+                fn_type: FnType::Native(NativeFn {
+                    block: Block { stmts: vec![] }
+                })
             }
         )
     }
@@ -249,7 +262,7 @@ mod test {
         let fn_def = res.unwrap();
         assert_eq!(
             fn_def,
-            FnDef::Native(NativeFn {
+            FnDef {
                 fn_signature: FnSignature {
                     fn_id: "myFunction".into(),
                     args: vec![],
@@ -259,8 +272,11 @@ mod test {
                         pointer_nesting_level: 0
                     })
                 },
-                block: Block { stmts: vec![] }
-            })
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(NativeFn {
+                    block: Block { stmts: vec![] }
+                })
+            }
         )
     }
 
@@ -281,14 +297,17 @@ mod test {
         let fn_def = res.unwrap();
         assert_eq!(
             fn_def,
-            FnDef::Native(NativeFn {
+            FnDef {
                 fn_signature: FnSignature {
                     fn_id: "myFunction".into(),
                     args: vec![],
                     ret_type: None
                 },
-                block: Block { stmts: vec![] }
-            })
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(NativeFn {
+                    block: Block { stmts: vec![] }
+                })
+            }
         )
     }
 
@@ -314,7 +333,7 @@ mod test {
         let fn_def = res.unwrap();
         assert_eq!(
             fn_def,
-            FnDef::Native(NativeFn {
+            FnDef {
                 fn_signature: FnSignature {
                     fn_id: "myFunction".into(),
                     args: vec![(
@@ -331,8 +350,11 @@ mod test {
                         pointer_nesting_level: 0
                     })
                 },
-                block: Block { stmts: vec![] }
-            })
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(NativeFn {
+                    block: Block { stmts: vec![] }
+                })
+            }
         )
     }
 
@@ -364,7 +386,7 @@ mod test {
             class_block,
             ClassBlock {
                 class_stmts: vec![
-                    ClassStmt::Method(MethodDef {
+                    ClassStmt::Method(FnDef {
                         fn_signature: FnSignature {
                             fn_id: "myClassMethod".into(),
                             args: vec![],
@@ -374,7 +396,10 @@ mod test {
                                 pointer_nesting_level: 0
                             })
                         },
-                        block: Block { stmts: vec![] }
+                        fn_scope: FnScope::Method,
+                        fn_type: FnType::Native(NativeFn {
+                            block: Block { stmts: vec![] }
+                        })
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
@@ -426,7 +451,7 @@ mod test {
                 extended_class_id: None,
                 block: ClassBlock {
                     class_stmts: vec![
-                        ClassStmt::Method(MethodDef {
+                        ClassStmt::Method(FnDef {
                             fn_signature: FnSignature {
                                 fn_id: "myClassMethod".into(),
                                 args: vec![],
@@ -436,7 +461,10 @@ mod test {
                                     pointer_nesting_level: 0
                                 })
                             },
-                            block: Block { stmts: vec![] }
+                            fn_scope: FnScope::Method,
+                            fn_type: FnType::Native(NativeFn {
+                                block: Block { stmts: vec![] }
+                            })
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),
@@ -485,7 +513,7 @@ mod test {
         let fn_def = res.unwrap();
         assert_eq!(
             fn_def,
-            FnDef::InlineLlvm(LlvmFn {
+            FnDef {
                 fn_signature: FnSignature {
                     fn_id: "myFunction".into(),
                     args: vec![
@@ -512,8 +540,11 @@ mod test {
                         pointer_nesting_level: 0
                     })
                 },
-                ir: "%res = add i32 %a, %b\nret i32 %res".to_string()
-            })
+                fn_scope: FnScope::Function,
+                fn_type: FnType::InlineLlvm(LlvmFn {
+                    ir: "%res = add i32 %a, %b\nret i32 %res".to_string()
+                })
+            }
         )
     }
 }
