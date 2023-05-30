@@ -272,8 +272,12 @@ pub fn codegen_native_fn(
     fn_block: Block,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    let fun = codegen_fn_decl(compiler, &fn_signature, block_type)?;
     let fn_name = fn_signature.fn_id.0;
+    let fun = compiler
+        .get_scoped_val(&fn_name, block_type)?
+        .as_fn()
+        .ok_or("ICE: Couldn't get forward-declared function".to_string())?
+        .ptr_val;
 
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
 

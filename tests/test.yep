@@ -1,8 +1,10 @@
 extern i32 printf(*i8, ...);
 
-{
+printf("x is %d\n" as *i8, test());
+
+function test(): i32 {
     let x = 10;
-    function test(): i32 {
-        return x;
-    }
+    return x;
 }
+
+printf("x is %d\n" as *i8, test());

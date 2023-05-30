@@ -1,5 +1,5 @@
 use super::{
-    class_codegen::{codegen_fn_def, codegen_return},
+    class_codegen::{codegen_fn_decl, codegen_fn_def, codegen_return},
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
@@ -59,6 +59,13 @@ pub fn declare_scoped_val<'input, 'ctx>(
     value: ScopedVal<'ctx>,
 ) -> Result<(), CompilerError> {
     let curr_scope_mut = compiler.get_curr_scope_mut()?;
+    if curr_scope_mut.get(&var_name).is_some() {
+        return Err(format!(
+            "Cannot redeclare block-scoped variable or function '{}'.",
+            var_name
+        ));
+    }
+
     curr_scope_mut.insert(var_name, value);
 
     Ok(())
@@ -93,6 +100,15 @@ pub fn codegen_block(
     // When we enter a block, we push a new variable scope
     if !(block_type == BlockType::FUNC) {
         compiler.var_scopes.push(FxHashMap::default());
+    }
+
+    for fn_def in block.stmts.iter() {
+        match fn_def {
+            Stmt::FnDef(fn_def) => {
+                codegen_fn_decl(compiler, &fn_def.fn_signature, block_type)?;
+            }
+            _ => {}
+        };
     }
 
     for stmt in block.stmts {
