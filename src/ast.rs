@@ -581,8 +581,8 @@ pub struct FnDef<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FnType<'a> {
-    Native(NativeFn<'a>),
-    InlineLlvm(LlvmFn),
+    Native(Block<'a>),
+    InlineLlvmIr(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -596,16 +596,6 @@ pub struct FnSignature<'a> {
     pub fn_id: Id,
     pub args: Vec<(Destructure<'a>, ValueVarType)>,
     pub ret_type: Option<ValueVarType>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlvmFn {
-    pub ir: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NativeFn<'a> {
-    pub block: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

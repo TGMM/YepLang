@@ -6,15 +6,10 @@ use super::{
     },
     primitive_parser::{id_parser, type_specifier_parser},
 };
+use crate::{ast::Return, parser::main_parser::BLOCK_PARSER};
 use crate::{
-    ast::{
-        ClassBlock, ClassDecl, ClassStmt, FnDef, FnScope, FnSignature, FnType, LlvmFn, PropertyDecl,
-    },
+    ast::{ClassBlock, ClassDecl, ClassStmt, FnDef, FnScope, FnSignature, FnType, PropertyDecl},
     lexer::Token,
-};
-use crate::{
-    ast::{NativeFn, Return},
-    parser::main_parser::BLOCK_PARSER,
 };
 use chumsky::{primitive::just, select, IterParser, Parser};
 
@@ -60,7 +55,7 @@ pub fn fn_parser<'i: 'static>(
         .then(block.clone())
         .map(|((function_kw, fn_sign), block)| FnDef {
             fn_signature: fn_sign,
-            fn_type: FnType::Native(NativeFn { block }),
+            fn_type: FnType::Native(block),
             // If function keyword is not present,
             // then this is a method
             fn_scope: if function_kw.is_some() {
@@ -96,7 +91,7 @@ pub fn llvm_fn_parser<'i: 'static>(
         )
         .map(|((function_kw, fn_signature), ir)| FnDef {
             fn_signature,
-            fn_type: FnType::InlineLlvm(LlvmFn { ir: ir.to_string() }),
+            fn_type: FnType::InlineLlvmIr(ir.to_string()),
             // If function keyword is not present,
             // then this is a method
             fn_scope: if function_kw.is_some() {
@@ -197,8 +192,7 @@ mod test {
     use crate::{
         ast::{
             Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, FnScope,
-            FnSignature, FnType, LlvmFn, NativeFn, NumericLiteral, PrimitiveVal, PropertyDecl,
-            ValueVarType, VarType,
+            FnSignature, FnType, NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
@@ -236,9 +230,7 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Method,
-                fn_type: FnType::Native(NativeFn {
-                    block: Block { stmts: vec![] }
-                })
+                fn_type: FnType::Native(Block { stmts: vec![] })
             }
         )
     }
@@ -273,9 +265,7 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(NativeFn {
-                    block: Block { stmts: vec![] }
-                })
+                fn_type: FnType::Native(Block { stmts: vec![] })
             }
         )
     }
@@ -304,9 +294,7 @@ mod test {
                     ret_type: None
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(NativeFn {
-                    block: Block { stmts: vec![] }
-                })
+                fn_type: FnType::Native(Block { stmts: vec![] })
             }
         )
     }
@@ -351,9 +339,7 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(NativeFn {
-                    block: Block { stmts: vec![] }
-                })
+                fn_type: FnType::Native(Block { stmts: vec![] })
             }
         )
     }
@@ -397,9 +383,7 @@ mod test {
                             })
                         },
                         fn_scope: FnScope::Method,
-                        fn_type: FnType::Native(NativeFn {
-                            block: Block { stmts: vec![] }
-                        })
+                        fn_type: FnType::Native(Block { stmts: vec![] })
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
@@ -462,9 +446,7 @@ mod test {
                                 })
                             },
                             fn_scope: FnScope::Method,
-                            fn_type: FnType::Native(NativeFn {
-                                block: Block { stmts: vec![] }
-                            })
+                            fn_type: FnType::Native(Block { stmts: vec![] })
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),
@@ -541,9 +523,7 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::InlineLlvm(LlvmFn {
-                    ir: "%res = add i32 %a, %b\nret i32 %res".to_string()
-                })
+                fn_type: FnType::InlineLlvmIr("%res = add i32 %a, %b\nret i32 %res".to_string())
             }
         )
     }

@@ -7,8 +7,8 @@ use super::{
 };
 use crate::{
     ast::{
-        Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, LlvmFn, NativeFn, Return,
-        ValueVarType, VarType,
+        Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, Return, ValueVarType,
+        VarType,
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
@@ -86,24 +86,23 @@ pub fn codegen_fn_def(
 ) -> Result<(), CompilerError> {
     let fn_signature = fn_def.fn_signature;
     match (fn_def.fn_scope, fn_def.fn_type) {
-        (FnScope::Function, FnType::Native(native_fn)) => {
-            codegen_native_fn(compiler, fn_signature, native_fn, block_type)
+        (FnScope::Function, FnType::Native(fn_block)) => {
+            codegen_native_fn(compiler, fn_signature, fn_block, block_type)
         }
-        (FnScope::Function, FnType::InlineLlvm(llvm_fn)) => {
-            codegen_llvm_fn(compiler, fn_signature, llvm_fn, block_type)
+        (FnScope::Function, FnType::InlineLlvmIr(llvm_ir)) => {
+            codegen_llvm_fn(compiler, fn_signature, llvm_ir, block_type)
         }
         (FnScope::Method, FnType::Native(_)) => todo!(),
-        (FnScope::Method, FnType::InlineLlvm(_)) => todo!(),
+        (FnScope::Method, FnType::InlineLlvmIr(_)) => todo!(),
     }
 }
 
 pub fn codegen_llvm_fn(
     compiler: &mut Compiler,
     fn_signature: FnSignature,
-    llvm_fn: LlvmFn,
+    llvm_ir: String,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    let LlvmFn { ir } = llvm_fn;
     let FnSignature {
         fn_id,
         args,
@@ -139,7 +138,7 @@ pub fn codegen_llvm_fn(
     let fn_name = fn_id.0;
     let fun_def = format!(
         "define {} @{}({}) {{{}}}",
-        ret_type_str, fn_name, args_str, ir
+        ret_type_str, fn_name, args_str, llvm_ir
     );
 
     let ir_str = to_c_str(&fun_def);
@@ -205,7 +204,7 @@ pub fn codegen_llvm_fn(
 pub fn codegen_native_fn(
     compiler: &mut Compiler,
     fn_signature: FnSignature,
-    native_fn: NativeFn,
+    fn_block: Block,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
     let fn_name = fn_signature.fn_id.0;
@@ -317,7 +316,7 @@ pub fn codegen_native_fn(
         };
     }
 
-    codegen_block(compiler, native_fn.block, BlockType::FUNC)?;
+    codegen_block(compiler, fn_block, BlockType::FUNC)?;
 
     // Building the return
     // Every block must end with a br statement, so we jump to the return block
