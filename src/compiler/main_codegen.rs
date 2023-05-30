@@ -1,5 +1,5 @@
 use super::{
-    class_codegen::{codegen_fn_decl, codegen_return},
+    class_codegen::{codegen_fn_def, codegen_return},
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
@@ -141,7 +141,7 @@ pub fn codegen_stmt(
         Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment),
         Stmt::Expr(expr) => codegen_rhs_expr(compiler, expr, None).map(|(_, _)| ()),
         Stmt::ClassDecl(_) => todo!(),
-        Stmt::FnDecl(fn_decl) => codegen_fn_decl(compiler, fn_decl, block_type),
+        Stmt::FnDef(fn_def) => codegen_fn_def(compiler, fn_def, block_type),
         Stmt::For(for_) => codegen_for(compiler, for_, block_type),
         Stmt::While(while_) => codegen_while(compiler, while_, block_type),
         Stmt::DoWhile(do_while) => codegen_do_while(compiler, do_while, block_type),

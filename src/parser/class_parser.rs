@@ -7,7 +7,7 @@ use super::{
     primitive_parser::{id_parser, type_specifier_parser},
 };
 use crate::{
-    ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, LlvmFn, MethodDecl, PropertyDecl},
+    ast::{ClassBlock, ClassDecl, ClassStmt, FnDef, LlvmFn, MethodDecl, PropertyDecl},
     lexer::Token,
 };
 use crate::{
@@ -99,10 +99,10 @@ pub fn native_fn_parser<'i: 'static>(
         .map(|md| md.into())
 }
 
-pub fn fn_decl_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, FnDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let native = native_fn_parser().map(FnDecl::Native);
-    let llvm = llvm_fn_parser().map(FnDecl::InlineLlvm);
+pub fn fn_def_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let native = native_fn_parser().map(FnDef::Native);
+    let llvm = llvm_fn_parser().map(FnDef::InlineLlvm);
 
     llvm.or(native)
 }
@@ -181,13 +181,13 @@ mod test {
 
     use crate::{
         ast::{
-            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDecl, LlvmFn, MethodDecl,
+            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, LlvmFn, MethodDecl,
             NativeFn, NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
             class_parser::{
-                class_block_parser, class_decl_parser, fn_decl_parser, method_decl_parser,
+                class_block_parser, class_decl_parser, fn_def_parser, method_decl_parser,
             },
             helpers::test::stream_token_vec,
         },
@@ -225,7 +225,7 @@ mod test {
     }
 
     #[test]
-    fn fn_decl_test() {
+    fn fn_def_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -237,13 +237,13 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl::Native(NativeFn {
+            fn_def,
+            FnDef::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![],
                 ret_type: Some(ValueVarType {
@@ -257,7 +257,7 @@ mod test {
     }
 
     #[test]
-    fn fn_decl_void_test() {
+    fn fn_def_void_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -267,13 +267,13 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl::Native(NativeFn {
+            fn_def,
+            FnDef::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![],
                 ret_type: None,
@@ -283,7 +283,7 @@ mod test {
     }
 
     #[test]
-    fn fn_decl_args_test() {
+    fn fn_def_args_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -298,13 +298,13 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl::Native(NativeFn {
+            fn_def,
+            FnDef::Native(NativeFn {
                 fn_id: "myFunction".into(),
                 args: vec![(
                     Destructure::Id("x".into()),
@@ -463,13 +463,13 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl::InlineLlvm(LlvmFn {
+            fn_def,
+            FnDef::InlineLlvm(LlvmFn {
                 fn_id: "myFunction".into(),
                 args: vec![
                     (

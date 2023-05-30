@@ -6,7 +6,7 @@ use super::{
     },
 };
 use crate::{
-    ast::{Destructure, ExternType, FnDecl, LlvmFn, NativeFn, Return, ValueVarType, VarType},
+    ast::{Destructure, ExternType, FnDef, LlvmFn, NativeFn, Return, ValueVarType, VarType},
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
         main_codegen::{codegen_block, convert_to_type_enum, declare_variable},
@@ -76,14 +76,14 @@ pub fn codegen_return(
     Ok(())
 }
 
-pub fn codegen_fn_decl(
+pub fn codegen_fn_def(
     compiler: &mut Compiler,
-    fn_decl: FnDecl,
+    fn_def: FnDef,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    match fn_decl {
-        FnDecl::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
-        FnDecl::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn),
+    match fn_def {
+        FnDef::Native(native_fn) => codegen_native_fn(compiler, native_fn, block_type),
+        FnDef::InlineLlvm(llvm_fn) => codegen_llvm_fn(compiler, llvm_fn),
     }
 }
 

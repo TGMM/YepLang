@@ -338,7 +338,7 @@ pub enum Stmt<'input> {
     Assignment(Assignment<'input>),
     Expr(Expr<'input>),
     ClassDecl(ClassDecl<'input>),
-    FnDecl(FnDecl<'input>),
+    FnDef(FnDef<'input>),
     For(For<'input>),
     While(While<'input>),
     DoWhile(DoWhile<'input>),
@@ -573,7 +573,7 @@ pub struct MemberAcess<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FnDecl<'a> {
+pub enum FnDef<'a> {
     Native(NativeFn<'a>),
     InlineLlvm(LlvmFn<'a>),
 }
