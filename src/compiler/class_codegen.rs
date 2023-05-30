@@ -16,7 +16,7 @@ use inkwell::{
     module::{Linkage, Module},
     support::to_c_str,
     types::BasicType,
-    values::{BasicValue, FunctionValue},
+    values::{BasicValue, FunctionValue, InstructionOpcode},
 };
 use llvm_sys::assembly::LLVMParseAssemblyString;
 use std::collections::{HashMap, VecDeque};
@@ -328,12 +328,17 @@ pub fn codegen_native_fn(
 
     codegen_block(compiler, fn_block, BlockType::FUNC)?;
 
-    // Building the return
-    // Every block must end with a br statement, so we jump to the return block
-    compiler.builder.build_unconditional_branch(ret_basic_block);
     // We need a reference to the previous block, we get that here
     // This could be either the function block or the if_cont block
     let prev_bb = compiler.builder.get_insert_block().unwrap();
+
+    // Building the return
+    // Every block must end with a br statement, so we jump to the return block
+    // If the previous instruction is an unconditional branch, then we don't build another
+    if let Some(instr) = prev_bb.get_last_instruction() && instr.get_opcode() != InstructionOpcode::Br {
+        compiler.builder.build_unconditional_branch(ret_basic_block);
+    }
+
     // We move the return after the if_cont
     ret_basic_block.move_after(prev_bb).unwrap();
 
