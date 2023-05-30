@@ -58,7 +58,7 @@ pub fn codegen_return(
 
     let (ret_val, ret_type) =
         codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type), block_type)
-            .map_err(|_| "Invalid value for function return".to_string())?;
+            .map_err(|err| format!("Invalid value for function return: {}", err))?;
 
     let expected_ret_type: ValueVarType = expected_ret_type;
     if ret_type != expected_ret_type {
@@ -328,7 +328,7 @@ pub fn codegen_native_fn(
         };
     }
 
-    codegen_block(compiler, fn_block, BlockType::FUNC)?;
+    codegen_block(compiler, fn_block, block_type.union(BlockType::FUNC))?;
 
     // We need a reference to the previous block, we get that here
     // This could be either the function block or the if_cont block

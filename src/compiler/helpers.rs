@@ -90,6 +90,36 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         name: &str,
         block_type: BlockType,
     ) -> Result<&ScopedVal<'ctx>, CompilerError> {
+        // Local function
+        if block_type.contains(BlockType::FUNC_LOCAL) {
+            assert!(self.var_scopes.len() > 1);
+
+            let global_scope = self
+                .var_scopes
+                .first()
+                .ok_or("ICE: Could not find global scope".to_string())?;
+
+            let local_scope = self
+                .var_scopes
+                .last()
+                .ok_or("ICE: Could not find local scope".to_string())?;
+
+            // In a local function, we first search the local
+            // scope for the value
+            if let Some(scoped_val) = local_scope.get(name) {
+                return Ok(scoped_val);
+            }
+            // If we don't find it, then we search the global scope
+            if let Some(scoped_val) = global_scope.get(name) {
+                return Ok(scoped_val);
+            }
+
+            // If we still don't find it, we return an error
+            let line_one = "Variable or function was not found on the local function scope or the global scope.";
+            let line_two = "Local functions do not capture their environment, and can't refer to local variables outside their scope.";
+            return Err(format!("{}\n{}", line_one, line_two));
+        }
+
         for scope in self.var_scopes.iter().rev() {
             if let Some(scoped_val) = scope.get(name) {
                 return Ok(scoped_val);
