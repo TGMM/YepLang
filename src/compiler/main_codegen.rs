@@ -433,7 +433,11 @@ pub fn compile<'input, 'ctx>(
 
     codegen_top_block(compiler, top_block)?;
 
-    let out_path = format!("{path}\\{file_name}");
+    let out_path = Path::new(path)
+        .join(file_name)
+        .to_str()
+        .ok_or("Invalid directory")?
+        .to_string();
     compiler
         .module
         .print_to_file(&format!("{out_path}.ll"))
