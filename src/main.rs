@@ -7,8 +7,10 @@ mod compiler;
 mod lexer;
 mod parser;
 
-use compiler::main_codegen::compile_yep;
+use compiler::{helpers::YepTarget, main_codegen::compile_yep};
 use std::{fs, path::Path};
+
+const TARGET: &str = env!("TARGET");
 
 fn main() {
     let tests_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests");
@@ -18,7 +20,11 @@ fn main() {
     let input_ref: &'static str = Box::leak(input.into_boxed_str());
 
     let compiled_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compiled");
-    let res = compile_yep(input_ref, compiled_dir, "test");
+    let target = YepTarget {
+        target_triple: TARGET.to_string(),
+        nostd: false,
+    };
+    let res = compile_yep(input_ref, compiled_dir, "test", target);
     match res {
         Ok(_) => {}
         Err(err) => eprintln!("{}", err),

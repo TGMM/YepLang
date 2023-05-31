@@ -1,7 +1,7 @@
 extern i32 printf(*i8, ...);
-extern void exit(i32);
 
-let arr = [1, 2, 3];
+let x = [1, 2, 3];
+let y = 3;
 {
-    let x = arr[3];
+    let this = 10;
 }

@@ -4,7 +4,8 @@ use super::{
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
     helpers::{
-        BlockType, Compiler, CompilerError, ExpectedExprType, RuntimeErrors, ScopedVal, ScopedVar,
+        convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, CompilerError,
+        ExpectedExprType, RuntimeErrors, ScopedVal, ScopedVar, YepTarget,
     },
 };
 use crate::{
@@ -16,7 +17,7 @@ use inkwell::{
     module::Linkage,
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType},
+    types::{BasicType, BasicTypeEnum},
     values::{BasicMetadataValueEnum, BasicValue, FunctionValue},
     AddressSpace, OptimizationLevel,
 };
@@ -73,18 +74,46 @@ pub fn declare_scoped_val<'input, 'ctx>(
     Ok(())
 }
 
-pub fn codegen_panic_fn<'input, 'ctx>(
+pub fn codegen_nostd_panic_fn<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    let panic_fn = compiler
+        .module
+        // TODO: Get this name from another place so it's not duplicated
+        .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
+    compiler.builder.position_at_end(panic_fn_bb);
+
+    let donothing_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    let donothing_fn = compiler
+        .module
+        .add_function("llvm.donothing", donothing_fn_ty, None);
+
+    compiler.builder.build_call(donothing_fn, &[], "nop");
+
+    // Infinite loop
+    compiler.builder.build_unconditional_branch(panic_fn_bb);
+
+    Ok(panic_fn)
+}
+
+pub fn codegen_libc_panic_fn<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
     // TODO: This only works on environments with a libc
-    let bmt_i32 = BasicMetadataTypeEnum::IntType(compiler.context.i32_type());
+    let bmt_i32 = convert_type_to_metadata(compiler.context.i32_type().as_basic_type_enum());
     let exit_fn_ty = compiler.context.void_type().fn_type(&[bmt_i32], false);
     let exit_fn = compiler
         .module
         .add_function("exit", exit_fn_ty, Some(Linkage::External));
 
-    let bmt_i8ptr = BasicMetadataTypeEnum::PointerType(
-        compiler.context.i8_type().ptr_type(AddressSpace::default()),
+    let bmt_i8ptr = convert_type_to_metadata(
+        compiler
+            .context
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .as_basic_type_enum(),
     );
     let printf_fn_ty = compiler.context.i32_type().fn_type(&[bmt_i8ptr], true);
     let printf_fn = compiler
@@ -102,15 +131,21 @@ pub fn codegen_panic_fn<'input, 'ctx>(
 
     let exit_code =
         BasicMetadataValueEnum::IntValue(compiler.context.i32_type().const_int(1, false));
+    // Allocate error
+    let error_msg = "Error\0";
+    let error_msg_val = compiler
+        .builder
+        .build_global_string_ptr(error_msg, "error_msg_str");
     // Print error
-    // compiler
-    //     .builder
-    //     .build_call(printf_fn, &[], "call_panic_printf");
+    let error_msg_arg = convert_value_to_metadata(error_msg_val.as_basic_value_enum());
+    compiler
+        .builder
+        .build_call(printf_fn, &[error_msg_arg], "call_panic_printf");
     // Exit program
     compiler
         .builder
         .build_call(exit_fn, &[exit_code], "call_panic_exit");
-    compiler.builder.build_unreachable();
+    compiler.builder.build_return(None);
 
     Ok(panic_fn)
 }
@@ -126,7 +161,7 @@ pub fn codegen_top_block(
     let entry_basic_block = compiler.context.append_basic_block(fun, "entry");
     compiler.basic_block_stack.push(entry_basic_block);
 
-    let panic_fn = codegen_panic_fn(compiler)?;
+    let panic_fn = codegen_libc_panic_fn(compiler)?;
     // Codegen out of bounds error block
     let out_of_bounds_bb = compiler
         .context
@@ -366,16 +401,18 @@ pub fn codegen_assignment(
     Ok(())
 }
 
-pub fn compile_to_x86<'input, 'ctx>(
+pub fn compile<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     top_block: TopBlock,
     path: &str,
     file_name: &str,
-    compile_extras: bool,
+    target: YepTarget,
+    should_compile_extras: bool,
 ) -> Result<String, CompilerError> {
-    Target::initialize_x86(&InitializationConfig::default());
-    let triple = TargetTriple::create("x86_64-pc-windows-msvc");
-    let target = Target::from_triple(&triple).unwrap();
+    Target::initialize_all(&InitializationConfig::default());
+
+    let triple = TargetTriple::create(&target.target_triple);
+    let target = Target::from_triple(&triple).map_err(|err| err.to_string())?;
     let cpu = "generic";
     let features = "";
     let target_machine = target
@@ -401,7 +438,7 @@ pub fn compile_to_x86<'input, 'ctx>(
         .module
         .print_to_file(&format!("{out_path}.ll"))
         .unwrap();
-    if compile_extras {
+    if should_compile_extras {
         target_machine
             .write_to_file(
                 compiler.module,
@@ -421,58 +458,11 @@ pub fn compile_to_x86<'input, 'ctx>(
     Ok(out_path)
 }
 
-pub fn compile_to_wasm<'input, 'ctx>(
-    compiler: &mut Compiler<'input, 'ctx>,
-    top_block: TopBlock,
-    path: &str,
-    file_name: &str,
-    compile_extras: bool,
-) -> Result<String, CompilerError> {
-    Target::initialize_webassembly(&InitializationConfig::default());
-    let triple = TargetTriple::create("wasm32-unknown-unknown");
-    let target = Target::from_triple(&triple).unwrap();
-    let cpu = "generic";
-    let features = "";
-    let target_machine = target
-        .create_target_machine(
-            &triple,
-            cpu,
-            features,
-            OptimizationLevel::None,
-            RelocMode::Default,
-            CodeModel::Default,
-        )
-        .unwrap();
-
-    compiler.module.set_triple(&triple);
-    let data_layout = target_machine.get_target_data().get_data_layout();
-    compiler.module.set_data_layout(&data_layout);
-    _ = compiler.data_layout.insert(data_layout);
-
-    codegen_top_block(compiler, top_block)?;
-
-    let out_path = format!("{path}\\{file_name}");
-    compiler
-        .module
-        .print_to_file(&format!("{out_path}.ll"))
-        .unwrap();
-    if compile_extras {
-        target_machine
-            .write_to_file(
-                compiler.module,
-                FileType::Object,
-                Path::new(&format!("{out_path}.o")),
-            )
-            .unwrap();
-    }
-
-    Ok(out_path)
-}
-
 pub fn compile_yep(
     input: &'static str,
     path: &'static str,
     out_name: &'static str,
+    target: YepTarget,
 ) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
 
@@ -504,7 +494,7 @@ pub fn compile_yep(
         runtime_errors: RuntimeErrors { oob: None },
     };
 
-    compile_to_x86(&mut compiler, top_block, path, out_name, false)?;
+    compile(&mut compiler, top_block, path, out_name, target, false)?;
 
     Ok(())
 }

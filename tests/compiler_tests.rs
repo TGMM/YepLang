@@ -1,5 +1,8 @@
 use std::{path::Path, process::Command};
+use yep_lang::compiler::helpers::YepTarget;
 use yep_lang::compiler::main_codegen::compile_yep;
+
+const TARGET: &str = env!("TARGET");
 
 macro_rules! compiler_test {
     ($test_name:ident, input: $input:literal, output: $expected_out:literal) => {
@@ -9,7 +12,13 @@ macro_rules! compiler_test {
 
             let project_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compiled");
             let test_name = stringify!($test_name);
-            compile_yep(input, project_dir, test_name).unwrap();
+            let target = YepTarget {
+                target_triple: TARGET.to_string(),
+                /// If you can compile this, then you definitely don't
+                /// have a nostd environment
+                nostd: false,
+            };
+            compile_yep(input, project_dir, test_name, target).unwrap();
             let out_path = Path::new(project_dir).join(format!("{}.ll", test_name));
 
             let output = Command::new("lli")

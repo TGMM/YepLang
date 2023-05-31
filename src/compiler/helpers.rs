@@ -198,3 +198,9 @@ pub fn create_default_type(vtype: VarType) -> ValueVarType {
         pointer_nesting_level: 0,
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct YepTarget {
+    pub target_triple: String,
+    pub nostd: bool,
+}
