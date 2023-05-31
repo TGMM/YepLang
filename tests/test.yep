@@ -1,7 +1,3 @@
 extern i32 printf(*i8, ...);
 
-let x = [1, 2, 3];
-let y = 3;
-{
-    let this = 10;
-}
+printf("It works!\n" as *i8);

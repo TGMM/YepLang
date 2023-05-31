@@ -10,7 +10,8 @@ macro_rules! compiler_test {
         fn $test_name() {
             let input = $input;
 
-            let project_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compiled");
+            let project_dir = env!("CARGO_MANIFEST_DIR");
+            let compiled_tests_dir = Path::new(project_dir).join("tests").join("compiled");
             let test_name = stringify!($test_name);
             let target = YepTarget {
                 target_triple: TARGET.to_string(),
@@ -18,8 +19,14 @@ macro_rules! compiler_test {
                 /// have a nostd environment
                 nostd: false,
             };
-            compile_yep(input, project_dir, test_name, target).unwrap();
-            let out_path = Path::new(project_dir).join(format!("{}.ll", test_name));
+            compile_yep(
+                input,
+                compiled_tests_dir.to_str().unwrap(),
+                test_name,
+                target,
+            )
+            .unwrap();
+            let out_path = compiled_tests_dir.join(format!("{}.ll", test_name));
 
             let output = Command::new("lli")
                 .arg(out_path)

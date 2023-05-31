@@ -460,8 +460,8 @@ pub fn compile<'input, 'ctx>(
 
 pub fn compile_yep(
     input: &'static str,
-    path: &'static str,
-    out_name: &'static str,
+    path: &str,
+    out_name: &str,
     target: YepTarget,
 ) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
