@@ -1,3 +1,4 @@
+use std::fs;
 use std::{path::Path, process::Command};
 use yep_lang::compiler::helpers::YepTarget;
 use yep_lang::compiler::main_codegen::compile_yep;
@@ -12,6 +13,12 @@ macro_rules! compiler_test {
 
             let project_dir = env!("CARGO_MANIFEST_DIR");
             let compiled_tests_dir = Path::new(project_dir).join("tests").join("compiled");
+
+            // Create directory if it doesn't exist
+            if !compiled_tests_dir.is_dir() {
+                fs::create_dir(compiled_tests_dir.clone()).unwrap();
+            }
+
             let test_name = stringify!($test_name);
             let target = YepTarget {
                 target_triple: TARGET.to_string(),
