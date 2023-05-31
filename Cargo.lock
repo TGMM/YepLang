@@ -155,7 +155,7 @@ checksum = "2b00cc1c228a6782d0f076e7b232802e0c5689d41bb5df366f2a6b6621cfdfe1"
 [[package]]
 name = "llvm-sys"
 version = "160.1.0"
-source = "git+https://github.com/TGMM/llvm-sys.rs#d8369299bf2d6a05a9913b600aac70fa5124e854"
+source = "git+https://github.com/TGMM/llvm-sys.rs#7710d993c7b42031fe7849937422e55da1472e73"
 dependencies = [
  "cc",
  "lazy_static",
@@ -212,9 +212,9 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "once_cell"
-version = "1.17.1"
+version = "1.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+checksum = "9670a07f94779e00908f3e686eab508878ebb390ba6e604d3a284c00e8d0487b"
 
 [[package]]
 name = "parking_lot"
