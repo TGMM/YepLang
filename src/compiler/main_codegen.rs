@@ -153,6 +153,7 @@ pub fn codegen_libc_panic_fn<'input, 'ctx>(
 pub fn codegen_top_block(
     compiler: &mut Compiler,
     top_block: TopBlock,
+    yep_target: YepTarget,
 ) -> Result<(), CompilerError> {
     let fn_type = compiler.context.i32_type().fn_type(&[], false);
     let fun = compiler
@@ -161,7 +162,12 @@ pub fn codegen_top_block(
     let entry_basic_block = compiler.context.append_basic_block(fun, "entry");
     compiler.basic_block_stack.push(entry_basic_block);
 
-    let panic_fn = codegen_libc_panic_fn(compiler)?;
+    let panic_fn = if yep_target.nostd {
+        codegen_libc_panic_fn(compiler)
+    } else {
+        codegen_nostd_panic_fn(compiler)
+    }?;
+
     // Codegen out of bounds error block
     let out_of_bounds_bb = compiler
         .context
@@ -406,12 +412,12 @@ pub fn compile<'input, 'ctx>(
     top_block: TopBlock,
     path: &str,
     file_name: &str,
-    target: YepTarget,
+    yep_target: YepTarget,
     should_compile_extras: bool,
 ) -> Result<String, CompilerError> {
     Target::initialize_all(&InitializationConfig::default());
 
-    let triple = TargetTriple::create(&target.target_triple);
+    let triple = TargetTriple::create(&yep_target.target_triple);
     let target = Target::from_triple(&triple).map_err(|err| err.to_string())?;
     let cpu = "generic";
     let features = "";
@@ -431,7 +437,7 @@ pub fn compile<'input, 'ctx>(
     compiler.module.set_data_layout(&data_layout);
     _ = compiler.data_layout.insert(data_layout);
 
-    codegen_top_block(compiler, top_block)?;
+    codegen_top_block(compiler, top_block, yep_target)?;
 
     let out_path = Path::new(path)
         .join(file_name)
