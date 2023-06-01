@@ -2,5 +2,5 @@ extern i32 printf(*i8, ...);
 
 {
     let x = [10];
-    let y = (x)[0];
+    x[1] = 20;
 }
