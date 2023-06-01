@@ -63,10 +63,8 @@ pub struct FnRetVal<'ctx> {
     pub ret_bb: BasicBlock<'ctx>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RuntimeErrors<'ctx> {
-    /// Out of bounds
-    pub oob: Option<BasicBlock<'ctx>>,
+pub struct ErrorMessages<'ctx> {
+    pub out_of_bounds: Option<PointerValue<'ctx>>,
 }
 
 pub type Scope<'ctx> = FxHashMap<String, ScopedVal<'ctx>>;
@@ -82,7 +80,8 @@ pub struct Compiler<'input, 'ctx> {
     pub curr_func_ret_val: Option<FnRetVal<'ctx>>,
     pub func_ret_val_stack: Vec<FnRetVal<'ctx>>,
     pub data_layout: Option<DataLayout>,
-    pub runtime_errors: RuntimeErrors<'ctx>,
+    pub panic_fn: Option<FunctionValue<'ctx>>,
+    pub err_msgs: ErrorMessages<'ctx>,
 }
 
 impl<'input, 'ctx> Compiler<'input, 'ctx> {

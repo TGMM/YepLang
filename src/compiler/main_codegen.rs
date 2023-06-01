@@ -4,8 +4,8 @@ use super::{
     expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
     helpers::{
-        convert_type_to_metadata, convert_value_to_metadata, BlockType, Compiler, CompilerError,
-        ExpectedExprType, RuntimeErrors, ScopedVal, ScopedVar, YepTarget,
+        convert_type_to_metadata, BlockType, Compiler, CompilerError, ErrorMessages,
+        ExpectedExprType, ScopedVal, ScopedVar, YepTarget,
     },
 };
 use crate::{
@@ -17,8 +17,8 @@ use inkwell::{
     module::Linkage,
     passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{BasicType, BasicTypeEnum},
-    values::{BasicMetadataValueEnum, BasicValue, FunctionValue},
+    types::{BasicType, BasicTypeEnum, FunctionType},
+    values::{BasicMetadataValueEnum, BasicValue, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
 use rustc_hash::FxHashMap;
@@ -74,14 +74,31 @@ pub fn declare_scoped_val<'input, 'ctx>(
     Ok(())
 }
 
+pub fn initialize_oob_message<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+) -> PointerValue<'ctx> {
+    compiler.err_msgs.out_of_bounds.unwrap_or_else(|| {
+        compiler
+            .builder
+            .build_global_string_ptr(
+                "Error: Index out of bounds, array of length %d was indexed with %d.",
+                "oob_err",
+            )
+            .as_pointer_value()
+    })
+}
+
 pub fn codegen_nostd_panic_fn<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
     let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
-    let panic_fn = compiler
-        .module
-        // TODO: Get this name from another place so it's not duplicated
-        .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+    // TODO: Get this name from another place so it's not duplicated
+    let panic_fn = add_function_to_module(
+        compiler,
+        "__yep_panic_handler",
+        panic_fn_ty,
+        Some(Linkage::External),
+    )?;
 
     let entry_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
@@ -106,49 +123,77 @@ pub fn codegen_nostd_panic_fn<'input, 'ctx>(
     Ok(panic_fn)
 }
 
+pub fn add_function_to_module<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+    fn_name: &str,
+    fn_type: FunctionType<'ctx>,
+    linkage: Option<Linkage>,
+) -> Result<FunctionValue<'ctx>, String> {
+    let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
+        let line_one = format!(
+            "The function declaration of '{}' does not correspond with a previous existing one.",
+            fn_name
+        );
+        let line_two = "This might be because the extern'd function is a libc defined function.";
+        let line_three =
+            "The compiler internally links to some libc functions for run-time error handling.";
+
+        if fn_type != fun.get_type() {
+            return Err(format!("{}\n{}\n{}", line_one, line_two, line_three));
+        }
+
+        fun
+    } else {
+        let fun = compiler.module.add_function(fn_name, fn_type, linkage);
+
+        fun
+    };
+
+    Ok(fun)
+}
+
+pub fn link_to_printf<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let bmt_i8ptr = compiler
+        .context
+        .i8_type()
+        .ptr_type(AddressSpace::default())
+        .as_basic_type_enum();
+    let printf_fn_ty = compiler
+        .context
+        .i32_type()
+        .fn_type(&[bmt_i8ptr.into()], true);
+
+    let printf_fn =
+        add_function_to_module(compiler, "printf", printf_fn_ty, Some(Linkage::External))?;
+
+    Ok(printf_fn)
+}
+
 pub fn codegen_libc_panic_fn<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
     // TODO: This only works on environments with a libc
     let bmt_i32 = convert_type_to_metadata(compiler.context.i32_type().as_basic_type_enum());
     let exit_fn_ty = compiler.context.void_type().fn_type(&[bmt_i32], false);
-    let exit_fn = compiler
-        .module
-        .add_function("exit", exit_fn_ty, Some(Linkage::External));
-
-    let bmt_i8ptr = convert_type_to_metadata(
-        compiler
-            .context
-            .i8_type()
-            .ptr_type(AddressSpace::default())
-            .as_basic_type_enum(),
-    );
-    let printf_fn_ty = compiler.context.i32_type().fn_type(&[bmt_i8ptr], true);
-    let printf_fn = compiler
-        .module
-        .add_function("printf", printf_fn_ty, Some(Linkage::External));
+    let exit_fn = add_function_to_module(compiler, "exit", exit_fn_ty, Some(Linkage::External))?;
 
     // TODO: This function should only be declared once on another module
     let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
-    let panic_fn = compiler
-        .module
-        // TODO: Get this name from another place so it's not duplicated
-        .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+    // TODO: Get this name from another place so it's not duplicated
+    let panic_fn = add_function_to_module(
+        compiler,
+        "__yep_panic_handler",
+        panic_fn_ty,
+        Some(Linkage::External),
+    )?;
+
     let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     compiler.builder.position_at_end(panic_fn_bb);
 
     let exit_code =
         BasicMetadataValueEnum::IntValue(compiler.context.i32_type().const_int(1, false));
-    // Allocate error
-    let error_msg = "Error\0";
-    let error_msg_val = compiler
-        .builder
-        .build_global_string_ptr(error_msg, "error_msg_str");
-    // Print error
-    let error_msg_arg = convert_value_to_metadata(error_msg_val.as_basic_value_enum());
-    compiler
-        .builder
-        .build_call(printf_fn, &[error_msg_arg], "call_panic_printf");
     // Exit program
     compiler
         .builder
@@ -175,16 +220,7 @@ pub fn codegen_top_block(
     } else {
         codegen_libc_panic_fn(compiler)
     }?;
-
-    // Codegen out of bounds error block
-    let out_of_bounds_bb = compiler
-        .context
-        .append_basic_block(fun, "out_of_bounds_err");
-    compiler.builder.position_at_end(out_of_bounds_bb);
-    // Platform-dependend run-time error
-    compiler.builder.build_call(panic_fn, &[], "call_panic");
-    compiler.builder.build_unreachable();
-    _ = compiler.runtime_errors.oob.insert(out_of_bounds_bb);
+    _ = compiler.panic_fn.insert(panic_fn);
 
     compiler.builder.position_at_end(entry_basic_block);
     // Codegen all statements
@@ -509,7 +545,10 @@ pub fn compile_yep(
         curr_func_ret_val: None,
         func_ret_val_stack: vec![],
         data_layout: None,
-        runtime_errors: RuntimeErrors { oob: None },
+        panic_fn: None,
+        err_msgs: ErrorMessages {
+            out_of_bounds: None,
+        },
     };
 
     compile(&mut compiler, top_block, path, out_name, target, false)?;

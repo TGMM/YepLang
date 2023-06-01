@@ -1,6 +1,6 @@
 use super::{
     helpers::{convert_type_to_metadata, Compiler, ScopedVal},
-    main_codegen::{convert_to_type_enum, declare_scoped_val},
+    main_codegen::{add_function_to_module, convert_to_type_enum, declare_scoped_val},
 };
 use crate::{
     ast::{ExternDecl, ExternType, VarType},
@@ -52,27 +52,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
 
     // Extern functions might be declared in run-time errors
     // we need to check that first
-    let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
-        let line_one = format!(
-            "The extern declaration of '{}' does not correspond with a previous existing one.",
-            fn_name
-        );
-        let line_two = "This might be because the extern'd function is a libc defined function.";
-        let line_three =
-            "The compiler internally links to some libc functions for run-time error handling.";
-
-        if fn_type != fun.get_type() {
-            return Err(format!("{}\n{}\n{}", line_one, line_two, line_three));
-        }
-
-        fun
-    } else {
-        let fun = compiler
-            .module
-            .add_function(fn_name, fn_type, Some(Linkage::External));
-
-        fun
-    };
+    let fun = add_function_to_module(compiler, &fn_name, fn_type, Some(Linkage::External))?;
 
     declare_scoped_val(
         compiler,

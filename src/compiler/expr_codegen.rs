@@ -3,7 +3,7 @@ use super::{
         convert_value_to_metadata, create_default_type, semantic_cube, BlockType, Compiler,
         CompilerError, ExpectedExprType, ScopedVal,
     },
-    main_codegen::convert_to_type_enum,
+    main_codegen::{convert_to_type_enum, initialize_oob_message, link_to_printf},
     primitive_codegen::codegen_primitive_val,
 };
 use crate::ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
@@ -12,7 +12,7 @@ use inkwell::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, IntValue,
         PointerValue,
     },
-    FloatPredicate, IntPredicate,
+    AddressSpace, FloatPredicate, IntPredicate,
 };
 use std::collections::VecDeque;
 
@@ -386,10 +386,11 @@ pub fn codegen_bounds_check(
     let success_bb = compiler
         .context
         .append_basic_block(curr_fn, "bounds_check_success");
+
     let oob_bb = compiler
-        .runtime_errors
-        .oob
-        .ok_or("ICE: Undeclared OOB block".to_string())?;
+        .context
+        .append_basic_block(curr_fn, "bounds_check_fail");
+
     let cmp = compiler.builder.build_int_compare(
         IntPredicate::ULT,
         idxr,
@@ -400,6 +401,24 @@ pub fn codegen_bounds_check(
         .builder
         .build_conditional_branch(cmp, success_bb, oob_bb);
 
+    // Failure block
+    compiler.builder.position_at_end(oob_bb);
+    let panic_fn = compiler
+        .panic_fn
+        .ok_or("ICE: Invalid panic function".to_string())?;
+
+    let error_msg = initialize_oob_message(compiler);
+    let printf = link_to_printf(compiler)?;
+    compiler.builder.build_call(
+        printf,
+        &[error_msg.into(), idxr.into(), arr_dim_val.into()],
+        "oob_printf_call",
+    );
+
+    compiler.builder.build_call(panic_fn, &[], "oob_panic_call");
+    compiler.builder.build_unreachable();
+
+    // Success block
     compiler.builder.position_at_end(success_bb);
 
     Ok(())

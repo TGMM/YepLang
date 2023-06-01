@@ -1,6 +1,7 @@
 use super::{
     expr_codegen::codegen_rhs_expr,
     helpers::{convert_type_to_metadata, BlockType, Compiler, CompilerError, ScopedVal, ScopedVar},
+    main_codegen::add_function_to_module,
 };
 use crate::{
     ast::{
@@ -121,9 +122,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
     } else {
         Linkage::Internal
     };
-    let fun = compiler
-        .module
-        .add_function(&fn_name, fn_type, Some(linkage));
+    let fun = add_function_to_module(compiler, &fn_name, fn_type, Some(linkage))?;
 
     let arg_types = arg_types
         .into_iter()
