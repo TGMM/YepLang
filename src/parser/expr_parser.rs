@@ -18,16 +18,12 @@ recursive_parser!(
     expr_parser,
     Expr<'static>,
     declarations {
-        let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone()
         let primary_expr = PRIMARY_EXPR_PARSER.read().unwrap().clone()
     },
     main_definition {
-        paren_expr.clone().or(primary_expr.clone()).pratt(bop_parser()).boxed()
+        primary_expr.clone().pratt(bop_parser()).boxed()
     },
     definitions {
-        if !paren_expr.is_defined() {
-            paren_expr_parser();
-        }
         if !primary_expr.is_defined() {
             primary_expr_parser();
         }

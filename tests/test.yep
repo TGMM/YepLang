@@ -1,9 +1,6 @@
 extern i32 printf(*i8, ...);
 
-function test(): i32 {
-    if(true) {
-        return 0;
-    } else {
-        return 1;
-    }
+{
+    let x = [10];
+    let y = (x)[0];
 }
