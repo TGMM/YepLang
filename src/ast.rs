@@ -203,6 +203,13 @@ pub struct ValueVarType {
     /// 0 means the type is not a pointer
     pub pointer_nesting_level: u8,
 }
+impl ValueVarType {
+    pub fn is_void(&self) -> bool {
+        return self.array_dimensions.is_empty()
+            && self.pointer_nesting_level == 0
+            && self.vtype == VarType::Void;
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, EnumAsInner)]
 pub enum NumericLiteral<'input> {

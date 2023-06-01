@@ -282,7 +282,7 @@ pub fn codegen_native_fn(
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
 
     // Return check
-    if fn_signature.ret_type.is_some() {
+    if let Some(ref ret_type) = fn_signature.ret_type && !ret_type.is_void() {
         let has_return = fn_block
             .stmts
             .iter()
