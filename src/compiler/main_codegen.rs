@@ -82,7 +82,15 @@ pub fn codegen_nostd_panic_fn<'input, 'ctx>(
         .module
         // TODO: Get this name from another place so it's not duplicated
         .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+
+    let entry_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
+
+    // Entry block
+    compiler.builder.position_at_end(entry_fn_bb);
+    compiler.builder.build_unconditional_branch(panic_fn_bb);
+
+    // Panic block
     compiler.builder.position_at_end(panic_fn_bb);
 
     let donothing_fn_ty = compiler.context.void_type().fn_type(&[], false);
@@ -126,7 +134,7 @@ pub fn codegen_libc_panic_fn<'input, 'ctx>(
         .module
         // TODO: Get this name from another place so it's not duplicated
         .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
-    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
+    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     compiler.builder.position_at_end(panic_fn_bb);
 
     let exit_code =
@@ -163,9 +171,9 @@ pub fn codegen_top_block(
     compiler.basic_block_stack.push(entry_basic_block);
 
     let panic_fn = if yep_target.nostd {
-        codegen_libc_panic_fn(compiler)
-    } else {
         codegen_nostd_panic_fn(compiler)
+    } else {
+        codegen_libc_panic_fn(compiler)
     }?;
 
     // Codegen out of bounds error block

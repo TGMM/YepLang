@@ -1,3 +1,4 @@
 extern i32 printf(*i8, ...);
 
-printf("It works!\n" as *i8);
+let x = 10 + 5;
+printf("x is %d\n" as *i8, x);
