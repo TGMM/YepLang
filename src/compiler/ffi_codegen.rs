@@ -40,10 +40,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
     }
 
     // If this is true, function is void
-    let fn_type = if vvt_ret_type.array_dimensions.is_empty()
-        && vvt_ret_type.pointer_nesting_level == 0
-        && vvt_ret_type.vtype == VarType::Void
-    {
+    let fn_type = if vvt_ret_type.is_void() {
         compiler
             .context
             .void_type()

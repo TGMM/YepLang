@@ -31,7 +31,7 @@ pub fn codegen_if(
         block_type,
     )
     .map_err(|_| "Invalid expression for if condition")?;
-    if if_expr_type.array_dimensions.len() > 0
+    if !if_expr_type.array_dimensions.is_empty()
         || if_expr_type.pointer_nesting_level > 0
         || !matches!(if_expr_type.vtype, VarType::Boolean)
     {
@@ -69,7 +69,7 @@ pub fn codegen_if(
         compiler.builder.position_at_end(else_if_cond_bb);
         let (comp, comp_type) =
             codegen_rhs_expr(compiler, else_if.else_expr, None, block_type).unwrap();
-        if comp_type.array_dimensions.len() > 0
+        if !comp_type.array_dimensions.is_empty()
             || comp_type.pointer_nesting_level > 0
             || !matches!(comp_type.vtype, VarType::Boolean)
         {
