@@ -93,12 +93,10 @@ pub fn codegen_nostd_panic_fn<'input, 'ctx>(
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
     let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
     // TODO: Get this name from another place so it's not duplicated
-    let panic_fn = add_function_to_module(
-        compiler,
-        "__yep_panic_handler",
-        panic_fn_ty,
-        Some(Linkage::External),
-    )?;
+    let panic_fn =
+        compiler
+            .module
+            .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
 
     let entry_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
@@ -189,12 +187,10 @@ pub fn codegen_libc_panic_fn<'input, 'ctx>(
     // TODO: This function should only be declared once on another module
     let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
     // TODO: Get this name from another place so it's not duplicated
-    let panic_fn = add_function_to_module(
-        compiler,
-        "__yep_panic_handler",
-        panic_fn_ty,
-        Some(Linkage::External),
-    )?;
+    let panic_fn =
+        compiler
+            .module
+            .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
 
     let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
     compiler.builder.position_at_end(panic_fn_bb);
