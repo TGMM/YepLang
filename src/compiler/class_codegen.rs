@@ -4,8 +4,8 @@ use super::{
 };
 use crate::{
     ast::{
-        Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, Return, ValueVarType,
-        VarType,
+        Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, Return, Stmt,
+        ValueVarType, VarType,
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
@@ -280,6 +280,20 @@ pub fn codegen_native_fn(
         .ptr_val;
 
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
+
+    // Return check
+    if fn_signature.ret_type.is_some() {
+        let has_return = fn_block
+            .stmts
+            .iter()
+            .find(|stmt| matches!(stmt, Stmt::Return(_)))
+            .is_some();
+
+        if !has_return {
+            let err = "Non-void functions must have at least 1 top-level (as in, not nested) return statement.";
+            return Err(err.to_string());
+        }
+    }
 
     let basic_block_name = format!("{}_bb", fn_name);
     let fn_basic_block = compiler.context.append_basic_block(fun, &basic_block_name);
