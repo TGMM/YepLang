@@ -128,7 +128,14 @@ pub fn add_function_to_module<'input, 'ctx>(
     fn_name: &str,
     fn_type: FunctionType<'ctx>,
     linkage: Option<Linkage>,
-) -> Result<FunctionValue<'ctx>, String> {
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    if fn_name.starts_with("__yep_") {
+        return Err(format!(
+            "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
+            "__yep_"
+        ));
+    }
+
     let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
         let line_one = format!(
             "The function declaration of '{}' does not correspond with a previous existing one.",
@@ -349,6 +356,12 @@ fn codegen_var_decl<'input, 'ctx>(
 
         // Global variable
         if matches!(block_type, BlockType::GLOBAL) {
+            if id.0.starts_with("__yep_") {
+                return Err(format!(
+                    "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
+                    "__yep_"
+                ));
+            }
             let new_global = compiler.module.add_global(type_, None, &id.0);
 
             if let Some(initial_val) = initial_val {

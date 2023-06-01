@@ -12,7 +12,7 @@ use inkwell::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, IntValue,
         PointerValue,
     },
-    AddressSpace, FloatPredicate, IntPredicate,
+    FloatPredicate, IntPredicate,
 };
 use std::collections::VecDeque;
 

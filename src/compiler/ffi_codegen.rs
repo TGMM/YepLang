@@ -3,7 +3,7 @@ use super::{
     main_codegen::{add_function_to_module, convert_to_type_enum, declare_scoped_val},
 };
 use crate::{
-    ast::{ExternDecl, ExternType, VarType},
+    ast::{ExternDecl, ExternType},
     compiler::helpers::ScopedFunc,
 };
 use inkwell::{module::Linkage, types::BasicType};

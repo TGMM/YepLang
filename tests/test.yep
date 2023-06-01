@@ -1,5 +1,7 @@
 extern i32 printf(*i8, ...);
 
+let __yep_x = 10;
+
 {
     let x = [10];
     x[1] = 20;
