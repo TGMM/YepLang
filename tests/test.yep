@@ -1,6 +1,26 @@
 extern i32 printf(*i8, ...);
 
 {
-    let x = [10];
-    x[1] = 20;
+    let a: u32[3][3] = [ [1,2,3], [1,2,3], [1,2,3] ];
+    let b: u32[3][5] = [ [1,2,3,4,5], [1,2,3,4,5], [1,2,3,4,5] ];
+    let c: u32[3][5]; 
+    let n = 3;
+
+
+    for (let i: u32 = 0; i < n; i+= 1) {
+        for (let j: u32 = 0; j < n; j+= 1) {
+            c[i][j] = 0;
+            for (let k: u32 = 0; k < n; k+= 1) {
+                c[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
+
+    printf("The product of the two matrices is: \n" as *i8);
+    for (let i: u32 = 0; i < n; i+= 1) {
+        for (let j: u32 = 0; j < n; j+= 1) {
+            printf("%d\t" as *i8, c[i][j]);
+        }
+        printf("\n" as *i8);
+    }
 }

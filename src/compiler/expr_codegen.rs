@@ -151,8 +151,8 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
             compiler,
             *bexpr,
             ExpectedExprType {
-                expected_lhs_type: None,
-                expected_rhs_type: None,
+                expected_lhs_type: expected_type,
+                expected_rhs_type: expected_type,
                 expected_ret_type: expected_type,
             },
             block_type,
@@ -432,9 +432,12 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
 ) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
-    if let Some(et) = expected_type {
-        if et != &idxd_type {
-            return Err("Assigning array of one type to array of another".to_string());
+    if let Some(exp_ty) = expected_type {
+        if exp_ty.vtype != idxd_type.vtype {
+            return Err(format!(
+                "Assigning array of type {} to array of type {}",
+                idxd_type, exp_ty
+            ));
         }
     }
 
@@ -481,8 +484,11 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(exp_ty) = expected_type {
-        if exp_ty != &idxd_type {
-            return Err("Assigning array of one type to array of another".to_string());
+        if exp_ty.vtype != idxd_type.vtype {
+            return Err(format!(
+                "Assigning array of type {} to array of type {}",
+                idxd_type, exp_ty
+            ));
         }
     }
 

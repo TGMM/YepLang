@@ -30,7 +30,7 @@ pub fn codegen_if(
         }),
         block_type,
     )
-    .map_err(|_| "Invalid expression for if condition")?;
+    .map_err(|err| format!("Invalid expression for if condition: {}", err))?;
     if !if_expr_type.array_dimensions.is_empty()
         || if_expr_type.pointer_nesting_level > 0
         || !matches!(if_expr_type.vtype, VarType::Boolean)

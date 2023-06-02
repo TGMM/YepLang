@@ -22,7 +22,7 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
 };
 use rustc_hash::FxHashMap;
-use std::path::Path;
+use std::{collections::VecDeque, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 
@@ -427,12 +427,11 @@ pub fn codegen_assignment(
             bexpr,
             ExpectedExprType {
                 expected_lhs_type: Some(&expected_type),
-                expected_rhs_type: None,
+                expected_rhs_type: Some(&expected_type),
                 expected_ret_type: Some(&expected_type),
             },
             block_type,
-        )
-        .unwrap();
+        )?;
 
         if expected_type != bop_type {
             return Err(format!(
@@ -443,8 +442,19 @@ pub fn codegen_assignment(
 
         bop_val
     } else {
-        let (new_val, new_val_type) =
-            codegen_rhs_expr(compiler, assignment.assigned_expr, None, block_type).unwrap();
+        let core_type = ValueVarType {
+            vtype: expected_type.vtype.clone(),
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        };
+
+        let (new_val, new_val_type) = codegen_rhs_expr(
+            compiler,
+            assignment.assigned_expr,
+            Some(&core_type),
+            block_type,
+        )
+        .unwrap();
 
         if expected_type != new_val_type {
             return Err(format!(
