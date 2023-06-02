@@ -1,6 +1,6 @@
 extern i32 printf(*i8, ...);
 
-function bubbleSort(array: i32[5], size: i32) {
+function bubbleSort(array: i32[5], size: i32): i32[5] {
   for (let step: u32 = 0; step < size - 1; step += 1) {
     for (let i: u32 = 0; i < size - step - 1; i += 1) {
       
@@ -12,4 +12,23 @@ function bubbleSort(array: i32[5], size: i32) {
       }
     }
   }
+
+  return array;
+}
+
+function printArray(array: i32[5], size: i32) {
+  for (let i: u32 = 0; i < size; i += 1) {
+    printf("%d  " as *i8, array[i] );
+  }
+  printf("\n" as *i8);
+}
+
+{
+    let data: i32[5] = [2, 45, 0, 11, 9];
+    let size = 5;
+
+    data = bubbleSort(data, size);
+
+    printf("Sorted Array in Ascending Order:\n" as *i8);
+    printArray(data, size);
 }

@@ -15,7 +15,7 @@ pub fn codegen_if(
 ) -> Result<(), String> {
     block_type.insert(BlockType::IF);
 
-    let parent_block = compiler.builder.get_insert_block().unwrap();
+    let mut parent_block = compiler.builder.get_insert_block().unwrap();
     let parent_func = parent_block.get_parent().unwrap();
 
     let then_block = compiler.context.append_basic_block(parent_func, "then");
@@ -39,6 +39,8 @@ pub fn codegen_if(
     {
         return Err("Conditional expression must be of boolean type".to_string());
     }
+    // Re-get block after condition in case of any bounds-check
+    parent_block = compiler.builder.get_insert_block().unwrap();
 
     // Then
     compiler.builder.position_at_end(then_block);
@@ -98,7 +100,9 @@ pub fn codegen_if(
     }
     compiler.builder.build_unconditional_branch(merge_block);
 
+    // Reposition
     compiler.builder.position_at_end(parent_block);
+
     // If
     compiler
         .builder
