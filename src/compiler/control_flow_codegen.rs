@@ -1,3 +1,5 @@
+use rustc_hash::FxHashMap;
+
 use super::{
     expr_codegen::codegen_rhs_expr,
     helpers::{BlockType, Compiler},
@@ -221,7 +223,8 @@ pub fn codegen_for(
     for_: For,
     mut block_type: BlockType,
 ) -> Result<(), String> {
-    block_type.insert(BlockType::WHILE);
+    block_type.insert(BlockType::FOR);
+    compiler.var_scopes.push(FxHashMap::default());
 
     let parent_block = compiler
         .builder
@@ -294,6 +297,5 @@ pub fn codegen_for(
 
     // Cont
     compiler.builder.position_at_end(merge_block);
-
     Ok(())
 }

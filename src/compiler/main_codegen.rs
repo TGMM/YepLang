@@ -12,6 +12,7 @@ use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
     parser::main_parser::parse,
 };
+use chumsky::container::Seq;
 use inkwell::{
     context::Context,
     module::Linkage,
@@ -242,7 +243,7 @@ pub fn codegen_block(
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
     // When we enter a block, we push a new variable scope
-    if !(block_type == BlockType::FUNC) {
+    if block_type != BlockType::FUNC || block_type.contains(BlockType::FOR) {
         compiler.var_scopes.push(FxHashMap::default());
     }
 
