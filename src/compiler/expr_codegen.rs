@@ -433,7 +433,7 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(exp_ty) = expected_type {
-        if exp_ty.vtype != idxd_type.vtype {
+        if !exp_ty.array_dimensions.is_empty() && exp_ty.vtype != idxd_type.vtype {
             return Err(format!(
                 "Assigning array of type {} to array of type {}",
                 idxd_type, exp_ty
@@ -484,7 +484,7 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(exp_ty) = expected_type {
-        if exp_ty.vtype != idxd_type.vtype {
+        if !exp_ty.array_dimensions.is_empty() && exp_ty.vtype != idxd_type.vtype {
             return Err(format!(
                 "Assigning array of type {} to array of type {}",
                 idxd_type, exp_ty

@@ -41,6 +41,10 @@ pub fn convert_to_type_enum<'input, 'ctx>(
         VarType::F32 => Ok(ctx.f32_type().as_basic_type_enum()),
         VarType::F64 => Ok(ctx.f64_type().as_basic_type_enum()),
         VarType::Boolean => Ok(ctx.bool_type().as_basic_type_enum()),
+        VarType::String => Ok(ctx
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .as_basic_type_enum()),
         other => Err(format!("{} is not a valid basic value", other)),
     };
 

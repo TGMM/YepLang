@@ -236,17 +236,17 @@ pub fn codegen_arr_val<'input, 'ctx>(
         let expected_dim = *et
             .array_dimensions
             .get(0)
-            .ok_or(format!("Expected {}, got array insted", et))?;
+            .ok_or(format!("Expected {}, got array instead", et))?;
 
         if expected_dim != exprs_len {
             return Err(format!(
-                "Array declared with {} elements, but assigned value only has {} elements",
+                "Array declared with {} elements, but assigned value has {} elements",
                 expected_dim, exprs_len
             ));
         }
     }
 
-    let mut element_type = expected_type.map(|et| {
+    let mut expected_element_type = expected_type.map(|et| {
         // Same type but of individual element
         let mut element_type = et.clone();
         element_type.array_dimensions.pop_front();
@@ -257,13 +257,24 @@ pub fn codegen_arr_val<'input, 'ctx>(
     let mut vals = vec![];
     for expr in exprs {
         let (val, ty_) =
-            codegen_rhs_expr(compiler, expr, element_type.as_ref(), block_type).unwrap();
-        element_type.get_or_insert(ty_);
+            codegen_rhs_expr(compiler, expr, expected_element_type.as_ref(), block_type).unwrap();
+
+        if let Some(ref eet) = expected_element_type {
+            if eet != &ty_ {
+                return Err(format!(
+                    "Found element of type {} in declaration of array with elements of type {}",
+                    ty_, eet
+                ));
+            }
+        }
+
+        expected_element_type.get_or_insert(ty_);
+
         vals.push(val);
     }
 
     // By this point we should have a type
-    let mut resulting_type = element_type.unwrap();
+    let mut resulting_type = expected_element_type.unwrap();
     let element_b_type = convert_to_type_enum(compiler, &resulting_type)?;
     let array_val: ArrayValue = match element_b_type {
         BasicTypeEnum::ArrayType(at) => {
