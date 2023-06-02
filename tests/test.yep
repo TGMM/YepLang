@@ -6,27 +6,10 @@ function bubbleSort(array: i32[5], size: i32) {
       
       if (array[i] > array[i + 1]) {
         
-        let temp: u32 = array[i];
+        let temp = array[i];
         array[i] = array[i + 1];
         array[i + 1] = temp;
       }
     }
   }
-}
-
-function printArray(array: i32[5], size: i32) {
-  for (let i: u32 = 0; i < size; i += 1) {
-    printf("%d  " as *i8, array[i] );
-  }
-  printf("\n" as *i8);
-}
-
-{
-    let data: i32[5] = [2, 45, 0, 11, 9];
-    let size = 5;
-
-    bubbleSort(data, size);
-
-    printf("Sorted Array in Ascending Order:\n" as *i8);
-    printArray(data, size);
 }

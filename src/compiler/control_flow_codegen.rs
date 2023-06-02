@@ -272,7 +272,7 @@ pub fn codegen_for(
     // Cond
     compiler.builder.position_at_end(comp_block);
     let cond_expr = if let Some(cmp_expr) = for_.cmp_expr {
-        codegen_rhs_expr(
+        let (val, ty) = codegen_rhs_expr(
             compiler,
             cmp_expr,
             Some(&ValueVarType {
@@ -282,9 +282,19 @@ pub fn codegen_for(
             }),
             block_type,
         )
-        .expect("Invalid condtition expression in for loop")
-        .0
-        .into_int_value()
+        .map_err(|err| format!("Invalid condition expression in for loop: {}", err))?;
+
+        if ty
+            != (ValueVarType {
+                vtype: VarType::Boolean,
+                array_dimensions: VecDeque::new(),
+                pointer_nesting_level: 0,
+            })
+        {
+            return Err("Condition expression in for loop must be a boolean".to_string());
+        }
+
+        val.into_int_value()
     } else {
         // Default value is true
         compiler.context.bool_type().const_int(1, false)
@@ -297,5 +307,6 @@ pub fn codegen_for(
 
     // Cont
     compiler.builder.position_at_end(merge_block);
+
     Ok(())
 }

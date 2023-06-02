@@ -748,14 +748,5 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
     };
 
-    if let Some(expected_ret_type) = expected_ret_type {
-        if expected_ret_type != &cmp_expr_type {
-            return Err(format!(
-                "Expected {} as result of the expression, found {}",
-                &expected_ret_type, &cmp_expr_type
-            ));
-        }
-    }
-
     Ok((basic_val, cmp_expr_type))
 }

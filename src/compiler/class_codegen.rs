@@ -354,7 +354,9 @@ pub fn codegen_native_fn(
     // Building the return
     // Every block must end with a br statement, so we jump to the return block
     // If the previous instruction is an unconditional branch, then we don't build another
-    if let Some(instr) = prev_bb.get_last_instruction() && instr.get_opcode() != InstructionOpcode::Br {
+    if let Some(instr) = prev_bb.get_last_instruction() 
+        && instr.get_opcode() == InstructionOpcode::Br 
+    {} else {
         compiler.builder.build_unconditional_branch(ret_basic_block);
     }
 
