@@ -39,9 +39,12 @@ mod test {
     use std::collections::VecDeque;
 
     use crate::{
-        ast::{BOpType, ExternDecl, ExternType, ValueVarType, VarType},
+        ast::{BOp, ExternDecl, ExternType, ValueVarType, VarType},
         lexer::Token,
-        parser::{ffi_parser::extern_decl_parser, helpers::test::stream_token_vec},
+        parser::{
+            ffi_parser::extern_decl_parser,
+            helpers::test::{stream_token_vec, IntoSpanned},
+        },
     };
     use chumsky::Parser;
 
@@ -53,7 +56,7 @@ mod test {
             Token::VarType(VarType::I32),
             Token::Id("printf".into()),
             Token::LParen,
-            Token::BOp(BOpType::Mul.into()),
+            Token::BOp(BOp::Mul.into_spanned()),
             Token::VarType(VarType::U8),
             Token::Comma,
             Token::Spread,

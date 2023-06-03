@@ -2,8 +2,14 @@ use chumsky::span::SimpleSpan;
 
 use crate::ast::{
     Assignment, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id, If,
-    NumericUnaryOp, Return, Stmt, TopBlock, UnaryOp, VarDecl, While,
+    NumericUnaryOp, Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpannedAstNode<T, SpanType = SimpleSpan> {
+    pub node: T,
+    pub span: SpanType,
+}
 
 pub trait GetSpan {
     fn get_span(&self) -> SimpleSpan;
@@ -53,22 +59,43 @@ impl GetSpan for Stmt<'_> {
 
 impl GetSpan for Assignment<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.assignee_expr.get_span().start;
+        let end = self.assigned_expr.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
 impl GetSpan for Expr<'_> {
     fn get_span(&self) -> SimpleSpan {
         match self {
-            Expr::ParenExpr(_, _) => todo!(),
+            Expr::ParenExpr(uop, expr) => {
+                let expr_span = expr.get_span();
+
+                let start = uop
+                    .as_ref()
+                    .map(|op| op.get_span().start)
+                    .unwrap_or(expr_span.start);
+                let end = expr_span.end;
+
+                SimpleSpan::new(start, end)
+            }
             Expr::BinaryExpr(_) => todo!(),
             Expr::PrimitiveVal(_) => todo!(),
             Expr::FnCall(_) => todo!(),
             Expr::Indexing(_) => todo!(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(id) => id.get_span(),
-            Expr::Cast(_) => todo!(),
+            Expr::Cast(cast) => {
+                todo!()
+            }
         }
+    }
+}
+
+impl GetSpan for ValueVarType {
+    fn get_span(&self) -> SimpleSpan {
+        todo!()
     }
 }
 
@@ -81,13 +108,13 @@ impl GetSpan for UnaryOp {
     }
 }
 
-impl GetSpan for NumericUnaryOp {
+impl GetSpan for SpannedAstNode<NumericUnaryOp> {
     fn get_span(&self) -> SimpleSpan {
         self.span
     }
 }
 
-impl GetSpan for BoolUnaryOp {
+impl GetSpan for SpannedAstNode<BoolUnaryOp> {
     fn get_span(&self) -> SimpleSpan {
         self.span
     }

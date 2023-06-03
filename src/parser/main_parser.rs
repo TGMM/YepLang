@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Assignment, BOpType, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
+        Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
         TopBlock, VarDecl, VarDeclAssignment,
     },
     lexer::Token,
@@ -150,8 +150,8 @@ pub fn assignment_parser<'i: 'static>(
 
     // Main definition
     let non_cmp_op = bop_parser().filter(|bop| {
-        use BOpType::*;
-        matches!(bop.bop_type, Add | Sub | Mul | Div | Mod | Pow)
+        use BOp::*;
+        matches!(bop.node, Add | Sub | Mul | Div | Mod | Pow)
     });
     let assignment = assignment_expr_parser()
         .filter(|e| matches!(e, Expr::Id(_) | Expr::Indexing(_) | Expr::MemberAccess(_)))
@@ -299,13 +299,13 @@ mod test {
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOpType, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
+            Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
             PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock, VarDecl,
             VarDeclAssignment,
         },
         lexer::Token,
         parser::{
-            helpers::test::stream_token_vec,
+            helpers::test::{stream_token_vec, IntoSpanned},
             main_parser::{
                 assignment_parser, block_parser, destructure_parser, for_stmt_parser,
                 stmt_end_parser, top_block_parser, var_decl_parser,
@@ -457,7 +457,7 @@ mod test {
             Token::IntVal("10"),
             Token::StmtEnd,
             Token::Id("y".into()),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("10"),
             Token::StmtEnd,
         ]);
@@ -478,7 +478,7 @@ mod test {
                     }),
                     Stmt::Expr(Expr::BinaryExpr(Box::new(BExpr {
                         lhs: Expr::Id("y".into()),
-                        op: BOpType::Add.into(),
+                        op: BOp::Add.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -566,7 +566,7 @@ mod test {
     fn for_stmt_expr_parser_test() {
         let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("10"),
         ]);
 
@@ -579,7 +579,7 @@ mod test {
             Stmt::Expr(Expr::BinaryExpr(
                 BExpr {
                     lhs: Expr::Id("x".into()),
-                    op: BOpType::Add.into(),
+                    op: BOp::Add.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
                 }
                 .into()

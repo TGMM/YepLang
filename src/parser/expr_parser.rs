@@ -1,16 +1,18 @@
+use super::keyword_parser::tag;
 use super::main_parser::{ParserError, ParserInput};
 use super::primitive_parser::{
     bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
 };
 use crate::ast::{
-    BOpType, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp,
-    NumericUnaryOpType, ValueVarType,
+    BOp, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
 };
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
+use crate::spanned_ast::SpannedAstNode;
 use crate::{ast::Expr, recursive_parser};
 use chumsky::primitive::just;
 use chumsky::recursive::Recursive;
+use chumsky::span::SimpleSpan;
 use chumsky::{select, IterParser, Parser};
 use std::sync::{Arc, LazyLock, RwLock};
 
@@ -32,19 +34,20 @@ recursive_parser!(
 );
 
 pub fn numeric_unary_op_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, NumericUnaryOp, ParserError<'i, Token<'i>>> + Clone {
-    use BOpType::*;
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<NumericUnaryOp>, ParserError<'i, Token<'i>>> + Clone
+{
+    use BOp::*;
 
     let plus = bop_parser()
-        .filter(|b| matches!(b.bop_type, Add))
-        .map(|b| NumericUnaryOp {
-            op_type: NumericUnaryOpType::Plus,
+        .filter(|b| matches!(b.node, Add))
+        .map(|b| SpannedAstNode {
+            node: NumericUnaryOp::Plus,
             span: b.span,
         });
     let minus = bop_parser()
-        .filter(|b| matches!(b.bop_type, Sub))
-        .map(|b| NumericUnaryOp {
-            op_type: NumericUnaryOpType::Minus,
+        .filter(|b| matches!(b.node, Sub))
+        .map(|b| SpannedAstNode {
+            node: NumericUnaryOp::Minus,
             span: b.span,
         });
 
@@ -52,7 +55,8 @@ pub fn numeric_unary_op_parser<'i>(
 }
 
 pub fn boolean_unary_op_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, BoolUnaryOp, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<BoolUnaryOp>, ParserError<'i, Token<'i>>> + Clone
+{
     select! { Token::BoolUnaryOp(buop) => buop }
 }
 
@@ -106,8 +110,9 @@ pub fn member_access_prop_parser<'i>(
 }
 
 pub fn as_casting_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
-    just(Token::As).ignore_then(value_var_type_parser())
+) -> impl Parser<'i, ParserInput<'i>, (SimpleSpan, ValueVarType), ParserError<'i, Token<'i>>> + Clone
+{
+    tag(Token::As).then(value_var_type_parser())
 }
 
 enum PExprSuffix<'i> {
@@ -156,8 +161,9 @@ recursive_parser!(
         });
 
         let cast_suffix = as_casting_parser().repeated();
-        let casted_pexpr = suffixed_pexpr.foldl(cast_suffix, |pexpr, cast_type| Expr::Cast(Box::new(Casting {
+        let casted_pexpr = suffixed_pexpr.foldl(cast_suffix, |pexpr, (as_kw, cast_type)| Expr::Cast(Box::new(Casting {
             casted: pexpr,
+            as_kw,
             cast_type
         })));
 
@@ -236,13 +242,13 @@ recursive_parser!(
 mod test {
     use crate::{
         ast::{
-            BExpr, BOpType, BoolLiteral, BoolUnaryOpType, Expr, FnCall, Indexing, MemberAcess,
-            NumericLiteral, NumericUnaryOpType, PrimitiveVal,
+            BExpr, BOp, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess,
+            NumericLiteral, NumericUnaryOp, PrimitiveVal,
         },
         lexer::Token,
         parser::{
             expr_parser::{expr_parser, primary_expr_parser},
-            helpers::test::stream_token_vec,
+            helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
     use chumsky::Parser;
@@ -276,7 +282,7 @@ mod test {
     fn expr_addition_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("5"),
         ]);
 
@@ -288,7 +294,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOpType::Add.into(),
+                op: BOp::Add.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -298,7 +304,7 @@ mod test {
     fn expr_subtraction_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Sub.into()),
+            Token::BOp(BOp::Sub.into_spanned()),
             Token::IntVal("5"),
         ]);
 
@@ -310,7 +316,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOpType::Sub.into(),
+                op: BOp::Sub.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -320,7 +326,7 @@ mod test {
     fn expr_multiplication_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Mul.into()),
+            Token::BOp(BOp::Mul.into_spanned()),
             Token::IntVal("5"),
         ]);
 
@@ -332,7 +338,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOpType::Mul.into(),
+                op: BOp::Mul.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -342,7 +348,7 @@ mod test {
     fn expr_division_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Div.into()),
+            Token::BOp(BOp::Div.into_spanned()),
             Token::IntVal("5"),
         ]);
 
@@ -354,7 +360,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOpType::Div.into(),
+                op: BOp::Div.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -364,9 +370,9 @@ mod test {
     fn expr_lbp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("5"),
-            Token::BOp(BOpType::Mul.into()),
+            Token::BOp(BOp::Mul.into_spanned()),
             Token::IntVal("15"),
         ]);
 
@@ -378,10 +384,10 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOpType::Add.into(),
+                op: BOp::Add.into_spanned(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5"))),
-                    op: BOpType::Mul.into(),
+                    op: BOp::Mul.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15")))
                 }))
             }))
@@ -392,9 +398,9 @@ mod test {
     fn expr_rbp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Mul.into()),
+            Token::BOp(BOp::Mul.into_spanned()),
             Token::IntVal("5"),
-            Token::BOp(BOpType::Sub.into()),
+            Token::BOp(BOp::Sub.into_spanned()),
             Token::IntVal("15"),
         ]);
 
@@ -407,10 +413,10 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOpType::Mul.into(),
+                    op: BOp::Mul.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
-                op: BOpType::Sub.into(),
+                op: BOp::Sub.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
             }))
         )
@@ -420,11 +426,11 @@ mod test {
     fn expr_cmp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("5"),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("5"),
         ]);
 
@@ -437,13 +443,13 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOpType::Add.into(),
+                    op: BOp::Add.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
-                op: BOpType::Gt.into(),
+                op: BOp::Gt.into_spanned(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOpType::Add.into(),
+                    op: BOp::Add.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
             }))
@@ -533,7 +539,7 @@ mod test {
     #[test]
     fn expr_bool_unary_test() {
         let tokens = stream_token_vec(vec![
-            Token::BoolUnaryOp(BoolUnaryOpType::Not.into()),
+            Token::BoolUnaryOp(BoolUnaryOp::Not.into_spanned()),
             Token::BoolVal("true"),
         ]);
 
@@ -544,7 +550,7 @@ mod test {
         assert_eq!(
             expr,
             Expr::PrimitiveVal(PrimitiveVal::Boolean(
-                Some(BoolUnaryOpType::Not.into()),
+                Some(BoolUnaryOp::Not.into_spanned()),
                 BoolLiteral(true)
             ))
         )
@@ -554,13 +560,13 @@ mod test {
     fn expr_paren_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::LParen,
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("10"),
-            Token::BOp(BOpType::Add.into()),
-            Token::BOp(BOpType::Sub.into()),
+            Token::BOp(BOp::Add.into_spanned()),
+            Token::BOp(BOp::Sub.into_spanned()),
             Token::IntVal("5"),
             Token::RParen,
-            Token::BOp(BOpType::Mul.into()),
+            Token::BOp(BOp::Mul.into_spanned()),
             Token::IntVal("15"),
         ]);
 
@@ -573,16 +579,16 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOpType::Plus.into()),
+                        Some(NumericUnaryOp::Plus.into_spanned()),
                         NumericLiteral::Int("10")
                     )),
-                    op: BOpType::Add.into(),
+                    op: BOp::Add.into_spanned(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOpType::Minus.into()),
+                        Some(NumericUnaryOp::Minus.into_spanned()),
                         NumericLiteral::Int("5")
                     ))
                 })),
-                op: BOpType::Mul.into(),
+                op: BOp::Mul.into_spanned(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
             }))
         )

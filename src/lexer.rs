@@ -1,7 +1,8 @@
 use crate::ast::{
-    str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp, Id,
+    str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BOp, BoolUnaryOp, Id,
 };
-use crate::ast::{BOp, ScopeSpecifier, VarType};
+use crate::ast::{ScopeSpecifier, VarType};
+use crate::spanned_ast::SpannedAstNode;
 use logos::{Lexer, Logos};
 
 pub fn set_decorator_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) {
@@ -114,7 +115,7 @@ pub enum Token<'input> {
     #[token("let", str_to_scope_spec)]
     ScopeSpecifier(ScopeSpecifier),
     #[token("!", str_to_bool_uop)]
-    BoolUnaryOp(BoolUnaryOp),
+    BoolUnaryOp(SpannedAstNode<BoolUnaryOp>),
     #[token("+", str_to_bop)]
     #[token("-", str_to_bop)]
     #[token("*", str_to_bop)]
@@ -128,7 +129,7 @@ pub enum Token<'input> {
     #[token("==", str_to_bop)]
     #[token("&&", str_to_bop)]
     #[token("||", str_to_bop)]
-    BOp(BOp),
+    BOp(SpannedAstNode<BOp>),
     #[token("=")]
     AssignmentEq,
     #[token(";")]
@@ -190,8 +191,9 @@ pub enum Token<'input> {
 mod test {
     use super::Token;
     use crate::{
-        ast::{BOp, BOpType, BoolUnaryOp, BoolUnaryOpType, Id},
+        ast::{BOp, BoolUnaryOp, Id},
         lexer::{ScopeSpecifier, VarType},
+        spanned_ast::SpannedAstNode,
     };
     use chumsky::span::SimpleSpan;
     use logos::Logos;
@@ -248,16 +250,16 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        use BOpType::*;
+        use BOp::*;
         assert_eq!(
             &tokens,
             &[
-                Ok(BOp(BOp {
-                    bop_type: Add,
+                Ok(BOp(SpannedAstNode {
+                    node: Add,
                     span: SimpleSpan::new(0, 1)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Sub,
+                Ok(BOp(SpannedAstNode {
+                    node: Sub,
                     span: SimpleSpan::new(2, 3)
                 })),
             ]
@@ -270,20 +272,20 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        use BOpType::*;
+        use BOp::*;
         assert_eq!(
             &tokens,
             &[
-                Ok(BOp(BOp {
-                    bop_type: Mul,
+                Ok(BOp(SpannedAstNode {
+                    node: Mul,
                     span: SimpleSpan::new(0, 1)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Div,
+                Ok(BOp(SpannedAstNode {
+                    node: Div,
                     span: SimpleSpan::new(2, 3)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Mod,
+                Ok(BOp(SpannedAstNode {
+                    node: Mod,
                     span: SimpleSpan::new(4, 5)
                 })),
             ]
@@ -296,32 +298,32 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        use BOpType::*;
+        use BOp::*;
         assert_eq!(
             &tokens,
             &[
-                Ok(BOp(BOp {
-                    bop_type: Gt,
+                Ok(BOp(SpannedAstNode {
+                    node: Gt,
                     span: SimpleSpan::new(0, 1)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Gte,
+                Ok(BOp(SpannedAstNode {
+                    node: Gte,
                     span: SimpleSpan::new(2, 4)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Lt,
+                Ok(BOp(SpannedAstNode {
+                    node: Lt,
                     span: SimpleSpan::new(5, 6)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Lte,
+                Ok(BOp(SpannedAstNode {
+                    node: Lte,
                     span: SimpleSpan::new(7, 9)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: Ne,
+                Ok(BOp(SpannedAstNode {
+                    node: Ne,
                     span: SimpleSpan::new(10, 12)
                 })),
-                Ok(BOp(BOp {
-                    bop_type: CmpEq,
+                Ok(BOp(SpannedAstNode {
+                    node: CmpEq,
                     span: SimpleSpan::new(13, 15)
                 })),
             ]
@@ -336,8 +338,8 @@ mod test {
 
         assert_eq!(
             &tokens,
-            &[Ok(BoolUnaryOp(BoolUnaryOp {
-                op_type: BoolUnaryOpType::Not,
+            &[Ok(BoolUnaryOp(SpannedAstNode {
+                node: BoolUnaryOp::Not,
                 span: SimpleSpan::new(0, 1)
             })),]
         );

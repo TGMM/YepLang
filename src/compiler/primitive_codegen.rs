@@ -3,9 +3,12 @@ use super::{
     helpers::{create_default_type, BlockType, Compiler, CompilerError},
     main_codegen::convert_to_type_enum,
 };
-use crate::ast::{
-    ArrayVal, BoolLiteral, BoolUnaryOp, BoolUnaryOpType, NumericLiteral, NumericUnaryOp,
-    NumericUnaryOpType, PrimitiveVal, ValueVarType, VarType,
+use crate::{
+    ast::{
+        ArrayVal, BoolLiteral, BoolUnaryOp, NumericLiteral, NumericUnaryOp, PrimitiveVal,
+        ValueVarType, VarType,
+    },
+    spanned_ast::SpannedAstNode,
 };
 use inkwell::{
     types::{BasicTypeEnum, FloatType, IntType},
@@ -16,7 +19,7 @@ use std::{collections::VecDeque, mem::transmute};
 pub fn codegen_int_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     int_str: &str,
-    uop: Option<NumericUnaryOp>,
+    uop: Option<SpannedAstNode<NumericUnaryOp>>,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (mut int_val, int_type, var_type): (u64, IntType, ValueVarType) = match expected_type {
@@ -122,8 +125,8 @@ pub fn codegen_int_val<'input, 'ctx>(
     let unsigned = !var_type.vtype.is_signed();
     if matches!(
         uop,
-        Some(NumericUnaryOp {
-            op_type: NumericUnaryOpType::Minus,
+        Some(SpannedAstNode {
+            node: NumericUnaryOp::Minus,
             span: _
         })
     ) {
@@ -143,7 +146,7 @@ pub fn codegen_int_val<'input, 'ctx>(
 pub fn codegen_float_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     float_str: &str,
-    uop: Option<NumericUnaryOp>,
+    uop: Option<SpannedAstNode<NumericUnaryOp>>,
     expected_type: Option<&ValueVarType>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let (mut double_val, float_type, var_type): (f64, FloatType, ValueVarType) = match expected_type
@@ -182,11 +185,11 @@ pub fn codegen_float_val<'input, 'ctx>(
     };
 
     if let Some(uop) = uop {
-        match uop.op_type {
-            NumericUnaryOpType::Minus => {
+        match uop.node {
+            NumericUnaryOp::Minus => {
                 double_val = -double_val;
             }
-            NumericUnaryOpType::Plus => {}
+            NumericUnaryOp::Plus => {}
         }
     }
 
@@ -197,14 +200,14 @@ pub fn codegen_float_val<'input, 'ctx>(
 pub fn codegen_bool_val<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     bool_literal: BoolLiteral,
-    buop: Option<BoolUnaryOp>,
+    buop: Option<SpannedAstNode<BoolUnaryOp>>,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let bool_type = compiler.context.bool_type();
     let mut bool_val = bool_literal.0;
 
     if let Some(buop) = buop {
-        match buop.op_type {
-            BoolUnaryOpType::Not => {
+        match buop.node {
+            BoolUnaryOp::Not => {
                 bool_val = !bool_val;
             }
         }

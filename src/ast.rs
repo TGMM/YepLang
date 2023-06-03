@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::VecDeque, hash::Hash};
 
-use crate::lexer::Token;
+use crate::{lexer::Token, spanned_ast::SpannedAstNode};
 use chumsky::{
     pratt::{Associativity, InfixOperator, InfixPrecedence},
     span::SimpleSpan,
@@ -220,12 +220,7 @@ pub enum NumericLiteral<'input> {
     Float(&'input str),
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct NumericUnaryOp {
-    pub op_type: NumericUnaryOpType,
-    pub span: SimpleSpan,
-}
-#[derive(Debug, Clone, PartialEq)]
-pub enum NumericUnaryOpType {
+pub enum NumericUnaryOp {
     Plus,
     Minus,
 }
@@ -243,20 +238,15 @@ impl From<&str> for BoolLiteral {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BoolUnaryOpType {
+pub enum BoolUnaryOp {
     Not,
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BoolUnaryOp {
-    pub op_type: BoolUnaryOpType,
-    pub span: SimpleSpan,
-}
 
-pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> BoolUnaryOp {
+pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> SpannedAstNode<BoolUnaryOp> {
     let exp_op_str = lex.slice();
     match exp_op_str {
-        "!" => BoolUnaryOp {
-            op_type: BoolUnaryOpType::Not,
+        "!" => SpannedAstNode {
+            node: BoolUnaryOp::Not,
             span: lex.span().into(),
         },
         _ => unreachable!(),
@@ -265,14 +255,17 @@ pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> BoolUnaryO
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
-    Numeric(NumericUnaryOp),
-    Bool(BoolUnaryOp),
+    Numeric(SpannedAstNode<NumericUnaryOp>),
+    Bool(SpannedAstNode<BoolUnaryOp>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrimitiveVal<'input> {
-    Number(Option<NumericUnaryOp>, NumericLiteral<'input>),
-    Boolean(Option<BoolUnaryOp>, BoolLiteral),
+    Number(
+        Option<SpannedAstNode<NumericUnaryOp>>,
+        NumericLiteral<'input>,
+    ),
+    Boolean(Option<SpannedAstNode<BoolUnaryOp>>, BoolLiteral),
     Char(char),
     String(String),
     Array(ArrayVal<'input>),
@@ -423,13 +416,9 @@ pub struct VarDecl<'input> {
     pub scope_spec: ScopeSpecifier,
     pub decl_assignments: Vec<VarDeclAssignment<'input>>,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BOp {
-    pub bop_type: BOpType,
-    pub span: SimpleSpan,
-}
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BOpType {
+pub enum BOp {
     Add,
     Sub,
     Mul,
@@ -445,9 +434,9 @@ pub enum BOpType {
     And,
     Or,
 }
-impl BOpType {
+impl BOp {
     pub fn is_cmp(&self) -> bool {
-        use BOpType::*;
+        use BOp::*;
         match self {
             Gt | Gte | Lt | Lte | Ne | CmpEq => true,
             _ => false,
@@ -455,12 +444,12 @@ impl BOpType {
     }
 }
 
-impl<'input> InfixOperator<Expr<'input>> for BOp {
+impl<'input> InfixOperator<Expr<'input>> for SpannedAstNode<BOp> {
     type Strength = u8;
 
     fn precedence(&self) -> InfixPrecedence<Self::Strength> {
-        use BOpType::*;
-        match self.bop_type {
+        use BOp::*;
+        match self.node {
             Add | Sub => InfixPrecedence::new(5, Associativity::Left),
             Mul | Div | Mod => InfixPrecedence::new(7, Associativity::Left),
             Pow => InfixPrecedence::new(9, Associativity::Left),
@@ -474,9 +463,9 @@ impl<'input> InfixOperator<Expr<'input>> for BOp {
         Expr::BinaryExpr(Box::new(bexpr))
     }
 }
-impl From<&str> for BOpType {
+impl From<&str> for BOp {
     fn from(value: &str) -> Self {
-        use BOpType::*;
+        use BOp::*;
         match value {
             "+" => Add,
             "-" => Sub,
@@ -496,25 +485,25 @@ impl From<&str> for BOpType {
         }
     }
 }
-pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> BOp {
+pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> SpannedAstNode<BOp> {
     let op = lex.slice();
 
-    BOp {
-        bop_type: op.into(),
+    SpannedAstNode {
+        node: op.into(),
         span: lex.span().into(),
     }
 }
 
-impl From<BOp> for NumericUnaryOp {
-    fn from(bop: BOp) -> Self {
-        use BOpType::*;
-        match bop.bop_type {
-            Add => NumericUnaryOp {
-                op_type: NumericUnaryOpType::Plus,
+impl From<SpannedAstNode<BOp>> for SpannedAstNode<NumericUnaryOp> {
+    fn from(bop: SpannedAstNode<BOp>) -> Self {
+        use BOp::*;
+        match bop.node {
+            Add => SpannedAstNode {
+                node: NumericUnaryOp::Plus,
                 span: bop.span,
             },
-            Sub => NumericUnaryOp {
-                op_type: NumericUnaryOpType::Minus,
+            Sub => SpannedAstNode {
+                node: NumericUnaryOp::Minus,
                 span: bop.span,
             },
             _ => unreachable!(),
@@ -525,7 +514,7 @@ impl From<BOp> for NumericUnaryOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BExpr<'input> {
     pub lhs: Expr<'input>,
-    pub op: BOp,
+    pub op: SpannedAstNode<BOp>,
     pub rhs: Expr<'input>,
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -543,6 +532,7 @@ pub enum Expr<'input> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Casting<'a> {
     pub casted: Expr<'a>,
+    pub as_kw: SimpleSpan,
     pub cast_type: ValueVarType,
 }
 
@@ -651,7 +641,7 @@ pub struct FnSignature<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment<'a> {
     pub assignee_expr: Expr<'a>,
-    pub bop: Option<BOp>,
+    pub bop: Option<SpannedAstNode<BOp>>,
     pub assigned_expr: Expr<'a>,
 }
 

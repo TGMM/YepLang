@@ -1,11 +1,7 @@
 #![feature(lazy_cell)]
 #![feature(let_chains)]
 
-mod ast;
-mod ast_display;
-mod compiler;
-mod lexer;
-mod parser;
+use yep_lang::compiler;
 
 use compiler::{helpers::YepTarget, main_codegen::compile_yep};
 use std::{fs, path::Path};

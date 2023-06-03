@@ -31,10 +31,7 @@ macro_rules! recursive_parser {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::{
-        ast::{BOp, BOpType, BoolUnaryOp, BoolUnaryOpType, Id, NumericUnaryOp, NumericUnaryOpType},
-        lexer::Token,
-    };
+    use crate::{ast::Id, lexer::Token, spanned_ast::SpannedAstNode};
     use chumsky::{
         input::{SpannedInput, Stream},
         prelude::Input,
@@ -64,28 +61,14 @@ pub(crate) mod test {
         Stream::from_iter(tokens).spanned((length..length).into())
     }
 
-    impl From<BOpType> for BOp {
-        fn from(bop_type: BOpType) -> Self {
-            BOp {
-                bop_type,
-                span: SimpleSpan::new(0, 0),
-            }
-        }
+    pub trait IntoSpanned<T> {
+        fn into_spanned(self) -> SpannedAstNode<T>;
     }
 
-    impl From<NumericUnaryOpType> for NumericUnaryOp {
-        fn from(op_type: NumericUnaryOpType) -> Self {
-            NumericUnaryOp {
-                op_type,
-                span: SimpleSpan::new(0, 0),
-            }
-        }
-    }
-
-    impl From<BoolUnaryOpType> for BoolUnaryOp {
-        fn from(op_type: BoolUnaryOpType) -> Self {
-            BoolUnaryOp {
-                op_type,
+    impl<T> IntoSpanned<T> for T {
+        fn into_spanned(self) -> SpannedAstNode<T> {
+            SpannedAstNode {
+                node: self,
                 span: SimpleSpan::new(0, 0),
             }
         }

@@ -1,6 +1,7 @@
 use crate::{
-    ast::{BOp, BOpType, BoolUnaryOpType, Id, ScopeSpecifier, ValueVarType, VarType},
+    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
     lexer::Token,
+    spanned_ast::SpannedAstNode,
 };
 use std::fmt;
 
@@ -37,8 +38,8 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Function => write!(f, "function"),
             Token::Extends => write!(f, "extends"),
             Token::Return => write!(f, "return"),
-            Token::BoolUnaryOp(op) => match op.op_type {
-                BoolUnaryOpType::Not => write!(f, "!"),
+            Token::BoolUnaryOp(op) => match op.node {
+                BoolUnaryOp::Not => write!(f, "!"),
             },
             Token::Dot => write!(f, "."),
             Token::Extern => write!(f, "extern"),
@@ -52,13 +53,7 @@ impl<'a> fmt::Display for Token<'a> {
 
 impl fmt::Display for BOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.bop_type.fmt(f)
-    }
-}
-
-impl fmt::Display for BOpType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BOpType::*;
+        use BOp::*;
         match self {
             Add => write!(f, "+"),
             Sub => write!(f, "-"),
@@ -133,5 +128,11 @@ impl fmt::Display for ScopeSpecifier {
             ScopeSpecifier::Const => write!(f, "const"),
             ScopeSpecifier::Let => write!(f, "let"),
         }
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for SpannedAstNode<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.fmt(f)
     }
 }

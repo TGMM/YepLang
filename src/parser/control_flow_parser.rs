@@ -175,13 +175,13 @@ mod test {
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOpType, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
+            Assignment, BExpr, BOp, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
             NumericLiteral, PrimitiveVal, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment, While,
         },
         lexer::Token,
         parser::{
             control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
-            helpers::test::stream_token_vec,
+            helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
 
@@ -191,7 +191,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -212,7 +212,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -237,7 +237,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -257,7 +257,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -286,7 +286,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -295,7 +295,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gte.into()),
+            Token::BOp(BOp::Gte.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -312,7 +312,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -329,7 +329,7 @@ mod test {
                     else_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOpType::Gte.into(),
+                            op: BOp::Gte.into_spanned(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
@@ -354,7 +354,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -363,7 +363,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gte.into()),
+            Token::BOp(BOp::Gte.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -383,7 +383,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -400,7 +400,7 @@ mod test {
                     else_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOpType::Gte.into(),
+                            op: BOp::Gte.into_spanned(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
@@ -429,7 +429,7 @@ mod test {
             Token::While,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -446,7 +446,7 @@ mod test {
                 while_cond: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -472,7 +472,7 @@ mod test {
             Token::While,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Gt.into()),
+            Token::BOp(BOp::Gt.into_spanned()),
             Token::IntVal("10"),
             Token::RParen,
         ]);
@@ -492,7 +492,7 @@ mod test {
                 while_cond: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Gt.into(),
+                        op: BOp::Gt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -516,13 +516,13 @@ mod test {
             Token::IntVal("0"),
             Token::StmtEnd,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Lt.into()),
+            Token::BOp(BOp::Lt.into_spanned()),
             Token::IntVal("10"),
             Token::StmtEnd,
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::Id("x".into()),
-            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("1"),
             Token::RParen,
             Token::LBracket,
@@ -553,7 +553,7 @@ mod test {
                 cmp_expr: Some(Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOpType::Lt.into(),
+                        op: BOp::Lt.into_spanned(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -567,7 +567,7 @@ mod test {
                     assigned_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOpType::Add.into(),
+                            op: BOp::Add.into_spanned(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("1")
