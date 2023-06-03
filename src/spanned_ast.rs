@@ -1,8 +1,9 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id, If,
-    NumericUnaryOp, Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
+    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id,
+    If, Indexing, NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType,
+    VarDecl, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,10 +81,10 @@ impl GetSpan for Expr<'_> {
 
                 SimpleSpan::new(start, end)
             }
-            Expr::BinaryExpr(_) => todo!(),
-            Expr::PrimitiveVal(_) => todo!(),
-            Expr::FnCall(_) => todo!(),
-            Expr::Indexing(_) => todo!(),
+            Expr::BinaryExpr(bexpr) => bexpr.get_span(),
+            Expr::PrimitiveVal(pv) => pv.get_span(),
+            Expr::FnCall(fn_call) => todo!(),
+            Expr::Indexing(idxing) => idxing.get_span(),
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(id) => id.get_span(),
             Expr::Cast(cast) => {
@@ -93,6 +94,30 @@ impl GetSpan for Expr<'_> {
                 SimpleSpan::new(start, end)
             }
         }
+    }
+}
+
+impl GetSpan for SpannedAstNode<PrimitiveVal<'_>> {
+    fn get_span(&self) -> SimpleSpan {
+        self.span
+    }
+}
+
+impl GetSpan for Indexing<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.indexed.get_span().start;
+        let end = self.indexer.get_span().end;
+
+        SimpleSpan::new(start, end)
+    }
+}
+
+impl GetSpan for BExpr<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.lhs.get_span().start;
+        let end = self.rhs.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 

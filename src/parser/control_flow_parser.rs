@@ -213,10 +213,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -258,10 +257,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -313,10 +311,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -330,10 +327,10 @@ mod test {
                         BExpr {
                             lhs: Expr::Id("x".into()),
                             op: BOp::Gte.into_spanned(),
-                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("10")
-                            ))
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            )
                         }
                         .into()
                     ),
@@ -384,10 +381,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -401,10 +397,10 @@ mod test {
                         BExpr {
                             lhs: Expr::Id("x".into()),
                             op: BOp::Gte.into_spanned(),
-                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("10")
-                            ))
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            )
                         }
                         .into()
                     ),
@@ -447,10 +443,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -493,10 +488,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Gt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 ),
@@ -542,10 +536,9 @@ mod test {
                         decl_assignments: vec![VarDeclAssignment {
                             destructure: Destructure::Id("x".into()),
                             var_type: None,
-                            expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("0")
-                            )))
+                            expr: Some(Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("0")).into_spanned()
+                            ))
                         }]
                     })
                     .into()
@@ -554,10 +547,9 @@ mod test {
                     BExpr {
                         lhs: Expr::Id("x".into()),
                         op: BOp::Lt.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 )),
@@ -568,10 +560,9 @@ mod test {
                         BExpr {
                             lhs: Expr::Id("x".into()),
                             op: BOp::Add.into_spanned(),
-                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("1")
-                            ))
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("1")).into_spanned()
+                            )
                         }
                         .into()
                     )

@@ -428,10 +428,9 @@ mod test {
                             }
                             .into_spanned()
                         ),
-                        assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))),
+                        assigned_expr: Some(Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )),
                     })
                 ]
             }
@@ -501,10 +500,10 @@ mod test {
                                 }
                                 .into_spanned()
                             ),
-                            assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("10")
-                            ))),
+                            assigned_expr: Some(Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            )),
                         })
                     ]
                 }

@@ -272,13 +272,13 @@ pub enum PrimitiveVal<'input> {
     Struct(StructVal<'input>),
 }
 impl<'input> From<NumericLiteral<'input>> for PrimitiveVal<'input> {
-    fn from(value: NumericLiteral<'input>) -> Self {
-        PrimitiveVal::Number(None, value)
+    fn from(num_lit: NumericLiteral<'input>) -> Self {
+        PrimitiveVal::Number(None, num_lit)
     }
 }
-impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
-    fn from(value: PrimitiveVal<'input>) -> Self {
-        Expr::PrimitiveVal(value)
+impl<'input> From<SpannedAstNode<PrimitiveVal<'input>>> for Expr<'input> {
+    fn from(prim_val: SpannedAstNode<PrimitiveVal<'input>>) -> Self {
+        Expr::PrimitiveVal(prim_val)
     }
 }
 
@@ -308,7 +308,7 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
         "char" => VarType::Char,
         "string" => VarType::String,
         custom => VarType::Custom(Id {
-            id_str: type_str.to_string(),
+            id_str: custom.to_string(),
             span: lex.span().into(),
         }),
     }
@@ -521,7 +521,7 @@ pub struct BExpr<'input> {
 pub enum Expr<'input> {
     ParenExpr(Option<UnaryOp>, Box<Expr<'input>>),
     BinaryExpr(Box<BExpr<'input>>),
-    PrimitiveVal(PrimitiveVal<'input>),
+    PrimitiveVal(SpannedAstNode<PrimitiveVal<'input>>),
     FnCall(Box<FnCall<'input>>),
     Indexing(Box<Indexing<'input>>),
     MemberAccess(Box<MemberAcess<'input>>),

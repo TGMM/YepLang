@@ -266,7 +266,9 @@ mod test {
         let expr = res.unwrap();
         assert_eq!(
             expr,
-            Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+            Expr::PrimitiveVal(
+                PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+            ),
         )
     }
 
@@ -296,9 +298,13 @@ mod test {
         assert_eq!(
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
-                lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                lhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                ),
                 op: BOp::Add.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                )
             }))
         )
     }
@@ -318,9 +324,13 @@ mod test {
         assert_eq!(
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
-                lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                lhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                ),
                 op: BOp::Sub.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                )
             }))
         )
     }
@@ -340,9 +350,13 @@ mod test {
         assert_eq!(
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
-                lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                lhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                ),
                 op: BOp::Mul.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                )
             }))
         )
     }
@@ -362,9 +376,13 @@ mod test {
         assert_eq!(
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
-                lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                lhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                ),
                 op: BOp::Div.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                )
             }))
         )
     }
@@ -386,12 +404,18 @@ mod test {
         assert_eq!(
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
-                lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                lhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                ),
                 op: BOp::Add.into_spanned(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
-                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5"))),
+                    lhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                    ),
                     op: BOp::Mul.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15")))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("15")).into_spanned()
+                    )
                 }))
             }))
         )
@@ -415,12 +439,18 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
-                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                    lhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    ),
                     op: BOp::Mul.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                    )
                 })),
                 op: BOp::Sub.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("15")).into_spanned()
+                ),
             }))
         )
     }
@@ -445,15 +475,23 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
-                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                    lhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    ),
                     op: BOp::Add.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                    )
                 })),
                 op: BOp::Gt.into_spanned(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
-                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
+                    lhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    ),
                     op: BOp::Add.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("5")).into_spanned()
+                    )
                 })),
             }))
         )
@@ -477,10 +515,9 @@ mod test {
             Expr::FnCall(
                 FnCall {
                     fn_expr: Expr::Id("fn".into()),
-                    args: vec![Expr::PrimitiveVal(PrimitiveVal::Number(
-                        None,
-                        NumericLiteral::Int("10")
-                    ))]
+                    args: vec![Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    )]
                 }
                 .into()
             )
@@ -505,10 +542,9 @@ mod test {
             Expr::Indexing(
                 Indexing {
                     indexed: Expr::Id("arr".into()),
-                    indexer: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        None,
-                        NumericLiteral::Int("10")
-                    ))
+                    indexer: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    )
                 }
                 .into()
             )
@@ -552,10 +588,10 @@ mod test {
         let expr = res.unwrap();
         assert_eq!(
             expr,
-            Expr::PrimitiveVal(PrimitiveVal::Boolean(
-                Some(BoolUnaryOp::Not.into_spanned()),
-                BoolLiteral(true)
-            ))
+            Expr::PrimitiveVal(
+                PrimitiveVal::Boolean(Some(BoolUnaryOp::Not.into_spanned()), BoolLiteral(true))
+                    .into_spanned()
+            )
         )
     }
 
@@ -581,18 +617,26 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
-                    lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOp::Plus.into_spanned()),
-                        NumericLiteral::Int("10")
-                    )),
+                    lhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(
+                            Some(NumericUnaryOp::Plus.into_spanned()),
+                            NumericLiteral::Int("10")
+                        )
+                        .into_spanned()
+                    ),
                     op: BOp::Add.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOp::Minus.into_spanned()),
-                        NumericLiteral::Int("5")
-                    ))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(
+                            Some(NumericUnaryOp::Minus.into_spanned()),
+                            NumericLiteral::Int("5")
+                        )
+                        .into_spanned()
+                    )
                 })),
                 op: BOp::Mul.into_spanned(),
-                rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
+                rhs: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("15")).into_spanned()
+                ),
             }))
         )
     }

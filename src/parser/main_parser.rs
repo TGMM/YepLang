@@ -411,7 +411,9 @@ mod test {
             Assignment {
                 assignee_expr: Expr::Id("x".into()),
                 bop: None,
-                assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
+                assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                    .into_spanned()
+                    .into()
             }
         )
     }
@@ -440,10 +442,9 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
-                        None,
-                        NumericLiteral::Int("10")
-                    )))
+                    expr: Some(Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    ))
                 }]
             }
         )
@@ -474,15 +475,16 @@ mod test {
                     Stmt::Assignment(Assignment {
                         assignee_expr: Expr::Id("x".into()),
                         bop: None,
-                        assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10")).into()
+                        assigned_expr: PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                            .into_spanned()
+                            .into()
                     }),
                     Stmt::Expr(Expr::BinaryExpr(Box::new(BExpr {
                         lhs: Expr::Id("y".into()),
                         op: BOp::Add.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        )),
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        ),
                     })))
                 ],
                 rbracket: None
@@ -525,10 +527,9 @@ mod test {
             Stmt::Assignment(Assignment {
                 assignee_expr: Expr::Id("x".into()),
                 bop: None,
-                assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
-                    None,
-                    NumericLiteral::Int("10")
-                ))
+                assigned_expr: Expr::PrimitiveVal(
+                    PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                )
             })
         )
     }
@@ -553,10 +554,9 @@ mod test {
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
-                    expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
-                        None,
-                        NumericLiteral::Int("10")
-                    )))
+                    expr: Some(Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    ))
                 }],
             })
         )
@@ -580,7 +580,9 @@ mod test {
                 BExpr {
                     lhs: Expr::Id("x".into()),
                     op: BOp::Add.into_spanned(),
-                    rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    rhs: Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    )
                 }
                 .into()
             ))

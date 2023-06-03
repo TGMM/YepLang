@@ -158,7 +158,7 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
             block_type,
         ),
         Expr::PrimitiveVal(primitive_val) => {
-            codegen_primitive_val(compiler, primitive_val, expected_type, block_type)
+            codegen_primitive_val(compiler, primitive_val.node, expected_type, block_type)
         }
         Expr::FnCall(fn_call) => codegen_fn_call(compiler, *fn_call, block_type),
         Expr::Indexing(indexing) => {

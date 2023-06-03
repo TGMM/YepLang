@@ -143,7 +143,7 @@ recursive_parser!(
 recursive_parser!(
     PRIMITIVE_VAL_PARSER,
     primitive_val_parser,
-    PrimitiveVal<'static>,
+    SpannedAstNode<PrimitiveVal<'static>>,
     declarations {
         let array_val = ARRAY_VAL_PARSER.read().unwrap().clone()
         let struct_val = STRUCT_VAL_PARSER.read().unwrap().clone()
@@ -158,7 +158,10 @@ recursive_parser!(
 
         let primitive_val = num.or(bool).or(char).or(string).or(arr).or(struct_v);
 
-        primitive_val
+        primitive_val.map_with_span(|pv, span| SpannedAstNode {
+            node: pv,
+            span
+        })
     },
     definitions {
         if !array_val.is_defined() {
@@ -384,15 +387,13 @@ mod test {
                 Expr::Id("x".into()),
                 Expr::BinaryExpr(
                     BExpr {
-                        lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        )),
+                        lhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        ),
                         op: BOp::Add.into_spanned(),
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
+                        rhs: Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                        )
                     }
                     .into()
                 )
@@ -425,21 +426,23 @@ mod test {
             StructVal(vec![
                 (
                     PropertyName::Id("x".into()),
-                    Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    )
                 ),
                 (
                     PropertyName::String("this is a str id".to_string()),
                     Expr::BinaryExpr(
                         BExpr {
-                            lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Float("10")
-                            )),
+                            lhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Float("10"))
+                                    .into_spanned()
+                            ),
                             op: BOp::Add.into_spanned(),
-                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Float("10")
-                            ))
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Float("10"))
+                                    .into_spanned()
+                            )
                         }
                         .into()
                     )
@@ -471,11 +474,11 @@ mod test {
         assert_eq!(
             primitive_vals,
             vec![
-                PrimitiveVal::Boolean(None, BoolLiteral(true)),
-                PrimitiveVal::Char('a'),
-                PrimitiveVal::String("String!".to_string()),
-                PrimitiveVal::Array(ArrayVal(vec![])),
-                PrimitiveVal::Struct(StructVal(vec![])),
+                PrimitiveVal::Boolean(None, BoolLiteral(true)).into_spanned(),
+                PrimitiveVal::Char('a').into_spanned(),
+                PrimitiveVal::String("String!".to_string()).into_spanned(),
+                PrimitiveVal::Array(ArrayVal(vec![])).into_spanned(),
+                PrimitiveVal::Struct(StructVal(vec![])).into_spanned(),
             ]
         )
     }
