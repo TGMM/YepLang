@@ -451,3 +451,147 @@ compiler_test!(
     "#,
     output: "x is -18\n"
 );
+
+compiler_test!(
+    factorial_rec,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    function factorial(n: i32): i32 {
+        if (n >= 1) {
+            return n * factorial(n - 1);
+        }
+    
+        return 1;
+    }
+    
+    {
+        let n: i32;
+        let fac = factorial(5);
+        printf("Factorial of %d = %ld\n" as *i8, 5, fac);
+    }
+    "#,
+    output: "Factorial of 5 = 120\n"
+);
+
+compiler_test!(
+    factorial_iter,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    {
+        let i = 0, num = 5, factorial = 1;
+        for (i = 1; i <= num; i+= 1) {
+            factorial = factorial * i;
+        }
+        printf("Factorial of %d = %d\n" as *i8, num, factorial);
+    }    
+    "#,
+    output: "Factorial of 5 = 120\n"
+);
+
+compiler_test!(
+    find_in_arr,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    function find(array: i32[5], size: i32, target: i32): i32 {
+        for (let i: u32 = 0; i < size; i += 1) {
+            if (array[i] == target) {
+                return i as i32;
+            }
+        }
+        return -1 as i32;
+    }
+    
+    {
+        let digits: i32[5] = [1, 2, 3, 4, 5];
+        let target: i32 = 3;
+        
+        let index: i32 = find(digits, 5, target);
+        
+        if (index != -1) {
+            printf("The digit %d is found at index %d\n" as *i8, target, index);
+        } else {
+            printf("The digit %d is not found in the array\n" as *i8, target);
+        }
+    }    
+    "#,
+    output: "The digit 3 is found at index 2\n"
+);
+
+compiler_test!(
+    sort_arr,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    function bubbleSort(array: i32[5], size: i32): i32[5] {
+      for (let step: u32 = 0; step < size - 1; step += 1) {
+        for (let i: u32 = 0; i < size - step - 1; i += 1) {
+          
+          if (array[i] > array[i + 1]) {
+            
+            let temp = array[i];
+            array[i] = array[i + 1];
+            array[i + 1] = temp;
+          }
+        }
+      }
+    
+      return array;
+    }
+    
+    function printArray(array: i32[5], size: i32) {
+      for (let i: u32 = 0; i < size; i += 1) {
+        printf("%d  " as *i8, array[i] );
+      }
+      printf("\n" as *i8);
+    }
+    
+    {
+        let data: i32[5] = [2, 45, 0, 11, 9];
+        let size = 5;
+    
+        data = bubbleSort(data, size);
+    
+        printf("Sorted Array in Ascending Order:\n" as *i8);
+        printArray(data, size);
+    }
+    "#,
+    output: "Sorted Array in Ascending Order:\n0  2  9  11  45  \n"
+);
+
+compiler_test!(
+    matrix_mul,
+    input: r#"
+    extern i32 printf(*i8, ...);
+
+    {
+        let a: i32[3][3] = [ [1,2,3], [1,2,3], [1,2,3] ];
+        let b: i32[3][5] = [ [1,2,3,4,5], [1,2,3,4,5], [1,2,3,4,5] ];
+        let row_a = 3;
+        let col_a = 3;
+        let col_b = 5;
+        let c: i32[3][5]; 
+    
+    
+        for (let i: u32 = 0; i < row_a; i += 1) {
+            for (let j: u32 = 0; j < col_b; j += 1) {
+                c[i][j] = 0;
+                for (let k: u32 = 0; k < col_a; k += 1) {
+                    c[i][j] += a[i][k] * b[k][j];
+                }
+            }
+        }
+    
+        printf("The product of the two matrices is: \n" as *i8);
+        for (let i: u32 = 0; i < row_a; i += 1) {
+            for (let j: u32 = 0; j < col_b; j += 1) {
+                printf("%d\t" as *i8, c[i][j]);
+            }
+            printf("\n" as *i8);
+        }
+    }
+    "#,
+    output: "The product of the two matrices is: \n6\t12\t18\t24\t30\t\n6\t12\t18\t24\t30\t\n6\t12\t18\t24\t30\t\n"
+);
