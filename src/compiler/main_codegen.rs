@@ -322,7 +322,7 @@ fn codegen_var_decl<'input, 'ctx>(
             codegen_rhs_expr(
                 compiler,
                 initial_expr,
-                decl_as.var_type.as_ref(),
+                decl_as.var_type.as_ref().map(|svvt| &svvt.node),
                 block_type,
             )
         });
@@ -334,19 +334,19 @@ fn codegen_var_decl<'input, 'ctx>(
         };
 
         let type_;
-        let var_type;
+        let var_type: ValueVarType;
         if let Some(explicit_var_type) = decl_as.var_type {
-            type_ = convert_to_type_enum(compiler, &explicit_var_type)?;
+            type_ = convert_to_type_enum(compiler, &explicit_var_type.node)?;
 
             // Type checking
-            if let Some(ivt) = inferred_var_type && ivt != explicit_var_type {
+            if let Some(ivt) = inferred_var_type && ivt != explicit_var_type.node {
                 return Err(format!(
                     "Can't assign a value of {} to a variable of type {}",
                     ivt, explicit_var_type
                 ));
             }
 
-            var_type = explicit_var_type;
+            var_type = explicit_var_type.node;
         } else if let Some(inferred_var_type) = inferred_var_type {
             type_ = convert_to_type_enum(compiler, &inferred_var_type)?;
             var_type = inferred_var_type;

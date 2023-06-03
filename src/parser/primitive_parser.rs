@@ -190,7 +190,8 @@ pub fn pointer_symbol_parser<'i>(
 }
 
 pub fn value_var_type_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ValueVarType>, ParserError<'i, Token<'i>>> + Clone
+{
     // TODO: We could try_map in count to convert usize to u8
     let ptr_nesting = pointer_symbol_parser().repeated().count();
     let vtype = var_type_parser();
@@ -207,18 +208,21 @@ pub fn value_var_type_parser<'i>(
         .collect::<Vec<_>>()
         .map(|v| VecDeque::from(v));
 
-    ptr_nesting
-        .then(vtype)
-        .then(array_nesting)
-        .map(|((ptr_nl, vtype), array_dimensions)| ValueVarType {
-            array_dimensions,
-            vtype,
-            pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
-        })
+    ptr_nesting.then(vtype).then(array_nesting).map_with_span(
+        |((ptr_nl, vtype), array_dimensions), span| SpannedAstNode {
+            node: ValueVarType {
+                array_dimensions,
+                vtype,
+                pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
+            },
+            span,
+        },
+    )
 }
 
 pub fn type_specifier_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ValueVarType>, ParserError<'i, Token<'i>>> + Clone
+{
     just(Token::Colon).ignore_then(value_var_type_parser())
 }
 
@@ -517,6 +521,7 @@ mod test {
                 array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 
@@ -541,6 +546,7 @@ mod test {
                 array_dimensions: VecDeque::from([5]),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 
@@ -559,6 +565,7 @@ mod test {
                 array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 }

@@ -197,7 +197,7 @@ mod test {
         lexer::Token,
         parser::{
             class_parser::{class_block_parser, class_decl_parser, fn_def_parser},
-            helpers::test::stream_token_vec,
+            helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
 
@@ -223,11 +223,14 @@ mod test {
                 fn_signature: FnSignature {
                     fn_id: "myMethod".into(),
                     args: vec![],
-                    ret_type: Some(ValueVarType {
-                        vtype: VarType::I32,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 0
-                    })
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
                 },
                 fn_scope: FnScope::Method,
                 fn_type: FnType::Native(Block {
@@ -262,11 +265,14 @@ mod test {
                 fn_signature: FnSignature {
                     fn_id: "myFunction".into(),
                     args: vec![],
-                    ret_type: Some(ValueVarType {
-                        vtype: VarType::I32,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 0
-                    })
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
                 },
                 fn_scope: FnScope::Function,
                 fn_type: FnType::Native(Block {
@@ -343,12 +349,16 @@ mod test {
                             array_dimensions: VecDeque::new(),
                             pointer_nesting_level: 0
                         }
+                        .into_spanned()
                     )],
-                    ret_type: Some(ValueVarType {
-                        vtype: VarType::I32,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 0
-                    })
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
                 },
                 fn_scope: FnScope::Function,
                 fn_type: FnType::Native(Block {
@@ -392,11 +402,14 @@ mod test {
                         fn_signature: FnSignature {
                             fn_id: "myClassMethod".into(),
                             args: vec![],
-                            ret_type: Some(ValueVarType {
-                                vtype: VarType::I32,
-                                array_dimensions: VecDeque::new(),
-                                pointer_nesting_level: 0
-                            })
+                            ret_type: Some(
+                                ValueVarType {
+                                    vtype: VarType::I32,
+                                    array_dimensions: VecDeque::new(),
+                                    pointer_nesting_level: 0
+                                }
+                                .into_spanned()
+                            )
                         },
                         fn_scope: FnScope::Method,
                         fn_type: FnType::Native(Block {
@@ -407,11 +420,14 @@ mod test {
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
-                        vtype: Some(ValueVarType {
-                            vtype: VarType::F32,
-                            array_dimensions: VecDeque::new(),
-                            pointer_nesting_level: 0
-                        }),
+                        vtype: Some(
+                            ValueVarType {
+                                vtype: VarType::F32,
+                                array_dimensions: VecDeque::new(),
+                                pointer_nesting_level: 0
+                            }
+                            .into_spanned()
+                        ),
                         assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -459,11 +475,14 @@ mod test {
                             fn_signature: FnSignature {
                                 fn_id: "myClassMethod".into(),
                                 args: vec![],
-                                ret_type: Some(ValueVarType {
-                                    vtype: VarType::I32,
-                                    array_dimensions: VecDeque::new(),
-                                    pointer_nesting_level: 0
-                                })
+                                ret_type: Some(
+                                    ValueVarType {
+                                        vtype: VarType::I32,
+                                        array_dimensions: VecDeque::new(),
+                                        pointer_nesting_level: 0
+                                    }
+                                    .into_spanned()
+                                )
                             },
                             fn_scope: FnScope::Method,
                             fn_type: FnType::Native(Block {
@@ -474,11 +493,14 @@ mod test {
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),
-                            vtype: Some(ValueVarType {
-                                vtype: VarType::F32,
-                                array_dimensions: VecDeque::new(),
-                                pointer_nesting_level: 0
-                            }),
+                            vtype: Some(
+                                ValueVarType {
+                                    vtype: VarType::F32,
+                                    array_dimensions: VecDeque::new(),
+                                    pointer_nesting_level: 0
+                                }
+                                .into_spanned()
+                            ),
                             assigned_expr: Some(Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
@@ -530,6 +552,7 @@ mod test {
                                 array_dimensions: VecDeque::new(),
                                 pointer_nesting_level: 0
                             }
+                            .into_spanned()
                         ),
                         (
                             Destructure::Id("b".into()),
@@ -538,13 +561,17 @@ mod test {
                                 array_dimensions: VecDeque::new(),
                                 pointer_nesting_level: 0
                             }
+                            .into_spanned()
                         )
                     ],
-                    ret_type: Some(ValueVarType {
-                        vtype: VarType::I32,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 0
-                    })
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
                 },
                 fn_scope: FnScope::Function,
                 fn_type: FnType::InlineLlvmIr("%res = add i32 %a, %b\nret i32 %res".to_string())

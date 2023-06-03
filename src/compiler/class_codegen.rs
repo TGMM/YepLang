@@ -101,12 +101,12 @@ pub fn codegen_fn_decl<'input, 'ctx>(
         .iter()
         .map(|vvt| {
             Ok(convert_type_to_metadata(convert_to_type_enum(
-                compiler, vvt,
+                compiler, &vvt.node,
             )?))
         })
         .collect::<Result<Vec<_>, String>>()?;
 
-    let ret_type = fn_signature.ret_type.clone().unwrap_or(ValueVarType {
+    let ret_type = fn_signature.ret_type.clone().map(|svvt| svvt.node).unwrap_or(ValueVarType {
         vtype: VarType::Void,
         array_dimensions: VecDeque::new(),
         pointer_nesting_level: 0,
@@ -186,7 +186,7 @@ pub fn codegen_llvm_fn(
     let args_str = id_args
         .into_iter()
         .map(|(id, vvt)| {
-            let ty = convert_to_type_enum(compiler, &vvt)?.to_string();
+            let ty = convert_to_type_enum(compiler, &vvt.node)?.to_string();
             let trimmed_ty = ty.trim_matches('"');
             Ok(format!("{} %{}", trimmed_ty, id.id_str))
         })
@@ -242,7 +242,7 @@ pub fn codegen_llvm_fn(
         .map(|vvt| ExternType::Type(vvt.clone()))
         .collect::<Vec<_>>();
 
-    let ret_type = ret_type.unwrap_or(ValueVarType {
+    let ret_type = ret_type.map(|svvt| svvt.node).unwrap_or(ValueVarType {
         vtype: VarType::Void,
         array_dimensions: VecDeque::new(),
         pointer_nesting_level: 0,
@@ -281,7 +281,7 @@ pub fn codegen_native_fn(
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
 
     // Return check
-    if let Some(ref ret_type) = fn_signature.ret_type && !ret_type.is_void() {
+    if let Some(ref ret_type) = fn_signature.ret_type && !ret_type.node.is_void() {
         let has_return = fn_block
             .stmts
             .iter()
@@ -309,6 +309,7 @@ pub fn codegen_native_fn(
     }
     // We store the new return type in case there is some
     if let Some(ret_type) = fn_signature.ret_type {
+        let ret_type = ret_type.node;
         let basic_type = convert_to_type_enum(compiler, &ret_type)?;
 
         compiler.curr_func_ret_val = Some(FnRetVal {
@@ -322,6 +323,7 @@ pub fn codegen_native_fn(
     for ((arg_destructure, arg_type), arg_val) in
         fn_signature.args.into_iter().zip(fun.get_param_iter())
     {
+        let arg_type = arg_type.node;
         let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
             Destructure::Id(id) => {

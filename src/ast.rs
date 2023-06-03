@@ -407,7 +407,7 @@ impl<'input> From<Id> for Destructure<'input> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDeclAssignment<'input> {
     pub destructure: Destructure<'input>,
-    pub var_type: Option<ValueVarType>,
+    pub var_type: Option<SpannedAstNode<ValueVarType>>,
     pub expr: Option<Expr<'input>>,
 }
 
@@ -533,7 +533,7 @@ pub enum Expr<'input> {
 pub struct Casting<'a> {
     pub casted: Expr<'a>,
     pub as_kw: SimpleSpan,
-    pub cast_type: ValueVarType,
+    pub cast_type: SpannedAstNode<ValueVarType>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -595,7 +595,7 @@ pub struct ClassBlock<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertyDecl<'a> {
     pub id: Id,
-    pub vtype: Option<ValueVarType>,
+    pub vtype: Option<SpannedAstNode<ValueVarType>>,
     pub assigned_expr: Option<Expr<'a>>,
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -634,8 +634,8 @@ pub enum FnScope {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnSignature<'a> {
     pub fn_id: Id,
-    pub args: Vec<(Destructure<'a>, ValueVarType)>,
-    pub ret_type: Option<ValueVarType>,
+    pub args: Vec<(Destructure<'a>, SpannedAstNode<ValueVarType>)>,
+    pub ret_type: Option<SpannedAstNode<ValueVarType>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -647,13 +647,13 @@ pub struct Assignment<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExternType {
-    Type(ValueVarType),
+    Type(SpannedAstNode<ValueVarType>),
     Spread,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternDecl {
-    pub ret_type: ValueVarType,
+    pub ret_type: SpannedAstNode<ValueVarType>,
     pub fn_id: Id,
     pub arg_types: Vec<ExternType>,
 }

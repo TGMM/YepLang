@@ -74,14 +74,18 @@ mod test {
                     vtype: VarType::I32,
                     array_dimensions: VecDeque::new(),
                     pointer_nesting_level: 0
-                },
+                }
+                .into_spanned(),
                 fn_id: "printf".into(),
                 arg_types: vec![
-                    ExternType::Type(ValueVarType {
-                        vtype: VarType::U8,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 1
-                    }),
+                    ExternType::Type(
+                        ValueVarType {
+                            vtype: VarType::U8,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 1
+                        }
+                        .into_spanned()
+                    ),
                     ExternType::Spread
                 ]
             },

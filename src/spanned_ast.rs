@@ -87,15 +87,18 @@ impl GetSpan for Expr<'_> {
             Expr::MemberAccess(_) => todo!(),
             Expr::Id(id) => id.get_span(),
             Expr::Cast(cast) => {
-                todo!()
+                let start = cast.casted.get_span().start;
+                let end = cast.cast_type.get_span().end;
+
+                SimpleSpan::new(start, end)
             }
         }
     }
 }
 
-impl GetSpan for ValueVarType {
+impl GetSpan for SpannedAstNode<ValueVarType> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        self.span
     }
 }
 

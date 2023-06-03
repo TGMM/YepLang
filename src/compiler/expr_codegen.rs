@@ -80,7 +80,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
         }
 
         if let ExternType::Type(expected_vvt) = arg_expected_type {
-            if expected_vvt != &arg_type {
+            if expected_vvt.node != arg_type {
                 return Err(format!(
                     "Incorrect type for argument, expected {} got {}",
                     expected_vvt, arg_type
@@ -199,6 +199,8 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     } = casting;
     let (cast_from_val, cast_from_type) =
         codegen_rhs_expr(compiler, casted.clone(), None, block_type)?;
+
+    let cast_to_type = cast_to_type.node;
 
     // Non matching dimensions
     if cast_to_type.array_dimensions != cast_from_type.array_dimensions

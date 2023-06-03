@@ -109,9 +109,12 @@ pub fn member_access_prop_parser<'i>(
     just(Token::Dot).ignore_then(id_parser())
 }
 
-pub fn as_casting_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, (SimpleSpan, ValueVarType), ParserError<'i, Token<'i>>> + Clone
-{
+pub fn as_casting_parser<'i>() -> impl Parser<
+    'i,
+    ParserInput<'i>,
+    (SimpleSpan, SpannedAstNode<ValueVarType>),
+    ParserError<'i, Token<'i>>,
+> + Clone {
     tag(Token::As).then(value_var_type_parser())
 }
 

@@ -19,7 +19,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
     while let Some(arg_type) = arg_type_it.next() {
         match arg_type {
             ExternType::Type(vvt) => {
-                let ty = convert_to_type_enum(compiler, &vvt)?;
+                let ty = convert_to_type_enum(compiler, &vvt.node)?;
                 let metadata = convert_type_to_metadata(ty);
                 param_types.push(metadata);
             }
@@ -40,13 +40,13 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
     }
 
     // If this is true, function is void
-    let fn_type = if vvt_ret_type.is_void() {
+    let fn_type = if vvt_ret_type.node.is_void() {
         compiler
             .context
             .void_type()
             .fn_type(&param_types, is_var_args)
     } else {
-        let ret_type = convert_to_type_enum(compiler, vvt_ret_type)?;
+        let ret_type = convert_to_type_enum(compiler, &vvt_ret_type.node)?;
         ret_type.fn_type(&param_types, is_var_args)
     };
 
@@ -60,7 +60,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
         ScopedVal::Fn(ScopedFunc {
             ptr_val: fun,
             arg_types: extern_decl.arg_types,
-            ret_type: extern_decl.ret_type,
+            ret_type: extern_decl.ret_type.node,
         }),
     )?;
 
