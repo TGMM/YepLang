@@ -190,7 +190,7 @@ pub enum Token<'input> {
 mod test {
     use super::Token;
     use crate::{
-        ast::{BOp, BOpType, BoolUnaryOp, Id},
+        ast::{BOp, BOpType, BoolUnaryOp, BoolUnaryOpType, Id},
         lexer::{ScopeSpecifier, VarType},
     };
     use chumsky::span::SimpleSpan;
@@ -334,7 +334,13 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        assert_eq!(&tokens, &[Ok(BoolUnaryOp(BoolUnaryOp::Not)),]);
+        assert_eq!(
+            &tokens,
+            &[Ok(BoolUnaryOp(BoolUnaryOp {
+                op_type: BoolUnaryOpType::Not,
+                span: SimpleSpan::new(0, 1)
+            })),]
+        );
     }
 
     #[test]

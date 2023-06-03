@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Assignment, BOp, BOpType, Block, Destructure, Expr, PropertyDestructure, PropertyName,
-        Stmt, TopBlock, VarDecl, VarDeclAssignment,
+        Assignment, BOpType, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
+        TopBlock, VarDecl, VarDeclAssignment,
     },
     lexer::Token,
     recursive_parser,
@@ -299,9 +299,9 @@ mod test {
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOp, BOpType, Block, Destructure, Expr, NumericLiteral,
-            PrimitiveVal, PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock,
-            VarDecl, VarDeclAssignment,
+            Assignment, BExpr, BOpType, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
+            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock, VarDecl,
+            VarDeclAssignment,
         },
         lexer::Token,
         parser::{

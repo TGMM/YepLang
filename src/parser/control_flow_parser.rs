@@ -175,7 +175,7 @@ mod test {
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOp, BOpType, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
+            Assignment, BExpr, BOpType, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
             NumericLiteral, PrimitiveVal, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment, While,
         },
         lexer::Token,

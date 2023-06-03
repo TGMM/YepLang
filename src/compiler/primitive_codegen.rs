@@ -4,8 +4,8 @@ use super::{
     main_codegen::convert_to_type_enum,
 };
 use crate::ast::{
-    ArrayVal, BoolLiteral, BoolUnaryOp, NumericLiteral, NumericUnaryOp, PrimitiveVal, ValueVarType,
-    VarType,
+    ArrayVal, BoolLiteral, BoolUnaryOp, BoolUnaryOpType, NumericLiteral, NumericUnaryOp,
+    NumericUnaryOpType, PrimitiveVal, ValueVarType, VarType,
 };
 use inkwell::{
     types::{BasicTypeEnum, FloatType, IntType},
@@ -120,7 +120,13 @@ pub fn codegen_int_val<'input, 'ctx>(
     };
 
     let unsigned = !var_type.vtype.is_signed();
-    if matches!(uop, Some(NumericUnaryOp::Minus)) {
+    if matches!(
+        uop,
+        Some(NumericUnaryOp {
+            op_type: NumericUnaryOpType::Minus,
+            span: _
+        })
+    ) {
         if unsigned {
             return Err("Can't apply the minus unary operator to an unsigned integer".to_string());
         }
@@ -176,11 +182,11 @@ pub fn codegen_float_val<'input, 'ctx>(
     };
 
     if let Some(uop) = uop {
-        match uop {
-            NumericUnaryOp::Minus => {
+        match uop.op_type {
+            NumericUnaryOpType::Minus => {
                 double_val = -double_val;
             }
-            NumericUnaryOp::Plus => {}
+            NumericUnaryOpType::Plus => {}
         }
     }
 
@@ -197,8 +203,8 @@ pub fn codegen_bool_val<'input, 'ctx>(
     let mut bool_val = bool_literal.0;
 
     if let Some(buop) = buop {
-        match buop {
-            BoolUnaryOp::Not => {
+        match buop.op_type {
+            BoolUnaryOpType::Not => {
                 bool_val = !bool_val;
             }
         }

@@ -32,7 +32,7 @@ macro_rules! recursive_parser {
 #[cfg(test)]
 pub(crate) mod test {
     use crate::{
-        ast::{BOp, BOpType, Id},
+        ast::{BOp, BOpType, BoolUnaryOp, BoolUnaryOpType, Id, NumericUnaryOp, NumericUnaryOpType},
         lexer::Token,
     };
     use chumsky::{
@@ -68,6 +68,24 @@ pub(crate) mod test {
         fn from(bop_type: BOpType) -> Self {
             BOp {
                 bop_type,
+                span: SimpleSpan::new(0, 0),
+            }
+        }
+    }
+
+    impl From<NumericUnaryOpType> for NumericUnaryOp {
+        fn from(op_type: NumericUnaryOpType) -> Self {
+            NumericUnaryOp {
+                op_type,
+                span: SimpleSpan::new(0, 0),
+            }
+        }
+    }
+
+    impl From<BoolUnaryOpType> for BoolUnaryOp {
+        fn from(op_type: BoolUnaryOpType) -> Self {
+            BoolUnaryOp {
+                op_type,
                 span: SimpleSpan::new(0, 0),
             }
         }

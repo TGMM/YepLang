@@ -12,7 +12,6 @@ use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
     parser::main_parser::parse,
 };
-use chumsky::container::Seq;
 use inkwell::{
     context::Context,
     module::Linkage,

@@ -3,7 +3,8 @@ use super::primitive_parser::{
     bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
 };
 use crate::ast::{
-    BOpType, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
+    BOpType, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp,
+    NumericUnaryOpType, ValueVarType,
 };
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
@@ -36,10 +37,16 @@ pub fn numeric_unary_op_parser<'i>(
 
     let plus = bop_parser()
         .filter(|b| matches!(b.bop_type, Add))
-        .to(NumericUnaryOp::Plus);
+        .map(|b| NumericUnaryOp {
+            op_type: NumericUnaryOpType::Plus,
+            span: b.span,
+        });
     let minus = bop_parser()
         .filter(|b| matches!(b.bop_type, Sub))
-        .to(NumericUnaryOp::Minus);
+        .map(|b| NumericUnaryOp {
+            op_type: NumericUnaryOpType::Minus,
+            span: b.span,
+        });
 
     plus.or(minus)
 }
@@ -229,8 +236,8 @@ recursive_parser!(
 mod test {
     use crate::{
         ast::{
-            BExpr, BOpType, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess,
-            NumericLiteral, NumericUnaryOp, PrimitiveVal,
+            BExpr, BOpType, BoolLiteral, BoolUnaryOpType, Expr, FnCall, Indexing, MemberAcess,
+            NumericLiteral, NumericUnaryOpType, PrimitiveVal,
         },
         lexer::Token,
         parser::{
@@ -526,7 +533,7 @@ mod test {
     #[test]
     fn expr_bool_unary_test() {
         let tokens = stream_token_vec(vec![
-            Token::BoolUnaryOp(BoolUnaryOp::Not),
+            Token::BoolUnaryOp(BoolUnaryOpType::Not.into()),
             Token::BoolVal("true"),
         ]);
 
@@ -537,7 +544,7 @@ mod test {
         assert_eq!(
             expr,
             Expr::PrimitiveVal(PrimitiveVal::Boolean(
-                Some(BoolUnaryOp::Not),
+                Some(BoolUnaryOpType::Not.into()),
                 BoolLiteral(true)
             ))
         )
@@ -566,12 +573,12 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOp::Plus),
+                        Some(NumericUnaryOpType::Plus.into()),
                         NumericLiteral::Int("10")
                     )),
                     op: BOpType::Add.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                        Some(NumericUnaryOp::Minus),
+                        Some(NumericUnaryOpType::Minus.into()),
                         NumericLiteral::Int("5")
                     ))
                 })),

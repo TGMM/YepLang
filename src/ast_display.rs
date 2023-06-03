@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BOp, BOpType, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
+    ast::{BOp, BOpType, BoolUnaryOpType, Id, ScopeSpecifier, ValueVarType, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -37,8 +37,8 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Function => write!(f, "function"),
             Token::Extends => write!(f, "extends"),
             Token::Return => write!(f, "return"),
-            Token::BoolUnaryOp(op) => match op {
-                BoolUnaryOp::Not => write!(f, "!"),
+            Token::BoolUnaryOp(op) => match op.op_type {
+                BoolUnaryOpType::Not => write!(f, "!"),
             },
             Token::Dot => write!(f, "."),
             Token::Extern => write!(f, "extern"),

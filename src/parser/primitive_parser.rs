@@ -227,7 +227,7 @@ mod test {
 
     use crate::{
         ast::{
-            ArrayVal, BExpr, BOpType, BoolLiteral, Expr, NumericLiteral, NumericUnaryOp,
+            ArrayVal, BExpr, BOpType, BoolLiteral, Expr, NumericLiteral, NumericUnaryOpType,
             PrimitiveVal, PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
         },
         lexer::Token,
@@ -303,7 +303,10 @@ mod test {
         let primitive_val = res.unwrap();
         assert_eq!(
             primitive_val,
-            PrimitiveVal::Number(Some(NumericUnaryOp::Plus), NumericLiteral::Int("10"))
+            PrimitiveVal::Number(
+                Some(NumericUnaryOpType::Plus.into()),
+                NumericLiteral::Int("10")
+            )
         )
     }
 

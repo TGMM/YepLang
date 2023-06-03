@@ -220,7 +220,12 @@ pub enum NumericLiteral<'input> {
     Float(&'input str),
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum NumericUnaryOp {
+pub struct NumericUnaryOp {
+    pub op_type: NumericUnaryOpType,
+    pub span: SimpleSpan,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumericUnaryOpType {
     Plus,
     Minus,
 }
@@ -238,14 +243,22 @@ impl From<&str> for BoolLiteral {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BoolUnaryOp {
+pub enum BoolUnaryOpType {
     Not,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoolUnaryOp {
+    pub op_type: BoolUnaryOpType,
+    pub span: SimpleSpan,
 }
 
 pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> BoolUnaryOp {
     let exp_op_str = lex.slice();
     match exp_op_str {
-        "!" => BoolUnaryOp::Not,
+        "!" => BoolUnaryOp {
+            op_type: BoolUnaryOpType::Not,
+            span: lex.span().into(),
+        },
         _ => unreachable!(),
     }
 }
@@ -496,8 +509,14 @@ impl From<BOp> for NumericUnaryOp {
     fn from(bop: BOp) -> Self {
         use BOpType::*;
         match bop.bop_type {
-            Add => NumericUnaryOp::Plus,
-            Sub => NumericUnaryOp::Minus,
+            Add => NumericUnaryOp {
+                op_type: NumericUnaryOpType::Plus,
+                span: bop.span,
+            },
+            Sub => NumericUnaryOp {
+                op_type: NumericUnaryOpType::Minus,
+                span: bop.span,
+            },
             _ => unreachable!(),
         }
     }

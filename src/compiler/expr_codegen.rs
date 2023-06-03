@@ -7,7 +7,7 @@ use super::{
     primitive_codegen::codegen_primitive_val,
 };
 use crate::ast::{
-    BExpr, BOp, BOpType, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType,
+    BExpr, BOpType, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType,
 };
 use inkwell::{
     values::{

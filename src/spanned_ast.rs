@@ -1,14 +1,9 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, Block, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id, If, Return, Stmt,
-    TopBlock, VarDecl, While,
+    Assignment, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id, If,
+    NumericUnaryOp, Return, Stmt, TopBlock, UnaryOp, VarDecl, While,
 };
-
-pub struct SpannedAstNode<T> {
-    node: T,
-    span: SimpleSpan,
-}
 
 pub trait GetSpan {
     fn get_span(&self) -> SimpleSpan;
@@ -74,6 +69,27 @@ impl GetSpan for Expr<'_> {
             Expr::Id(id) => id.get_span(),
             Expr::Cast(_) => todo!(),
         }
+    }
+}
+
+impl GetSpan for UnaryOp {
+    fn get_span(&self) -> SimpleSpan {
+        match self {
+            UnaryOp::Numeric(n) => n.get_span(),
+            UnaryOp::Bool(b) => b.get_span(),
+        }
+    }
+}
+
+impl GetSpan for NumericUnaryOp {
+    fn get_span(&self) -> SimpleSpan {
+        self.span
+    }
+}
+
+impl GetSpan for BoolUnaryOp {
+    fn get_span(&self) -> SimpleSpan {
+        self.span
     }
 }
 
