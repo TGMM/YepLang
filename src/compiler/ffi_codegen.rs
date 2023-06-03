@@ -9,7 +9,7 @@ use crate::{
 use inkwell::{module::Linkage, types::BasicType};
 
 pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> Result<(), String> {
-    let fn_name = &extern_decl.fn_id.0;
+    let fn_name = &extern_decl.fn_id.id_str;
     let vvt_ret_type = &extern_decl.ret_type;
 
     let mut is_var_args = false;
@@ -19,7 +19,7 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
     while let Some(arg_type) = arg_type_it.next() {
         match arg_type {
             ExternType::Type(vvt) => {
-                let ty = convert_to_type_enum(compiler, vvt)?;
+                let ty = convert_to_type_enum(compiler, &vvt)?;
                 let metadata = convert_type_to_metadata(ty);
                 param_types.push(metadata);
             }

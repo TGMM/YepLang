@@ -79,8 +79,8 @@ pub fn llvm_fn_parser<'i: 'static>(
     let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
 
     // Main definition
-    let llvm_decorator =
-        just(Token::At).then(select! { Token::Id(id) => id }.filter(|id| *id == "llvm"));
+    let llvm_decorator = just(Token::At)
+        .then(select! { Token::Id(id) => id }.filter(|id| id.id_str.as_str() == "llvm"));
 
     let llvm_fn = llvm_decorator
         .ignore_then(just(Token::Function).or_not())
@@ -187,7 +187,7 @@ pub fn return_parser<'i: 'static>(
 mod test {
     use std::collections::VecDeque;
 
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     use crate::{
         ast::{
@@ -230,7 +230,11 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Method,
-                fn_type: FnType::Native(Block { stmts: vec![] })
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -265,7 +269,11 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(Block { stmts: vec![] })
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -294,7 +302,11 @@ mod test {
                     ret_type: None
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(Block { stmts: vec![] })
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -339,7 +351,11 @@ mod test {
                     })
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::Native(Block { stmts: vec![] })
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -383,7 +399,11 @@ mod test {
                             })
                         },
                         fn_scope: FnScope::Method,
-                        fn_type: FnType::Native(Block { stmts: vec![] })
+                        fn_type: FnType::Native(Block {
+                            stmts: vec![],
+                            lbracket: Some(SimpleSpan::new(0, 0)),
+                            rbracket: Some(SimpleSpan::new(0, 0))
+                        })
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
@@ -406,7 +426,7 @@ mod test {
     fn class_decl_test() {
         let tokens = stream_token_vec(vec![
             Token::Class,
-            Token::Id("MyClass"),
+            Token::Id("MyClass".into()),
             Token::LBracket,
             Token::Id("myClassMethod".into()),
             Token::LParen,
@@ -446,7 +466,11 @@ mod test {
                                 })
                             },
                             fn_scope: FnScope::Method,
-                            fn_type: FnType::Native(Block { stmts: vec![] })
+                            fn_type: FnType::Native(Block {
+                                stmts: vec![],
+                                lbracket: Some(SimpleSpan::new(0, 0)),
+                                rbracket: Some(SimpleSpan::new(0, 0))
+                            })
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),

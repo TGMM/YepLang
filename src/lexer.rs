@@ -1,4 +1,6 @@
-use crate::ast::{str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp};
+use crate::ast::{
+    str_to_bool_uop, str_to_bop, str_to_scope_spec, str_to_var_type, BoolUnaryOp, Id,
+};
 use crate::ast::{BOp, ScopeSpecifier, VarType};
 use logos::{Lexer, Logos};
 
@@ -7,17 +9,22 @@ pub fn set_decorator_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) {
     lex.extras.is_parsing_decorator = true;
 }
 
-pub fn check_for_llvm_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) -> &'input str {
-    let decorator_id = lex.slice();
+pub fn check_for_llvm_parsing<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Id {
+    let id_str = lex.slice();
 
     // After the first decorator id, we're no longer searching for
     // the LLVM decorator
     lex.extras.is_parsing_decorator = false;
-    if decorator_id == "llvm" {
+    // This id_str corresponds to the decorator
+    // id
+    if id_str == "llvm" {
         lex.extras.is_llvm_decorator = true;
     }
 
-    decorator_id
+    Id {
+        id_str: id_str.to_string(),
+        span: lex.span().into(),
+    }
 }
 
 pub fn parse_llvm_str<'input>(lex: &mut Lexer<'input, Token<'input>>) {
@@ -73,7 +80,7 @@ impl Default for LexerExtras {
 #[logos(skip r"[\s\f\r]+")]
 pub enum Token<'input> {
     #[regex(r#"[\p{L}_][\p{L}\d_]*"#, check_for_llvm_parsing)]
-    Id(&'input str),
+    Id(Id),
     #[regex(r#""(?:[^"\\]|\\t|\\u|\\n|\\")*""#)]
     Str(&'input str),
     #[regex(r#"'(?:[^'\\]|\\t|\\u(?:[0-9a-fA-F]{4})|\\n|\\r|\\'|\\\\)'"#)]
@@ -183,9 +190,10 @@ pub enum Token<'input> {
 mod test {
     use super::Token;
     use crate::{
-        ast::BoolUnaryOp,
-        lexer::{BOp, ScopeSpecifier, VarType},
+        ast::{BOp, BOpType, BoolUnaryOp, Id},
+        lexer::{ScopeSpecifier, VarType},
     };
+    use chumsky::span::SimpleSpan;
     use logos::Logos;
     use Token::*;
 
@@ -240,7 +248,20 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
-        assert_eq!(&tokens, &[Ok(BOp(BOp::Add)), Ok(BOp(BOp::Sub)),]);
+        use BOpType::*;
+        assert_eq!(
+            &tokens,
+            &[
+                Ok(BOp(BOp {
+                    bop_type: Add,
+                    span: SimpleSpan::new(0, 1)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Sub,
+                    span: SimpleSpan::new(2, 3)
+                })),
+            ]
+        );
     }
 
     #[test]
@@ -249,9 +270,23 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
+        use BOpType::*;
         assert_eq!(
             &tokens,
-            &[Ok(BOp(BOp::Mul)), Ok(BOp(BOp::Div)), Ok(BOp(BOp::Mod))]
+            &[
+                Ok(BOp(BOp {
+                    bop_type: Mul,
+                    span: SimpleSpan::new(0, 1)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Div,
+                    span: SimpleSpan::new(2, 3)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Mod,
+                    span: SimpleSpan::new(4, 5)
+                })),
+            ]
         );
     }
 
@@ -261,15 +296,34 @@ mod test {
         let lex = Token::lexer(input);
         let tokens: Vec<_> = lex.collect();
 
+        use BOpType::*;
         assert_eq!(
             &tokens,
             &[
-                Ok(BOp(BOp::Gt)),
-                Ok(BOp(BOp::Gte)),
-                Ok(BOp(BOp::Lt)),
-                Ok(BOp(BOp::Lte)),
-                Ok(BOp(BOp::Ne)),
-                Ok(BOp(BOp::CmpEq)),
+                Ok(BOp(BOp {
+                    bop_type: Gt,
+                    span: SimpleSpan::new(0, 1)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Gte,
+                    span: SimpleSpan::new(2, 4)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Lt,
+                    span: SimpleSpan::new(5, 6)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Lte,
+                    span: SimpleSpan::new(7, 9)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: Ne,
+                    span: SimpleSpan::new(10, 12)
+                })),
+                Ok(BOp(BOp {
+                    bop_type: CmpEq,
+                    span: SimpleSpan::new(13, 15)
+                })),
             ]
         );
     }
@@ -392,11 +446,26 @@ mod test {
         assert_eq!(
             tokens,
             vec![
-                Ok(Id("x".into())),
-                Ok(Id("y".into())),
-                Ok(Id("z".into())),
-                Ok(Id("my_var".into())),
-                Ok(Id("my_super_long_var_name".into())),
+                Ok(Id(Id {
+                    id_str: "x".to_string(),
+                    span: SimpleSpan::new(0, 1)
+                })),
+                Ok(Id(Id {
+                    id_str: "y".to_string(),
+                    span: SimpleSpan::new(2, 3)
+                })),
+                Ok(Id(Id {
+                    id_str: "z".to_string(),
+                    span: SimpleSpan::new(4, 5)
+                })),
+                Ok(Id(Id {
+                    id_str: "my_var".to_string(),
+                    span: SimpleSpan::new(6, 12)
+                })),
+                Ok(Id(Id {
+                    id_str: "my_super_long_var_name".to_string(),
+                    span: SimpleSpan::new(13, 35)
+                })),
             ]
         );
     }

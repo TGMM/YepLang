@@ -84,7 +84,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
     fn_signature: &FnSignature,
     block_type: BlockType,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
-    let fn_name = fn_signature.fn_id.0.as_str();
+    let fn_name = fn_signature.fn_id.id_str.as_str();
 
     let arg_types = fn_signature
         .args
@@ -188,7 +188,7 @@ pub fn codegen_llvm_fn(
         .map(|(id, vvt)| {
             let ty = convert_to_type_enum(compiler, &vvt)?.to_string();
             let trimmed_ty = ty.trim_matches('"');
-            Ok(format!("{} %{}", trimmed_ty, id.0))
+            Ok(format!("{} %{}", trimmed_ty, id.id_str))
         })
         .collect::<Result<Vec<_>, CompilerError>>()?
         .join(", ");
@@ -198,7 +198,7 @@ pub fn codegen_llvm_fn(
         .map(|vvt| vvt.to_string())
         .unwrap_or("void".to_string());
 
-    let fn_name = fn_id.0;
+    let fn_name = fn_id.id_str;
     let fun_def = format!(
         "define {} @{}({}) {{{}}}",
         ret_type_str, fn_name, args_str, llvm_ir
@@ -271,7 +271,7 @@ pub fn codegen_native_fn(
     fn_block: Block,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    let fn_name = fn_signature.fn_id.0;
+    let fn_name = fn_signature.fn_id.id_str;
     let fun = compiler
         .get_scoped_val(&fn_name, block_type)?
         .as_fn()
@@ -325,14 +325,14 @@ pub fn codegen_native_fn(
         let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
             Destructure::Id(id) => {
-                arg_val.set_name(&id.0);
+                arg_val.set_name(id.id_str.as_str());
                 let arg_ptr = compiler
                     .builder
-                    .build_alloca(ty, &format!("local_{}", &id.0));
+                    .build_alloca(ty, &format!("local_{}", id.id_str.as_str()));
                 compiler.builder.build_store(arg_ptr, arg_val);
                 declare_scoped_val(
                     compiler,
-                    id.0,
+                    id.id_str,
                     ScopedVal::Var(ScopedVar {
                         ptr_val: arg_ptr,
                         var_type: arg_type,

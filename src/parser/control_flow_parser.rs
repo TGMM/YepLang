@@ -171,11 +171,11 @@ pub fn for_parser<'i: 'static>(
 
 #[cfg(test)]
 mod test {
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOp, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
+            Assignment, BExpr, BOp, BOpType, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
             NumericLiteral, PrimitiveVal, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment, While,
         },
         lexer::Token,
@@ -191,7 +191,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -212,7 +212,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -220,7 +220,11 @@ mod test {
                     }
                     .into()
                 ),
-                if_block: Block { stmts: vec![] },
+                if_block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
                 else_if: vec![],
                 else_b: None
             }
@@ -233,7 +237,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -253,7 +257,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -261,9 +265,17 @@ mod test {
                     }
                     .into()
                 ),
-                if_block: Block { stmts: vec![] },
+                if_block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
                 else_if: vec![],
-                else_b: Some(Block { stmts: vec![] })
+                else_b: Some(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -274,7 +286,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -283,7 +295,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gte),
+            Token::BOp(BOpType::Gte.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -300,7 +312,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -308,12 +320,16 @@ mod test {
                     }
                     .into()
                 ),
-                if_block: Block { stmts: vec![] },
+                if_block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
                 else_if: vec![ElseIf {
                     else_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOp::Gte,
+                            op: BOpType::Gte.into(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
@@ -321,7 +337,11 @@ mod test {
                         }
                         .into()
                     ),
-                    else_block: Block { stmts: vec![] }
+                    else_block: Block {
+                        stmts: vec![],
+                        lbracket: Some(SimpleSpan::new(0, 0)),
+                        rbracket: Some(SimpleSpan::new(0, 0))
+                    }
                 }],
                 else_b: None
             }
@@ -334,7 +354,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -343,7 +363,7 @@ mod test {
             Token::If,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gte),
+            Token::BOp(BOpType::Gte.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -363,7 +383,7 @@ mod test {
                 if_expr: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -371,12 +391,16 @@ mod test {
                     }
                     .into()
                 ),
-                if_block: Block { stmts: vec![] },
+                if_block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
                 else_if: vec![ElseIf {
                     else_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOp::Gte,
+                            op: BOpType::Gte.into(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("10")
@@ -384,9 +408,17 @@ mod test {
                         }
                         .into()
                     ),
-                    else_block: Block { stmts: vec![] }
+                    else_block: Block {
+                        stmts: vec![],
+                        lbracket: Some(SimpleSpan::new(0, 0)),
+                        rbracket: Some(SimpleSpan::new(0, 0))
+                    }
                 }],
-                else_b: Some(Block { stmts: vec![] })
+                else_b: Some(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                })
             }
         )
     }
@@ -397,7 +429,7 @@ mod test {
             Token::While,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
             Token::LBracket,
@@ -414,7 +446,7 @@ mod test {
                 while_cond: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -422,7 +454,11 @@ mod test {
                     }
                     .into()
                 ),
-                block: Block { stmts: vec![] },
+                block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
             }
         )
     }
@@ -436,7 +472,7 @@ mod test {
             Token::While,
             Token::LParen,
             Token::Id("x".into()),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
             Token::RParen,
         ]);
@@ -448,11 +484,15 @@ mod test {
         assert_eq!(
             primitive_vals,
             DoWhile {
-                do_block: Block { stmts: vec![] },
+                do_block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                },
                 while_cond: Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Gt,
+                        op: BOpType::Gt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -476,13 +516,13 @@ mod test {
             Token::IntVal("0"),
             Token::StmtEnd,
             Token::Id("x".into()),
-            Token::BOp(BOp::Lt),
+            Token::BOp(BOpType::Lt.into()),
             Token::IntVal("10"),
             Token::StmtEnd,
             Token::Id("x".into()),
             Token::AssignmentEq,
             Token::Id("x".into()),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("1"),
             Token::RParen,
             Token::LBracket,
@@ -513,7 +553,7 @@ mod test {
                 cmp_expr: Some(Expr::BinaryExpr(
                     BExpr {
                         lhs: Expr::Id("x".into()),
-                        op: BOp::Lt,
+                        op: BOpType::Lt.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -527,7 +567,7 @@ mod test {
                     assigned_expr: Expr::BinaryExpr(
                         BExpr {
                             lhs: Expr::Id("x".into()),
-                            op: BOp::Add,
+                            op: BOpType::Add.into(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Int("1")
@@ -536,7 +576,11 @@ mod test {
                         .into()
                     )
                 }))),
-                block: Block { stmts: vec![] }
+                block: Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                }
             }
         )
     }

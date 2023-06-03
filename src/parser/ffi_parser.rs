@@ -39,7 +39,7 @@ mod test {
     use std::collections::VecDeque;
 
     use crate::{
-        ast::{BOp, ExternDecl, ExternType, ValueVarType, VarType},
+        ast::{BOpType, ExternDecl, ExternType, ValueVarType, VarType},
         lexer::Token,
         parser::{ffi_parser::extern_decl_parser, helpers::test::stream_token_vec},
     };
@@ -51,9 +51,9 @@ mod test {
         let tokens = stream_token_vec(vec![
             Token::Extern,
             Token::VarType(VarType::I32),
-            Token::Id("printf"),
+            Token::Id("printf".into()),
             Token::LParen,
-            Token::BOp(BOp::Mul),
+            Token::BOp(BOpType::Mul.into()),
             Token::VarType(VarType::U8),
             Token::Comma,
             Token::Spread,

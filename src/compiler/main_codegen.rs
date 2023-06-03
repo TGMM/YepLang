@@ -307,7 +307,7 @@ fn codegen_var_decl<'input, 'ctx>(
         // TODO: Handle destructures instead of only ids
         let id = match decl_as.destructure {
             Destructure::Id(id) => {
-                if id.0.as_str() == "this" {
+                if id.id_str.as_str() == "this" {
                     return Err(
                         "'this' is a reserved keyword and can't be used as a variable name"
                             .to_string(),
@@ -357,13 +357,13 @@ fn codegen_var_decl<'input, 'ctx>(
 
         // Global variable
         if matches!(block_type, BlockType::GLOBAL) {
-            if id.0.starts_with("__yep_") {
+            if id.id_str.starts_with("__yep_") {
                 return Err(format!(
                     "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
                     "__yep_"
                 ));
             }
-            let new_global = compiler.module.add_global(type_, None, &id.0);
+            let new_global = compiler.module.add_global(type_, None, &id.id_str);
 
             if let Some(initial_val) = initial_val {
                 // Return error if initial_val comes from an instruction
@@ -382,7 +382,7 @@ fn codegen_var_decl<'input, 'ctx>(
 
             declare_scoped_val(
                 compiler,
-                id.0,
+                id.id_str,
                 ScopedVal::Var(ScopedVar {
                     ptr_val: global_ptr,
                     var_type,
@@ -392,7 +392,7 @@ fn codegen_var_decl<'input, 'ctx>(
             return Ok(());
         }
 
-        let new_local = compiler.builder.build_alloca(type_, &id.0);
+        let new_local = compiler.builder.build_alloca(type_, &id.id_str);
 
         if let Some(initial_val) = initial_val {
             compiler.builder.build_store(new_local, initial_val);
@@ -401,7 +401,7 @@ fn codegen_var_decl<'input, 'ctx>(
         // Only applies to local variables
         declare_scoped_val(
             compiler,
-            id.0,
+            id.id_str,
             ScopedVal::Var(ScopedVar {
                 ptr_val: new_local,
                 var_type,

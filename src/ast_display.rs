@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
+    ast::{BOp, BOpType, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
     lexer::Token,
 };
 use std::fmt;
@@ -52,7 +52,13 @@ impl<'a> fmt::Display for Token<'a> {
 
 impl fmt::Display for BOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BOp::*;
+        self.bop_type.fmt(f)
+    }
+}
+
+impl fmt::Display for BOpType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use BOpType::*;
         match self {
             Add => write!(f, "+"),
             Sub => write!(f, "-"),
@@ -116,7 +122,7 @@ impl fmt::Display for ValueVarType {
 
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.id_str)
     }
 }
 

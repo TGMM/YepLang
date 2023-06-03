@@ -31,7 +31,10 @@ macro_rules! recursive_parser {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::lexer::Token;
+    use crate::{
+        ast::{BOp, BOpType, Id},
+        lexer::Token,
+    };
     use chumsky::{
         input::{SpannedInput, Stream},
         prelude::Input,
@@ -59,5 +62,23 @@ pub(crate) mod test {
         let tokens = span_token_vec(tokens);
         let length = tokens.len();
         Stream::from_iter(tokens).spanned((length..length).into())
+    }
+
+    impl From<BOpType> for BOp {
+        fn from(bop_type: BOpType) -> Self {
+            BOp {
+                bop_type,
+                span: SimpleSpan::new(0, 0),
+            }
+        }
+    }
+
+    impl From<&str> for Id {
+        fn from(value: &str) -> Self {
+            Id {
+                id_str: value.to_string(),
+                span: SimpleSpan::new(0, 0),
+            }
+        }
     }
 }

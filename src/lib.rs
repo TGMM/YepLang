@@ -6,3 +6,4 @@ mod ast_display;
 pub mod compiler;
 mod lexer;
 mod parser;
+mod spanned_ast;

@@ -2,7 +2,10 @@ use super::{
     expr_parser::{boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, EXPR_PARSER},
     main_parser::{ParserError, ParserInput},
 };
-use crate::parser::main_parser::{GlobalParser, RecursiveParser};
+use crate::{
+    ast::BOpType,
+    parser::main_parser::{GlobalParser, RecursiveParser},
+};
 use crate::{
     ast::{
         ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
@@ -174,14 +177,15 @@ pub fn scope_specifier_parser<'i>(
 pub fn var_type_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, VarType, ParserError<'i, Token<'i>>> + Clone {
     let vt = select! { Token::VarType(vt) => vt };
-    let custom = select! { Token::Id(id) => id }.map(|id| VarType::Custom(id.into()));
+    let custom = select! { Token::Id(id) => id }.map(VarType::Custom);
 
     vt.or(custom)
 }
 
 pub fn pointer_symbol_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone {
-    bop_parser().filter(|b| matches!(b, BOp::Mul))
+    use BOpType::*;
+    bop_parser().filter(|b| matches!(b.bop_type, Mul))
 }
 
 pub fn value_var_type_parser<'i>(
@@ -223,7 +227,7 @@ mod test {
 
     use crate::{
         ast::{
-            ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
+            ArrayVal, BExpr, BOpType, BoolLiteral, Expr, NumericLiteral, NumericUnaryOp,
             PrimitiveVal, PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
         },
         lexer::Token,
@@ -240,12 +244,12 @@ mod test {
 
     #[test]
     fn id_test() {
-        let tokens = stream_token_vec(vec![Token::Id("アイヂ")]);
+        let tokens = stream_token_vec(vec![Token::Id("アイヂ".into())]);
         let res = id_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
         let id = res.unwrap();
-        assert_eq!(id, Id("アイヂ".to_string()))
+        assert_eq!(id, "アイヂ".into())
     }
 
     #[test]
@@ -291,7 +295,7 @@ mod test {
 
     #[test]
     fn signed_number_test() {
-        let tokens = stream_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
+        let tokens = stream_token_vec(vec![Token::BOp(BOpType::Add.into()), Token::IntVal("10")]);
 
         let res = signed_number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
@@ -351,10 +355,10 @@ mod test {
     fn array_test() {
         let tokens = stream_token_vec(vec![
             Token::LSqBracket,
-            Token::Id("x"),
+            Token::Id("x".into()),
             Token::Comma,
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("10"),
             Token::RSqBracket,
         ]);
@@ -373,7 +377,7 @@ mod test {
                             None,
                             NumericLiteral::Int("10")
                         )),
-                        op: BOp::Add,
+                        op: BOpType::Add.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
@@ -396,7 +400,7 @@ mod test {
             Token::Str("this is a str id".into()),
             Token::Colon,
             Token::FloatVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::FloatVal("10"),
             Token::RBracket,
         ]);
@@ -420,7 +424,7 @@ mod test {
                                 None,
                                 NumericLiteral::Float("10")
                             )),
-                            op: BOp::Add,
+                            op: BOpType::Add.into(),
                             rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                                 None,
                                 NumericLiteral::Float("10")

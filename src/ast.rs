@@ -1,7 +1,10 @@
-use std::{cmp::Ordering, collections::VecDeque};
+use std::{cmp::Ordering, collections::VecDeque, hash::Hash};
 
 use crate::lexer::Token;
-use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
+use chumsky::{
+    pratt::{Associativity, InfixOperator, InfixPrecedence},
+    span::SimpleSpan,
+};
 use enum_as_inner::EnumAsInner;
 use logos::Lexer;
 
@@ -298,7 +301,10 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
         "boolean" => VarType::Boolean,
         "char" => VarType::Char,
         "string" => VarType::String,
-        custom => VarType::Custom(custom.into()),
+        custom => VarType::Custom(Id {
+            id_str: type_str.to_string(),
+            span: lex.span().into(),
+        }),
     }
 }
 
@@ -319,13 +325,18 @@ pub fn str_to_scope_spec<'input>(lex: &Lexer<'input, Token<'input>>) -> ScopeSpe
     }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub struct Id(pub String);
-impl From<&str> for Id {
-    fn from(value: &str) -> Self {
-        Id(value.to_string())
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Id {
+    pub id_str: String,
+    pub span: SimpleSpan,
+}
+
+impl Hash for Id {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id_str.hash(state);
     }
 }
+
 impl<'a> From<Id> for Expr<'a> {
     fn from(value: Id) -> Self {
         Expr::Id(value)
@@ -337,7 +348,9 @@ pub struct TopBlock<'input>(pub Block<'input>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'input> {
+    pub lbracket: Option<SimpleSpan>,
     pub stmts: Vec<Stmt<'input>>,
+    pub rbracket: Option<SimpleSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -397,9 +410,13 @@ pub struct VarDecl<'input> {
     pub scope_spec: ScopeSpecifier,
     pub decl_assignments: Vec<VarDeclAssignment<'input>>,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BOp {
+pub struct BOp {
+    pub bop_type: BOpType,
+    pub span: SimpleSpan,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BOpType {
     Add,
     Sub,
     Mul,
@@ -415,10 +432,11 @@ pub enum BOp {
     And,
     Or,
 }
-impl BOp {
+impl BOpType {
     pub fn is_cmp(&self) -> bool {
+        use BOpType::*;
         match self {
-            BOp::Gt | BOp::Gte | BOp::Lt | BOp::Lte | BOp::Ne | BOp::CmpEq => true,
+            Gt | Gte | Lt | Lte | Ne | CmpEq => true,
             _ => false,
         }
     }
@@ -428,8 +446,8 @@ impl<'input> InfixOperator<Expr<'input>> for BOp {
     type Strength = u8;
 
     fn precedence(&self) -> InfixPrecedence<Self::Strength> {
-        use BOp::*;
-        match self {
+        use BOpType::*;
+        match self.bop_type {
             Add | Sub => InfixPrecedence::new(5, Associativity::Left),
             Mul | Div | Mod => InfixPrecedence::new(7, Associativity::Left),
             Pow => InfixPrecedence::new(9, Associativity::Left),
@@ -443,37 +461,43 @@ impl<'input> InfixOperator<Expr<'input>> for BOp {
         Expr::BinaryExpr(Box::new(bexpr))
     }
 }
-impl From<&str> for BOp {
+impl From<&str> for BOpType {
     fn from(value: &str) -> Self {
+        use BOpType::*;
         match value {
-            "+" => BOp::Add,
-            "-" => BOp::Sub,
-            "*" => BOp::Mul,
-            "/" => BOp::Div,
-            "%" => BOp::Mod,
-            "**" => BOp::Pow,
-            ">" => BOp::Gt,
-            ">=" => BOp::Gte,
-            "<" => BOp::Lt,
-            "<=" => BOp::Lte,
-            "!=" => BOp::Ne,
-            "==" => BOp::CmpEq,
-            "&&" => BOp::And,
-            "||" => BOp::Or,
+            "+" => Add,
+            "-" => Sub,
+            "*" => Mul,
+            "/" => Div,
+            "%" => Mod,
+            "**" => Pow,
+            ">" => Gt,
+            ">=" => Gte,
+            "<" => Lt,
+            "<=" => Lte,
+            "!=" => Ne,
+            "==" => CmpEq,
+            "&&" => And,
+            "||" => Or,
             _ => todo!(),
         }
     }
 }
 pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> BOp {
     let op = lex.slice();
-    op.into()
+
+    BOp {
+        bop_type: op.into(),
+        span: lex.span().into(),
+    }
 }
 
 impl From<BOp> for NumericUnaryOp {
-    fn from(value: BOp) -> Self {
-        match value {
-            BOp::Add => NumericUnaryOp::Plus,
-            BOp::Sub => NumericUnaryOp::Minus,
+    fn from(bop: BOp) -> Self {
+        use BOpType::*;
+        match bop.bop_type {
+            Add => NumericUnaryOp::Plus,
+            Sub => NumericUnaryOp::Minus,
             _ => unreachable!(),
         }
     }

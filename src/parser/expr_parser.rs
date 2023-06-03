@@ -3,7 +3,7 @@ use super::primitive_parser::{
     bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
 };
 use crate::ast::{
-    BOp, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
+    BOpType, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
 };
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
@@ -32,11 +32,13 @@ recursive_parser!(
 
 pub fn numeric_unary_op_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, NumericUnaryOp, ParserError<'i, Token<'i>>> + Clone {
+    use BOpType::*;
+
     let plus = bop_parser()
-        .filter(|b| matches!(b, BOp::Add))
+        .filter(|b| matches!(b.bop_type, Add))
         .to(NumericUnaryOp::Plus);
     let minus = bop_parser()
-        .filter(|b| matches!(b, BOp::Sub))
+        .filter(|b| matches!(b.bop_type, Sub))
         .to(NumericUnaryOp::Minus);
 
     plus.or(minus)
@@ -227,7 +229,7 @@ recursive_parser!(
 mod test {
     use crate::{
         ast::{
-            BExpr, BOp, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess,
+            BExpr, BOpType, BoolLiteral, BoolUnaryOp, Expr, FnCall, Indexing, MemberAcess,
             NumericLiteral, NumericUnaryOp, PrimitiveVal,
         },
         lexer::Token,
@@ -267,7 +269,7 @@ mod test {
     fn expr_addition_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("5"),
         ]);
 
@@ -279,7 +281,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOp::Add,
+                op: BOpType::Add.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -289,7 +291,7 @@ mod test {
     fn expr_subtraction_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Sub),
+            Token::BOp(BOpType::Sub.into()),
             Token::IntVal("5"),
         ]);
 
@@ -301,7 +303,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOp::Sub,
+                op: BOpType::Sub.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -311,7 +313,7 @@ mod test {
     fn expr_multiplication_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Mul),
+            Token::BOp(BOpType::Mul.into()),
             Token::IntVal("5"),
         ]);
 
@@ -323,7 +325,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOp::Mul,
+                op: BOpType::Mul.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -333,7 +335,7 @@ mod test {
     fn expr_division_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Div),
+            Token::BOp(BOpType::Div.into()),
             Token::IntVal("5"),
         ]);
 
@@ -345,7 +347,7 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOp::Div,
+                op: BOpType::Div.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
             }))
         )
@@ -355,9 +357,9 @@ mod test {
     fn expr_lbp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("5"),
-            Token::BOp(BOp::Mul),
+            Token::BOp(BOpType::Mul.into()),
             Token::IntVal("15"),
         ]);
 
@@ -369,10 +371,10 @@ mod test {
             expr,
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                op: BOp::Add,
+                op: BOpType::Add.into(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5"))),
-                    op: BOp::Mul,
+                    op: BOpType::Mul.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15")))
                 }))
             }))
@@ -383,9 +385,9 @@ mod test {
     fn expr_rbp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Mul),
+            Token::BOp(BOpType::Mul.into()),
             Token::IntVal("5"),
-            Token::BOp(BOp::Sub),
+            Token::BOp(BOpType::Sub.into()),
             Token::IntVal("15"),
         ]);
 
@@ -398,10 +400,10 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOp::Mul,
+                    op: BOpType::Mul.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
-                op: BOp::Sub,
+                op: BOpType::Sub.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
             }))
         )
@@ -411,11 +413,11 @@ mod test {
     fn expr_cmp_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("5"),
-            Token::BOp(BOp::Gt),
+            Token::BOp(BOpType::Gt.into()),
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("5"),
         ]);
 
@@ -428,13 +430,13 @@ mod test {
             Expr::BinaryExpr(Box::new(BExpr {
                 lhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOp::Add,
+                    op: BOpType::Add.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
-                op: BOp::Gt,
+                op: BOpType::Gt.into(),
                 rhs: Expr::BinaryExpr(Box::new(BExpr {
                     lhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10"))),
-                    op: BOp::Add,
+                    op: BOpType::Add.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("5")))
                 })),
             }))
@@ -444,7 +446,7 @@ mod test {
     #[test]
     fn expr_fn_call_test() {
         let tokens = stream_token_vec(vec![
-            Token::Id("fn"),
+            Token::Id("fn".into()),
             Token::LParen,
             Token::IntVal("10"),
             Token::RParen,
@@ -472,7 +474,7 @@ mod test {
     #[test]
     fn expr_indexing_test() {
         let tokens = stream_token_vec(vec![
-            Token::Id("arr"),
+            Token::Id("arr".into()),
             Token::LSqBracket,
             Token::IntVal("10"),
             Token::RSqBracket,
@@ -499,7 +501,11 @@ mod test {
 
     #[test]
     fn expr_member_access_test() {
-        let tokens = stream_token_vec(vec![Token::Id("obj"), Token::Dot, Token::Id("prop")]);
+        let tokens = stream_token_vec(vec![
+            Token::Id("obj".into()),
+            Token::Dot,
+            Token::Id("prop".into()),
+        ]);
 
         let res = expr_parser().parse(tokens).into_result();
         assert!(res.is_ok());
@@ -541,13 +547,13 @@ mod test {
     fn expr_paren_precedence_test() {
         let tokens = stream_token_vec(vec![
             Token::LParen,
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
-            Token::BOp(BOp::Sub),
+            Token::BOp(BOpType::Add.into()),
+            Token::BOp(BOpType::Sub.into()),
             Token::IntVal("5"),
             Token::RParen,
-            Token::BOp(BOp::Mul),
+            Token::BOp(BOpType::Mul.into()),
             Token::IntVal("15"),
         ]);
 
@@ -563,13 +569,13 @@ mod test {
                         Some(NumericUnaryOp::Plus),
                         NumericLiteral::Int("10")
                     )),
-                    op: BOp::Add,
+                    op: BOpType::Add.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                         Some(NumericUnaryOp::Minus),
                         NumericLiteral::Int("5")
                     ))
                 })),
-                op: BOp::Mul,
+                op: BOpType::Mul.into(),
                 rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("15"))),
             }))
         )

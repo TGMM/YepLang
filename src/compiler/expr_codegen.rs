@@ -6,7 +6,9 @@ use super::{
     main_codegen::{convert_to_type_enum, initialize_oob_message, link_to_printf},
     primitive_codegen::codegen_primitive_val,
 };
-use crate::ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
+use crate::ast::{
+    BExpr, BOp, BOpType, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType,
+};
 use inkwell::{
     values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, IntValue,
@@ -22,7 +24,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let fn_name = match fn_call.fn_expr {
-        Expr::Id(id) => id.0,
+        Expr::Id(id) => id.id_str,
         _ => return Err("Functions as values are not yet supported".to_string()),
     };
     let function = compiler
@@ -123,7 +125,7 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
         }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
-            let var_ptr = compiler.get_scoped_val(&var_id.0, block_type)?;
+            let var_ptr = compiler.get_scoped_val(&var_id.id_str, block_type)?;
 
             match var_ptr {
                 ScopedVal::Var(v) => Ok((v.ptr_val, v.var_type.clone())),
@@ -166,14 +168,14 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
         }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
-            let var_name = &var_id.0;
+            let var_name = var_id.id_str.as_str();
             let scoped_val = compiler.get_scoped_val(var_name, block_type)?;
             let scoped_var = scoped_val
                 .clone()
                 .into_var()
                 .map_err(|_| "Using function pointer as a value is not supported".to_string())?;
 
-            let instruction_name = format!("load_{}", var_id.0);
+            let instruction_name = format!("load_{}", var_id.id_str);
 
             let var_type = convert_to_type_enum(compiler, &scoped_var.var_type)?;
             let var_val =
@@ -555,8 +557,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
             );
         }
 
-        match op {
-            BOp::CmpEq => {
+        match op.bop_type {
+            BOpType::CmpEq => {
                 return Err("Comparing two arrays for equality is not yet supported".to_string());
             }
             unsupported_op => {
@@ -571,8 +573,8 @@ pub fn codegen_bexpr<'input, 'ctx>(
     }
 
     if lhs_type.pointer_nesting_level > 0 || rhs_type.pointer_nesting_level > 0 {
-        match op {
-            BOp::CmpEq => {
+        match op.bop_type {
+            BOpType::CmpEq => {
                 return Err("Comparing two pointers for equality is not yet supported".to_string());
             }
             unsupported_op => {
@@ -628,38 +630,43 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 rhs = b.build_int_cast(rhs, cast_type, "int_cast");
             }
 
-            let bop_res = match op {
-                BOp::Add => b.build_int_add(lhs, rhs, "int_add"),
-                BOp::Sub => b.build_int_sub(lhs, rhs, "int_sub"),
-                BOp::Mul => b.build_int_mul(lhs, rhs, "int_mul"),
-                BOp::Div if operand_type.is_signed() => {
+            let bop_res = match op.bop_type {
+                BOpType::Add => b.build_int_add(lhs, rhs, "int_add"),
+                BOpType::Sub => b.build_int_sub(lhs, rhs, "int_sub"),
+                BOpType::Mul => b.build_int_mul(lhs, rhs, "int_mul"),
+                BOpType::Div if operand_type.is_signed() => {
                     b.build_int_signed_div(lhs, rhs, "int_sdiv")
                 }
-                BOp::Div => b.build_int_unsigned_div(lhs, rhs, "int_udiv"),
-                BOp::Mod if operand_type.is_signed() => {
+                BOpType::Div => b.build_int_unsigned_div(lhs, rhs, "int_udiv"),
+                BOpType::Mod if operand_type.is_signed() => {
                     b.build_int_signed_rem(lhs, rhs, "int_srem")
                 }
-                BOp::Mod => b.build_int_unsigned_rem(lhs, rhs, "int_urem"),
-                BOp::Pow => return Err(format!("The {} operator is not yet supported", BOp::Pow)),
-                BOp::Gt if operand_type.is_signed() => {
+                BOpType::Mod => b.build_int_unsigned_rem(lhs, rhs, "int_urem"),
+                BOpType::Pow => {
+                    return Err(format!(
+                        "The {} operator is not yet supported",
+                        BOpType::Pow
+                    ))
+                }
+                BOpType::Gt if operand_type.is_signed() => {
                     b.build_int_compare(IntPredicate::SGT, lhs, rhs, "int_sgt_cmp")
                 }
-                BOp::Gt => b.build_int_compare(IntPredicate::UGT, lhs, rhs, "int_ugt_cmp"),
-                BOp::Gte if operand_type.is_signed() => {
+                BOpType::Gt => b.build_int_compare(IntPredicate::UGT, lhs, rhs, "int_ugt_cmp"),
+                BOpType::Gte if operand_type.is_signed() => {
                     b.build_int_compare(IntPredicate::SGE, lhs, rhs, "int_sge_cmp")
                 }
-                BOp::Gte => b.build_int_compare(IntPredicate::UGE, lhs, rhs, "int_uge_cmp"),
-                BOp::Lt if operand_type.is_signed() => {
+                BOpType::Gte => b.build_int_compare(IntPredicate::UGE, lhs, rhs, "int_uge_cmp"),
+                BOpType::Lt if operand_type.is_signed() => {
                     b.build_int_compare(IntPredicate::SLT, lhs, rhs, "int_slt_cmp")
                 }
-                BOp::Lt => b.build_int_compare(IntPredicate::ULT, lhs, rhs, "int_ult_cmp"),
-                BOp::Lte if operand_type.is_signed() => {
+                BOpType::Lt => b.build_int_compare(IntPredicate::ULT, lhs, rhs, "int_ult_cmp"),
+                BOpType::Lte if operand_type.is_signed() => {
                     b.build_int_compare(IntPredicate::SLE, lhs, rhs, "int_sle_cmp")
                 }
-                BOp::Lte => b.build_int_compare(IntPredicate::ULE, lhs, rhs, "int_ule_cmp"),
-                BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "int_ne_cmp"),
-                BOp::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
-                BOp::And | BOp::Or => {
+                BOpType::Lte => b.build_int_compare(IntPredicate::ULE, lhs, rhs, "int_ule_cmp"),
+                BOpType::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "int_ne_cmp"),
+                BOpType::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
+                BOpType::And | BOpType::Or => {
                     return Err("Invalid && or || comparison for int value".to_string())
                 }
             };
@@ -679,32 +686,37 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 rhs = b.build_float_cast(rhs, cast_type, "float_cast");
             }
 
-            let bop_res = match op {
-                BOp::Add => b.build_float_add(lhs, rhs, "flt_add").as_basic_value_enum(),
-                BOp::Sub => b.build_float_sub(lhs, rhs, "flt_sub").as_basic_value_enum(),
-                BOp::Mul => b.build_float_mul(lhs, rhs, "flt_mul").as_basic_value_enum(),
-                BOp::Div => b.build_float_div(lhs, rhs, "flt_div").as_basic_value_enum(),
-                BOp::Mod => b.build_float_rem(lhs, rhs, "flt_mod").as_basic_value_enum(),
-                BOp::Pow => return Err(format!("The {} operator is not yet supported", BOp::Pow)),
-                BOp::Gt => b
+            let bop_res = match op.bop_type {
+                BOpType::Add => b.build_float_add(lhs, rhs, "flt_add").as_basic_value_enum(),
+                BOpType::Sub => b.build_float_sub(lhs, rhs, "flt_sub").as_basic_value_enum(),
+                BOpType::Mul => b.build_float_mul(lhs, rhs, "flt_mul").as_basic_value_enum(),
+                BOpType::Div => b.build_float_div(lhs, rhs, "flt_div").as_basic_value_enum(),
+                BOpType::Mod => b.build_float_rem(lhs, rhs, "flt_mod").as_basic_value_enum(),
+                BOpType::Pow => {
+                    return Err(format!(
+                        "The {} operator is not yet supported",
+                        BOpType::Pow
+                    ))
+                }
+                BOpType::Gt => b
                     .build_float_compare(FloatPredicate::OGT, lhs, rhs, "flt_gt_cmp")
                     .as_basic_value_enum(),
-                BOp::Gte => b
+                BOpType::Gte => b
                     .build_float_compare(FloatPredicate::OGE, lhs, rhs, "flt_ge_cmp")
                     .as_basic_value_enum(),
-                BOp::Lt => b
+                BOpType::Lt => b
                     .build_float_compare(FloatPredicate::OLT, lhs, rhs, "flt_lt_cmp")
                     .as_basic_value_enum(),
-                BOp::Lte => b
+                BOpType::Lte => b
                     .build_float_compare(FloatPredicate::OLE, lhs, rhs, "flt_le_cmp")
                     .as_basic_value_enum(),
-                BOp::Ne => b
+                BOpType::Ne => b
                     .build_float_compare(FloatPredicate::ONE, lhs, rhs, "flt_ne_cmp")
                     .as_basic_value_enum(),
-                BOp::CmpEq => b
+                BOpType::CmpEq => b
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "flt_eq_cmp")
                     .as_basic_value_enum(),
-                BOp::And | BOp::Or => {
+                BOpType::And | BOpType::Or => {
                     return Err("Invalid && or || comparison for float value".to_string())
                 }
             };
@@ -718,11 +730,11 @@ pub fn codegen_bexpr<'input, 'ctx>(
             let rhs = rhs_val.into_int_value();
             let b = compiler.builder;
 
-            let bop_res = match op {
-                BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "bool_eq_cmp"),
-                BOp::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
-                BOp::And => b.build_and(lhs, rhs, "bool_and"),
-                BOp::Or => b.build_or(lhs, rhs, "bool_or"),
+            let bop_res = match op.bop_type {
+                BOpType::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "bool_eq_cmp"),
+                BOpType::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "bool_eq_cmp"),
+                BOpType::And => b.build_and(lhs, rhs, "bool_and"),
+                BOpType::Or => b.build_or(lhs, rhs, "bool_or"),
                 unsupported_operation => {
                     return Err(format!(
                         "Unsupported operation {} between two booleans",
@@ -738,7 +750,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
         VarType::Custom(_) => return Err("Classes are not yet supported".to_string()),
     };
 
-    let cmp_expr_type = if !op.is_cmp() {
+    let cmp_expr_type = if !op.bop_type.is_cmp() {
         expr_type
     } else {
         ValueVarType {

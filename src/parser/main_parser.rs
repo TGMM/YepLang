@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Assignment, BOp, Block, Destructure, Expr, PropertyDestructure, PropertyName, Stmt,
-        TopBlock, VarDecl, VarDeclAssignment,
+        Assignment, BOp, BOpType, Block, Destructure, Expr, PropertyDestructure, PropertyName,
+        Stmt, TopBlock, VarDecl, VarDeclAssignment,
     },
     lexer::Token,
     recursive_parser,
@@ -27,6 +27,7 @@ use super::{
     control_flow_parser::{do_while_parser, for_parser, if_parser, while_parser},
     expr_parser::{assignment_expr_parser, expr_parser, EXPR_PARSER},
     ffi_parser::extern_decl_parser,
+    keyword_parser::tag,
     primitive_parser::{
         bop_parser, id_parser, scope_specifier_parser, string_parser, type_specifier_parser,
     },
@@ -149,10 +150,8 @@ pub fn assignment_parser<'i: 'static>(
 
     // Main definition
     let non_cmp_op = bop_parser().filter(|bop| {
-        matches!(
-            bop,
-            BOp::Add | BOp::Sub | BOp::Mul | BOp::Div | BOp::Mod | BOp::Pow
-        )
+        use BOpType::*;
+        matches!(bop.bop_type, Add | Sub | Mul | Div | Mod | Pow)
     });
     let assignment = assignment_expr_parser()
         .filter(|e| matches!(e, Expr::Id(_) | Expr::Indexing(_) | Expr::MemberAccess(_)))
@@ -235,7 +234,7 @@ recursive_parser!(
         stmt.clone()
             .repeated()
             .collect::<Vec<_>>()
-            .map(|stmts| Block { stmts })
+            .map(|stmts| Block { stmts, lbracket: None, rbracket: None })
             .map(TopBlock)
     },
     definitions {
@@ -281,7 +280,11 @@ recursive_parser!(
         let top_block = TOP_BLOCK_PARSER.read().unwrap().clone()
     },
     main_definition {
-        top_block.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).map(|tb| tb.0)
+        tag(Token::LBracket).then(top_block.clone())
+            .then(tag(Token::RBracket))
+            .map(|((lbracket, tb), rbracket)| Block {
+                lbracket: Some(lbracket), stmts: tb.0.stmts, rbracket: Some(rbracket)
+            })
     },
     definitions {
         if !top_block.is_defined() {
@@ -292,13 +295,13 @@ recursive_parser!(
 
 #[cfg(test)]
 mod test {
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOp, Block, Destructure, Expr, NumericLiteral, PrimitiveVal,
-            PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock, VarDecl,
-            VarDeclAssignment,
+            Assignment, BExpr, BOp, BOpType, Block, Destructure, Expr, NumericLiteral,
+            PrimitiveVal, PropertyDestructure, PropertyName, ScopeSpecifier, Stmt, TopBlock,
+            VarDecl, VarDeclAssignment,
         },
         lexer::Token,
         parser::{
@@ -454,7 +457,7 @@ mod test {
             Token::IntVal("10"),
             Token::StmtEnd,
             Token::Id("y".into()),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("10"),
             Token::StmtEnd,
         ]);
@@ -466,6 +469,7 @@ mod test {
         assert_eq!(
             block,
             TopBlock(Block {
+                lbracket: None,
                 stmts: vec![
                     Stmt::Assignment(Assignment {
                         assignee_expr: Expr::Id("x".into()),
@@ -474,13 +478,14 @@ mod test {
                     }),
                     Stmt::Expr(Expr::BinaryExpr(Box::new(BExpr {
                         lhs: Expr::Id("y".into()),
-                        op: BOp::Add,
+                        op: BOpType::Add.into(),
                         rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
                             None,
                             NumericLiteral::Int("10")
                         )),
                     })))
-                ]
+                ],
+                rbracket: None
             })
         )
     }
@@ -493,7 +498,14 @@ mod test {
         assert!(res.is_ok());
 
         let block = res.unwrap();
-        assert_eq!(block, Block { stmts: vec![] });
+        assert_eq!(
+            block,
+            Block {
+                stmts: vec![],
+                lbracket: Some(SimpleSpan::new(0, 0)),
+                rbracket: Some(SimpleSpan::new(0, 0))
+            }
+        );
     }
 
     #[test]
@@ -554,7 +566,7 @@ mod test {
     fn for_stmt_expr_parser_test() {
         let tokens = stream_token_vec(vec![
             Token::Id("x".into()),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOpType::Add.into()),
             Token::IntVal("10"),
         ]);
 
@@ -567,7 +579,7 @@ mod test {
             Stmt::Expr(Expr::BinaryExpr(
                 BExpr {
                     lhs: Expr::Id("x".into()),
-                    op: BOp::Add,
+                    op: BOpType::Add.into(),
                     rhs: Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
                 }
                 .into()
