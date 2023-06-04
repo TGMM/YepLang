@@ -24,12 +24,13 @@ pub fn codegen_fn_call<'input, 'ctx>(
     fn_call: FnCall,
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let fn_call_span = fn_call.get_span();
     let fn_name = match fn_call.fn_expr {
         Expr::Id(id) => id.id_str,
         _ => {
             return Err(CompilerError {
                 reason: "Functions as values are not yet supported".to_string(),
-                span: Some(fn_call.get_span()),
+                span: Some(fn_call_span),
             })
         }
     };
@@ -98,7 +99,7 @@ pub fn codegen_fn_call<'input, 'ctx>(
                         "Incorrect type for argument, expected {} got {}",
                         expected_vvt, arg_type
                     ),
-                    span: Some(expected_vvt.get_span()),
+                    span: Some(arg_expr_span),
                 });
             }
         }
