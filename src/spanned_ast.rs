@@ -139,7 +139,8 @@ impl GetSpan for ArrayVal<'_> {
 impl GetSpan for Indexing<'_> {
     fn get_span(&self) -> SimpleSpan {
         let start = self.indexed.get_span().start;
-        let end = self.indexer.get_span().end;
+        // + 1 for RSqBracket
+        let end = self.indexer.get_span().end + 1;
 
         SimpleSpan::new(start, end)
     }

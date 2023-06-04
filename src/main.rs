@@ -38,6 +38,8 @@ fn main() {
                     .finish()
                     .eprint((file_name, Source::from(input_ref)))
                     .unwrap()
+            } else {
+                eprintln!("{}", e.reason);
             }
         }
     }
