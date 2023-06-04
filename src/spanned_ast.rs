@@ -33,7 +33,7 @@ impl GetSpan for Block<'_> {
         }
 
         let length = self.stmts.len();
-        let first = self.stmts[0].get_span().start.max(lbracket.start);
+        let first = self.stmts[0].get_span().start.min(lbracket.start);
         let last = self.stmts[length - 1].get_span().end.max(rbracket.end);
 
         SimpleSpan::new(first, last)
