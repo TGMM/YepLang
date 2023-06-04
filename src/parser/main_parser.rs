@@ -438,7 +438,7 @@ mod test {
         assert_eq!(
             assignment,
             VarDecl {
-                scope_spec: ScopeSpecifier::Let,
+                scope_spec: ScopeSpecifier::Let.into_spanned(),
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
@@ -550,14 +550,14 @@ mod test {
         assert_eq!(
             block,
             Stmt::VarDecl(VarDecl {
-                scope_spec: ScopeSpecifier::Let,
+                scope_spec: ScopeSpecifier::Let.into_spanned(),
                 decl_assignments: vec![VarDeclAssignment {
                     destructure: Destructure::Id("x".into()),
                     var_type: None,
                     expr: Some(Expr::PrimitiveVal(
                         PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
                     ))
-                }],
+                }]
             })
         )
     }

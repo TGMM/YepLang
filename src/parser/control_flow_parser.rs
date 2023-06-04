@@ -559,14 +559,14 @@ mod test {
             For {
                 decl_stmt: Some(
                     Stmt::VarDecl(VarDecl {
-                        scope_spec: ScopeSpecifier::Let,
+                        scope_spec: ScopeSpecifier::Let.into_spanned(),
                         decl_assignments: vec![VarDeclAssignment {
                             destructure: Destructure::Id("x".into()),
                             var_type: None,
                             expr: Some(Expr::PrimitiveVal(
                                 PrimitiveVal::Number(None, NumericLiteral::Int("0")).into_spanned()
                             ))
-                        }]
+                        }],
                     })
                     .into()
                 ),

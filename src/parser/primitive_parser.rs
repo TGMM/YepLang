@@ -174,8 +174,10 @@ recursive_parser!(
 );
 
 pub fn scope_specifier_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ScopeSpecifier, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ScopeSpecifier>, ParserError<'i, Token<'i>>> + Clone
+{
     select! { Token::ScopeSpecifier(ss) => ss }
+        .map_with_span(|ss, span| SpannedAstNode { node: ss, span })
 }
 
 pub fn var_type_parser<'i>(
@@ -499,12 +501,13 @@ mod test {
         assert!(res.is_ok());
 
         let scope_spec = res.unwrap();
+
         assert_eq!(
             scope_spec,
             vec![
-                ScopeSpecifier::Const,
-                ScopeSpecifier::Let,
-                ScopeSpecifier::Var,
+                ScopeSpecifier::Const.into_spanned(),
+                ScopeSpecifier::Let.into_spanned(),
+                ScopeSpecifier::Var.into_spanned(),
             ]
         )
     }

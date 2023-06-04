@@ -416,7 +416,7 @@ pub struct VarDeclAssignment<'input> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl<'input> {
-    pub scope_spec: ScopeSpecifier,
+    pub scope_spec: SpannedAstNode<ScopeSpecifier>,
     pub decl_assignments: Vec<VarDeclAssignment<'input>>,
 }
 

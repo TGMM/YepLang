@@ -1,9 +1,9 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Else, ElseIf, Expr, ExternDecl,
-    FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal,
-    Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
+    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, Destructure, DoWhile, Else, ElseIf, Expr,
+    ExternDecl, FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess, NumericUnaryOp,
+    PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -254,9 +254,29 @@ impl GetSpan for ElseIf<'_> {
     }
 }
 
+impl GetSpan for Destructure<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        match self {
+            Destructure::Id(id) => id.get_span(),
+            Destructure::MemberAccess(_) => todo!(),
+            Destructure::Array(_) => todo!(),
+            Destructure::Object(_) => todo!(),
+        }
+    }
+}
+
 impl GetSpan for VarDecl<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.scope_spec.span.start;
+        let da = self.decl_assignments.last().unwrap();
+
+        let end = da
+            .expr
+            .as_ref()
+            .map(|e| e.get_span().end)
+            .unwrap_or(da.destructure.get_span().end);
+
+        SimpleSpan::new(start, end)
     }
 }
 
