@@ -209,7 +209,7 @@ pub fn semantic_cube(lhs: &ValueVarType, rhs: &ValueVarType) -> Result<ValueVarT
     }
 
     let mut resulting_type: VarType = lhs.vtype.clone().max(rhs.vtype.clone());
-    if resulting_type.is_int() {
+    if resulting_type.is_int() && (lhs.vtype.is_signed() || rhs.vtype.is_signed()) {
         resulting_type = resulting_type.to_signed_int();
     }
 
