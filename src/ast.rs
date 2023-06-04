@@ -376,7 +376,10 @@ pub enum Stmt<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Return<'input>(pub Option<Expr<'input>>);
+pub struct Return<'input> {
+    pub ret_kw: SimpleSpan,
+    pub ret_val: Option<Expr<'input>>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyName {
@@ -543,9 +546,16 @@ pub struct Indexing<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FnCallArgs<'i> {
+    pub args: Vec<Expr<'i>>,
+    pub rparen: SimpleSpan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FnCall<'a> {
     pub fn_expr: Expr<'a>,
     pub args: Vec<Expr<'a>>,
+    pub rparen: SimpleSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -566,6 +576,7 @@ pub struct For<'a> {
     pub cmp_expr: Option<Expr<'a>>,
     pub postfix_stmt: Option<Box<Stmt<'a>>>,
     pub block: Block<'a>,
+    pub for_kw: SimpleSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]

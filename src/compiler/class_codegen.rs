@@ -28,7 +28,7 @@ pub fn codegen_return(
     return_: Return,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
-    let ret_expr = return_.0;
+    let ret_expr = return_.ret_val;
     let fn_ret_val = compiler.curr_func_ret_val.clone();
 
     if ret_expr.is_some() && fn_ret_val.is_none() {

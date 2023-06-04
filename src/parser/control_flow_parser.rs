@@ -1,5 +1,6 @@
 use super::{
     expr_parser::{expr_parser, paren_expr_parser, EXPR_PARSER, PAREN_EXPR_PARSER},
+    keyword_parser::tag,
     main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParserError, ParserInput},
 };
 use crate::{
@@ -142,21 +143,24 @@ pub fn for_parser<'i: 'static>(
     let block = BLOCK_PARSER.read().unwrap().clone();
 
     // Main definition
-    let for_p = just(Token::For)
-        .ignore_then(just(Token::LParen))
-        .ignore_then(for_stmt_parser().map(Box::new).or_not())
+    let for_p = tag(Token::For)
+        .then_ignore(just(Token::LParen))
+        .then(for_stmt_parser().map(Box::new).or_not())
         .then_ignore(stmt_end_parser())
         .then(expr.clone().or_not())
         .then_ignore(stmt_end_parser())
         .then(for_stmt_parser().map(Box::new).or_not())
         .then_ignore(just(Token::RParen))
         .then(block.clone())
-        .map(|(((decl_stmt, cmp_expr), postfix_stmt), block)| For {
-            decl_stmt,
-            cmp_expr,
-            postfix_stmt,
-            block,
-        });
+        .map(
+            |((((for_kw, decl_stmt), cmp_expr), postfix_stmt), block)| For {
+                decl_stmt,
+                cmp_expr,
+                postfix_stmt,
+                block,
+                for_kw,
+            },
+        );
 
     // Definitions
     if !block.is_defined() {
@@ -571,7 +575,8 @@ mod test {
                     stmts: vec![],
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
-                }
+                },
+                for_kw: SimpleSpan::new(0, 0)
             }
         )
     }

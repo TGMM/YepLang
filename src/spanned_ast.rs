@@ -1,9 +1,9 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnDef, For, Id,
-    If, Indexing, NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType,
-    VarDecl, While,
+    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnCall, FnDef,
+    For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock,
+    UnaryOp, ValueVarType, VarDecl, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,9 +83,9 @@ impl GetSpan for Expr<'_> {
             }
             Expr::BinaryExpr(bexpr) => bexpr.get_span(),
             Expr::PrimitiveVal(pv) => pv.get_span(),
-            Expr::FnCall(fn_call) => todo!(),
+            Expr::FnCall(fn_call) => fn_call.get_span(),
             Expr::Indexing(idxing) => idxing.get_span(),
-            Expr::MemberAccess(_) => todo!(),
+            Expr::MemberAccess(ma) => ma.get_span(),
             Expr::Id(id) => id.get_span(),
             Expr::Cast(cast) => {
                 let start = cast.casted.get_span().start;
@@ -94,6 +94,25 @@ impl GetSpan for Expr<'_> {
                 SimpleSpan::new(start, end)
             }
         }
+    }
+}
+
+impl GetSpan for FnCall<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let fn_expr_span = self.fn_expr.get_span();
+        let start = fn_expr_span.start;
+        let end = self.rparen.end;
+
+        SimpleSpan::new(start, end)
+    }
+}
+
+impl GetSpan for MemberAcess<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.accessed.get_span().start;
+        let end = self.property.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
@@ -168,7 +187,10 @@ impl GetSpan for FnDef<'_> {
 
 impl GetSpan for For<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.for_kw.start;
+        let end = self.block.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
@@ -204,6 +226,13 @@ impl GetSpan for ExternDecl {
 
 impl GetSpan for Return<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.ret_kw.start;
+        let end = self
+            .ret_val
+            .as_ref()
+            .map(|rv| rv.get_span().end)
+            .unwrap_or(self.ret_kw.end);
+
+        SimpleSpan::new(start, end)
     }
 }

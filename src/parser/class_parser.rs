@@ -1,5 +1,6 @@
 use super::{
     expr_parser::{expr_parser, EXPR_PARSER},
+    keyword_parser::tag,
     main_parser::{
         block_parser, destructure_parser, stmt_end_parser, ParserError, ParserInput,
         DESTRUCTURE_PARSER,
@@ -178,9 +179,9 @@ pub fn class_decl_parser<'i: 'static>(
 
 pub fn return_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, Return<'i>, ParserError<'i, Token<'i>>> + Clone {
-    just(Token::Return)
-        .ignore_then(expr_parser().or_not())
-        .map(Return)
+    tag(Token::Return)
+        .then(expr_parser().or_not())
+        .map(|(ret_kw, ret_val)| Return { ret_kw, ret_val })
 }
 
 #[cfg(test)]

@@ -4,7 +4,8 @@ use super::primitive_parser::{
     bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
 };
 use crate::ast::{
-    BOp, BoolUnaryOp, Casting, FnCall, Id, Indexing, MemberAcess, NumericUnaryOp, ValueVarType,
+    BOp, BoolUnaryOp, Casting, FnCall, FnCallArgs, Id, Indexing, MemberAcess, NumericUnaryOp,
+    ValueVarType,
 };
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
@@ -84,16 +85,19 @@ recursive_parser!(
 recursive_parser!(
     FN_CALL_ARGS_PARSER,
     fn_call_args_parser,
-    Vec<Expr<'static>>,
+    FnCallArgs<'static>,
     declarations {
         let expr = EXPR_PARSER.read().unwrap().clone()
     },
     main_definition {
-        let fn_call = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen));
+        let fn_call = tag(Token::LParen)
+        .ignore_then(
+            expr.clone()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then(tag(Token::RParen))
+        .map(|(args, rparen)| FnCallArgs { args, rparen });
 
         fn_call
     },
@@ -120,7 +124,7 @@ pub fn as_casting_parser<'i>() -> impl Parser<
 
 enum PExprSuffix<'i> {
     Index(Expr<'i>),
-    FnCall(Vec<Expr<'i>>),
+    FnCall(FnCallArgs<'i>),
     MemberAccess(Id),
 }
 
@@ -153,9 +157,10 @@ recursive_parser!(
                 indexed: pexpr,
                 indexer,
             })),
-            PExprSuffix::FnCall(args) => Expr::FnCall(Box::new(FnCall {
+            PExprSuffix::FnCall(FnCallArgs { args, rparen }) => Expr::FnCall(Box::new(FnCall {
                 fn_expr: pexpr,
                 args,
+                rparen
             })),
             PExprSuffix::MemberAccess(property) => Expr::MemberAccess(Box::new(MemberAcess {
                 accessed: pexpr,
@@ -254,7 +259,7 @@ mod test {
             helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     #[test]
     fn primary_expr_primitive_test() {
@@ -517,7 +522,8 @@ mod test {
                     fn_expr: Expr::Id("fn".into()),
                     args: vec![Expr::PrimitiveVal(
                         PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
-                    )]
+                    )],
+                    rparen: SimpleSpan::new(0, 0)
                 }
                 .into()
             )
