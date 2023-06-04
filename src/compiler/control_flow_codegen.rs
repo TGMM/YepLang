@@ -251,6 +251,7 @@ pub fn codegen_for(
     mut block_type: BlockType,
 ) -> Result<(), CompilerError> {
     block_type.insert(BlockType::FOR);
+    // Push the For block
     compiler.var_scopes.push(FxHashMap::default());
 
     let parent_block = compiler
@@ -342,5 +343,7 @@ pub fn codegen_for(
     // Cont
     compiler.builder.position_at_end(merge_block);
 
+    // Pop the For block
+    compiler.var_scopes.pop();
     Ok(())
 }

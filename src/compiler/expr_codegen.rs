@@ -25,8 +25,8 @@ pub fn codegen_fn_call<'input, 'ctx>(
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let fn_call_span = fn_call.get_span();
-    let fn_name = match fn_call.fn_expr {
-        Expr::Id(id) => id.id_str,
+    let fn_id = match fn_call.fn_expr {
+        Expr::Id(id) => id,
         _ => {
             return Err(CompilerError {
                 reason: "Functions as values are not yet supported".to_string(),
@@ -34,11 +34,16 @@ pub fn codegen_fn_call<'input, 'ctx>(
             })
         }
     };
+    let fn_id_span = fn_id.get_span();
+    let fn_name = fn_id.id_str;
     let function = compiler
-        .get_scoped_val(&fn_name, block_type)?
+        .get_scoped_val(&fn_name, block_type, Some(fn_id_span))?
         .clone()
         .into_fn()
-        .map_err(|_| format!("Attempting to call {}, which is not a function", fn_name))?;
+        .map_err(|_| CompilerError {
+            reason: format!("Attempting to call {}, which is not a function", fn_name),
+            span: Some(fn_id_span),
+        })?;
     let function_ptr = function.ptr_val;
     let func_ret_ty = function.ret_type;
 
@@ -139,7 +144,8 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
         }
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
-            let var_ptr = compiler.get_scoped_val(&var_id.id_str, block_type)?;
+            let var_ptr =
+                compiler.get_scoped_val(&var_id.id_str, block_type, Some(var_id.get_span()))?;
 
             match var_ptr {
                 ScopedVal::Var(v) => Ok((v.ptr_val, v.var_type.clone())),
@@ -186,7 +192,8 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
         Expr::MemberAccess(_) => todo!(),
         Expr::Id(var_id) => {
             let var_name = var_id.id_str.as_str();
-            let scoped_val = compiler.get_scoped_val(var_name, block_type)?;
+            let scoped_val =
+                compiler.get_scoped_val(var_name, block_type, Some(var_id.get_span()))?;
             let scoped_var = scoped_val
                 .clone()
                 .into_var()

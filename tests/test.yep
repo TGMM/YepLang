@@ -1,6 +1,15 @@
-{
-    let x: u32 = 10;
-    let y: u32 = 20;
+extern i32 printf(*i8, ...);
 
-    let z = x / y;
+function factorial(n: i32): i32 {
+    if (n >= 1) {
+        return n * factorial(n - 1);
+    }
+
+    return 1;
+}
+
+{
+    let n: i32;
+    let fac = factorial(5);
+    printf("Factorial of %d = %ld\n" as *i8, 5, fac);
 }

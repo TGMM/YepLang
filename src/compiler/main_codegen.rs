@@ -13,6 +13,7 @@ use crate::{
     parser::main_parser::parse,
     spanned_ast::GetSpan,
 };
+use chumsky::container::Seq;
 use inkwell::{
     context::Context,
     module::Linkage,
@@ -256,7 +257,10 @@ pub fn codegen_block(
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
     // When we enter a block, we push a new variable scope
-    if block_type != BlockType::FUNC || block_type.contains(BlockType::FOR) {
+    if block_type != BlockType::FUNC_LOCAL
+        && block_type != BlockType::FUNC_GLOBAL
+        && !block_type.contains(BlockType::FOR)
+    {
         compiler.var_scopes.push(FxHashMap::default());
     }
 
@@ -275,7 +279,12 @@ pub fn codegen_block(
     }
 
     // Then after we're done with it, we pop it
-    compiler.var_scopes.pop();
+    if !block_type.contains(BlockType::FOR) {
+        compiler.var_scopes.pop().ok_or(CompilerError {
+            reason: "ICE: Attempted to pop a scope when there are none left".to_string(),
+            span: None,
+        })?;
+    }
 
     Ok(())
 }

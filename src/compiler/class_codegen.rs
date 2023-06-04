@@ -17,7 +17,7 @@ use crate::{
 use inkwell::{
     module::{Linkage, Module},
     support::to_c_str,
-    types::BasicType,
+    types::{BasicMetadataTypeEnum, BasicType},
     values::{BasicValue, FunctionValue, InstructionOpcode},
 };
 use llvm_sys::assembly::LLVMParseAssemblyString;
@@ -128,7 +128,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
                 compiler, &vvt.node,
             )?))
         })
-        .collect::<Result<Vec<_>, CompilerError>>()?;
+        .collect::<Result<Vec<BasicMetadataTypeEnum>, CompilerError>>()?;
 
     let ret_type = fn_signature
         .ret_type
@@ -316,7 +316,7 @@ pub fn codegen_native_fn(
 ) -> Result<(), CompilerError> {
     let fn_name = fn_signature.fn_id.id_str;
     let fun = compiler
-        .get_scoped_val(&fn_name, block_type)?
+        .get_scoped_val(&fn_name, block_type, None)?
         .as_fn()
         .ok_or(CompilerError {
             reason: "ICE: Couldn't get forward-declared function".to_string(),
@@ -365,7 +365,10 @@ pub fn codegen_native_fn(
         });
     };
 
+    // Add function block
     compiler.var_scopes.push(FxHashMap::default());
+
+    // Codegen arguments
     for ((arg_destructure, arg_type), arg_val) in
         fn_signature.args.into_iter().zip(fun.get_param_iter())
     {
@@ -389,7 +392,12 @@ pub fn codegen_native_fn(
 
                 arg_ptr
             }
-            _ => todo!(),
+            _ => {
+                return Err(CompilerError {
+                    reason: format!("Destructures in arguments are not supported yet."),
+                    span: None,
+                })
+            }
         };
     }
 

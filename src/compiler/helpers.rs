@@ -83,6 +83,7 @@ bitflags! {
         const FUNC_IF = Self::LOCAL.bits() | Self::FUNC.bits() | Self::IF.bits();
         const FUNC_WHILE = Self::LOCAL.bits() | Self::FUNC.bits() | Self::WHILE.bits();
         const FUNC_LOCAL = Self::FUNC.bits() | Self::LOCAL.bits();
+        const FUNC_GLOBAL = Self::FUNC.bits() | Self::GLOBAL.bits();
     }
 }
 
@@ -125,6 +126,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
         &self,
         name: &str,
         block_type: BlockType,
+        err_span: Option<SimpleSpan>,
     ) -> Result<&ScopedVal<'ctx>, CompilerError> {
         // Local function
         if block_type.contains(BlockType::FUNC_LOCAL) {
@@ -162,7 +164,10 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             }
         }
 
-        Err(format!("Undeclared variable or function {}", name).into())
+        Err(CompilerError {
+            reason: format!("Undeclared variable or function {}", name),
+            span: err_span,
+        })
     }
 }
 
