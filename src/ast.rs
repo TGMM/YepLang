@@ -283,7 +283,11 @@ impl<'input> From<SpannedAstNode<PrimitiveVal<'input>>> for Expr<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayVal<'input>(pub Vec<Expr<'input>>);
+pub struct ArrayVal<'input> {
+    pub lsqbracket: SimpleSpan,
+    pub expr_vals: Vec<Expr<'input>>,
+    pub rsqbracket: SimpleSpan,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructVal<'input>(pub Vec<(PropertyName, Expr<'input>)>);

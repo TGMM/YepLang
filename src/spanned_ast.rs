@@ -1,8 +1,8 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, BExpr, Block, BoolUnaryOp, ClassBlock, ClassDecl, Destructure, DoWhile, Else,
-    ElseIf, Expr, ExternDecl, FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess,
+    ArrayVal, Assignment, BExpr, Block, BoolUnaryOp, ClassBlock, ClassDecl, Destructure, DoWhile,
+    Else, ElseIf, Expr, ExternDecl, FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess,
     NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
 };
 
@@ -119,6 +119,12 @@ impl GetSpan for MemberAcess<'_> {
 impl GetSpan for SpannedAstNode<PrimitiveVal<'_>> {
     fn get_span(&self) -> SimpleSpan {
         self.span
+    }
+}
+
+impl GetSpan for ArrayVal<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        todo!()
     }
 }
 

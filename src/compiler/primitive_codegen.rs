@@ -232,7 +232,7 @@ pub fn codegen_arr_val<'input, 'ctx>(
     expected_type: Option<&ValueVarType>,
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
-    let exprs = arr_val.0;
+    let exprs = arr_val.expr_vals;
     let exprs_len: u32 = exprs
         .len()
         .try_into()

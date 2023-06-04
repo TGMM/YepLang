@@ -1,5 +1,6 @@
 use super::{
     expr_parser::{boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, EXPR_PARSER},
+    keyword_parser::tag,
     main_parser::{ParserError, ParserInput},
 };
 use crate::{
@@ -96,12 +97,18 @@ recursive_parser!(
         let expr = EXPR_PARSER.read().unwrap().clone()
     },
     main_definition {
-        let arr = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
-            .map(ArrayVal);
+        let arr = tag(Token::LSqBracket)
+        .then(
+            expr.clone()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then(tag(Token::RSqBracket))
+        .map(|((lsqbracket, expr_vals), rsqbracket)| ArrayVal {
+            lsqbracket,
+            expr_vals,
+            rsqbracket,
+        });
 
         arr
     },
@@ -250,7 +257,7 @@ mod test {
             },
         },
     };
-    use chumsky::{IterParser, Parser};
+    use chumsky::{span::SimpleSpan, IterParser, Parser};
 
     #[test]
     fn id_test() {
@@ -385,21 +392,27 @@ mod test {
         let arr_val = res.unwrap();
         assert_eq!(
             arr_val,
-            ArrayVal(vec![
-                Expr::Id("x".into()),
-                Expr::BinaryExpr(
-                    BExpr {
-                        lhs: Expr::PrimitiveVal(
-                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
-                        ),
-                        op: BOp::Add.into_spanned(),
-                        rhs: Expr::PrimitiveVal(
-                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
-                        )
-                    }
-                    .into()
-                )
-            ])
+            ArrayVal {
+                lsqbracket: SimpleSpan::new(0, 0),
+                expr_vals: vec![
+                    Expr::Id("x".into()),
+                    Expr::BinaryExpr(
+                        BExpr {
+                            lhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            ),
+                            op: BOp::Add.into_spanned(),
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            )
+                        }
+                        .into()
+                    )
+                ],
+                rsqbracket: SimpleSpan::new(0, 0)
+            }
         )
     }
 
@@ -479,7 +492,12 @@ mod test {
                 PrimitiveVal::Boolean(None, BoolLiteral(true)).into_spanned(),
                 PrimitiveVal::Char('a').into_spanned(),
                 PrimitiveVal::String("String!".to_string()).into_spanned(),
-                PrimitiveVal::Array(ArrayVal(vec![])).into_spanned(),
+                PrimitiveVal::Array(ArrayVal {
+                    lsqbracket: SimpleSpan::new(0, 0),
+                    expr_vals: vec![],
+                    rsqbracket: SimpleSpan::new(0, 0)
+                })
+                .into_spanned(),
                 PrimitiveVal::Struct(StructVal(vec![])).into_spanned(),
             ]
         )
