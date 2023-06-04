@@ -8,8 +8,4 @@ function factorial(n: i32): i32 {
     return 1;
 }
 
-{
-    let n: i32;
-    let fac = factorial(5);
-    printf("Factorial of %d = %ld\n" as *i8, 5, fac);
-}
+let factorial = 10;

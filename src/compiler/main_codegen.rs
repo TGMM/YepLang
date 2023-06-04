@@ -13,7 +13,7 @@ use crate::{
     parser::main_parser::parse,
     spanned_ast::GetSpan,
 };
-use chumsky::container::Seq;
+use chumsky::span::SimpleSpan;
 use inkwell::{
     context::Context,
     module::Linkage,
@@ -69,6 +69,7 @@ pub fn declare_scoped_val<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_name: String,
     value: ScopedVal<'ctx>,
+    err_span: Option<SimpleSpan>,
 ) -> Result<(), CompilerError> {
     let curr_scope_mut = compiler.get_curr_scope_mut()?;
     if curr_scope_mut.get(&var_name).is_some() {
@@ -77,7 +78,7 @@ pub fn declare_scoped_val<'input, 'ctx>(
                 "Cannot redeclare block-scoped variable or function '{}'.",
                 var_name
             ),
-            span: None,
+            span: err_span,
         });
     }
 
@@ -413,6 +414,7 @@ fn codegen_var_decl<'input, 'ctx>(
 
             let global_ptr = new_global.as_pointer_value();
 
+            let id_span = id.get_span();
             declare_scoped_val(
                 compiler,
                 id.id_str,
@@ -420,6 +422,7 @@ fn codegen_var_decl<'input, 'ctx>(
                     ptr_val: global_ptr,
                     var_type,
                 }),
+                Some(id_span),
             )?;
 
             return Ok(());
@@ -431,6 +434,7 @@ fn codegen_var_decl<'input, 'ctx>(
             compiler.builder.build_store(new_local, initial_val);
         }
 
+        let id_span = id.get_span();
         // Only applies to local variables
         declare_scoped_val(
             compiler,
@@ -439,6 +443,7 @@ fn codegen_var_decl<'input, 'ctx>(
                 ptr_val: new_local,
                 var_type,
             }),
+            Some(id_span),
         )?;
     }
 

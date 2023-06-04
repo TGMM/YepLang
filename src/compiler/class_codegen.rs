@@ -105,6 +105,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
     fn_signature: &FnSignature,
     block_type: BlockType,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let fn_id_span = fn_signature.fn_id.get_span();
     let fn_name = fn_signature.fn_id.id_str.as_str();
 
     let arg_types = fn_signature
@@ -165,6 +166,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
             arg_types,
             ret_type,
         }),
+        Some(fn_id_span),
     )?;
 
     Ok(fun)
@@ -235,6 +237,7 @@ pub fn codegen_llvm_fn(
         .map(|vvt| vvt.to_string())
         .unwrap_or("void".to_string());
 
+    let fn_id_span = fn_id.get_span();
     let fn_name = fn_id.id_str;
     let fun_def = format!(
         "define {} @{}({}) {{{}}}",
@@ -303,6 +306,7 @@ pub fn codegen_llvm_fn(
             arg_types: arg_extypes,
             ret_type,
         }),
+        Some(fn_id_span),
     )?;
 
     Ok(())
@@ -376,6 +380,7 @@ pub fn codegen_native_fn(
         let ty = convert_to_type_enum(compiler, &arg_type)?;
         match arg_destructure {
             Destructure::Id(id) => {
+                let id_span = id.get_span();
                 arg_val.set_name(id.id_str.as_str());
                 let arg_ptr = compiler
                     .builder
@@ -388,6 +393,7 @@ pub fn codegen_native_fn(
                         ptr_val: arg_ptr,
                         var_type: arg_type,
                     }),
+                    Some(id_span),
                 )?;
 
                 arg_ptr

@@ -13,6 +13,7 @@ pub fn codegen_extern_decl(
     compiler: &mut Compiler,
     extern_decl: ExternDecl,
 ) -> Result<(), CompilerError> {
+    let fn_id_span = extern_decl.fn_id.get_span();
     let fn_name = &extern_decl.fn_id.id_str;
     let vvt_ret_type = &extern_decl.ret_type;
 
@@ -67,6 +68,7 @@ pub fn codegen_extern_decl(
             arg_types: extern_decl.arg_types,
             ret_type: extern_decl.ret_type.node,
         }),
+        Some(fn_id_span),
     )?;
 
     Ok(())
