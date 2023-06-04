@@ -7,10 +7,13 @@ use super::{
     },
     primitive_parser::{id_parser, type_specifier_parser},
 };
-use crate::{ast::Return, parser::main_parser::BLOCK_PARSER};
 use crate::{
     ast::{ClassBlock, ClassDecl, ClassStmt, FnDef, FnScope, FnSignature, FnType, PropertyDecl},
     lexer::Token,
+};
+use crate::{
+    ast::{InlineLlvmIr, Return},
+    parser::main_parser::BLOCK_PARSER,
 };
 use chumsky::{primitive::just, select, IterParser, Parser};
 
@@ -50,16 +53,17 @@ pub fn fn_parser<'i: 'static>(
     let block = BLOCK_PARSER.read().unwrap().clone();
 
     // Main definition
-    let fn_def = just(Token::Function)
+    let fn_def = tag(Token::Function)
         .or_not()
         .then(fn_signature_parser())
         .then(block.clone())
-        .map(|((function_kw, fn_sign), block)| FnDef {
+        .map(|((fn_kw, fn_sign), block)| FnDef {
+            fn_kw,
             fn_signature: fn_sign,
             fn_type: FnType::Native(block),
             // If function keyword is not present,
             // then this is a method
-            fn_scope: if function_kw.is_some() {
+            fn_scope: if fn_kw.is_some() {
                 FnScope::Function
             } else {
                 FnScope::Method
@@ -84,18 +88,25 @@ pub fn llvm_fn_parser<'i: 'static>(
         .then(select! { Token::Id(id) => id }.filter(|id| id.id_str.as_str() == "llvm"));
 
     let llvm_fn = llvm_decorator
-        .ignore_then(just(Token::Function).or_not())
+        .ignore_then(tag(Token::Function).or_not())
         .then(fn_signature_parser())
         .then(
-            select! { Token::LlvmIr(ir) => ir }
-                .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+            tag(Token::LBracket)
+                .then(select! { Token::LlvmIr(ir) => ir })
+                .then(tag(Token::RBracket))
+                .map(|((lbracket, ir), rbracket)| InlineLlvmIr {
+                    lbracket,
+                    ir: ir.to_string(),
+                    rbracket,
+                }),
         )
-        .map(|((function_kw, fn_signature), ir)| FnDef {
+        .map(|((fn_kw, fn_signature), ir)| FnDef {
+            fn_kw,
             fn_signature,
-            fn_type: FnType::InlineLlvmIr(ir.to_string()),
+            fn_type: FnType::InlineLlvmIr(ir),
             // If function keyword is not present,
             // then this is a method
-            fn_scope: if function_kw.is_some() {
+            fn_scope: if fn_kw.is_some() {
                 FnScope::Function
             } else {
                 FnScope::Method
@@ -193,7 +204,8 @@ mod test {
     use crate::{
         ast::{
             Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, FnScope,
-            FnSignature, FnType, NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
+            FnSignature, FnType, InlineLlvmIr, NumericLiteral, PrimitiveVal, PropertyDecl,
+            ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
@@ -238,7 +250,8 @@ mod test {
                     stmts: vec![],
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                }),
+                fn_kw: None
             }
         )
     }
@@ -280,7 +293,8 @@ mod test {
                     stmts: vec![],
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
@@ -313,7 +327,8 @@ mod test {
                     stmts: vec![],
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
@@ -366,7 +381,8 @@ mod test {
                     stmts: vec![],
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
@@ -417,7 +433,8 @@ mod test {
                             stmts: vec![],
                             lbracket: Some(SimpleSpan::new(0, 0)),
                             rbracket: Some(SimpleSpan::new(0, 0))
-                        })
+                        }),
+                        fn_kw: None
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
@@ -489,7 +506,8 @@ mod test {
                                 stmts: vec![],
                                 lbracket: Some(SimpleSpan::new(0, 0)),
                                 rbracket: Some(SimpleSpan::new(0, 0))
-                            })
+                            }),
+                            fn_kw: None
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),
@@ -574,7 +592,12 @@ mod test {
                     )
                 },
                 fn_scope: FnScope::Function,
-                fn_type: FnType::InlineLlvmIr("%res = add i32 %a, %b\nret i32 %res".to_string())
+                fn_type: FnType::InlineLlvmIr(InlineLlvmIr {
+                    lbracket: SimpleSpan::new(0, 0),
+                    ir: "%res = add i32 %a, %b\nret i32 %res".to_string(),
+                    rbracket: SimpleSpan::new(0, 0)
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }

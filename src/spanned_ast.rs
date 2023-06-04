@@ -2,8 +2,8 @@ use chumsky::span::SimpleSpan;
 
 use crate::ast::{
     Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Else, ElseIf, Expr, ExternDecl,
-    FnCall, FnDef, For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal, Return, Stmt,
-    TopBlock, UnaryOp, ValueVarType, VarDecl, While,
+    FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal,
+    Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -181,7 +181,17 @@ impl GetSpan for ClassDecl<'_> {
 
 impl GetSpan for FnDef<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self
+            .fn_kw
+            .unwrap_or(self.fn_signature.fn_id.get_span())
+            .start;
+
+        let end = match &self.fn_type {
+            FnType::Native(n) => n.get_span().end,
+            FnType::InlineLlvmIr(ir) => ir.rbracket.end,
+        };
+
+        SimpleSpan::new(start, end)
     }
 }
 
@@ -252,7 +262,10 @@ impl GetSpan for VarDecl<'_> {
 
 impl GetSpan for ExternDecl {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.extern_kw.start;
+        let end = self.rparen.end;
+
+        SimpleSpan::new(start, end)
     }
 }
 

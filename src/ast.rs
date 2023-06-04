@@ -635,15 +635,23 @@ pub struct MemberAcess<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDef<'a> {
+    pub fn_kw: Option<SimpleSpan>,
     pub fn_signature: FnSignature<'a>,
     pub fn_type: FnType<'a>,
     pub fn_scope: FnScope,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct InlineLlvmIr {
+    pub lbracket: SimpleSpan,
+    pub ir: String,
+    pub rbracket: SimpleSpan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum FnType<'a> {
     Native(Block<'a>),
-    InlineLlvmIr(String),
+    InlineLlvmIr(InlineLlvmIr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -674,7 +682,9 @@ pub enum ExternType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternDecl {
+    pub extern_kw: SimpleSpan,
     pub ret_type: SpannedAstNode<ValueVarType>,
     pub fn_id: Id,
     pub arg_types: Vec<ExternType>,
+    pub rparen: SimpleSpan,
 }

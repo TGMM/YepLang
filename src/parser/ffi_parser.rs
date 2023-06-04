@@ -1,4 +1,5 @@
 use super::{
+    keyword_parser::tag,
     main_parser::{ParserError, ParserInput},
     primitive_parser::{id_parser, value_var_type_parser},
 };
@@ -18,20 +19,27 @@ pub fn extern_type_parser<'i: 'static>(
 
 pub fn extern_decl_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ExternDecl, ParserError<'i, Token<'i>>> + Clone {
-    let arg_types_p = extern_type_parser()
-        .separated_by(just(Token::Comma))
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LParen), just(Token::RParen));
+    let arg_types_p = tag(Token::LParen)
+        .ignore_then(
+            extern_type_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then(tag(Token::RParen));
 
-    just(Token::Extern)
-        .ignore_then(value_var_type_parser())
+    tag(Token::Extern)
+        .then(value_var_type_parser())
         .then(id_parser())
         .then(arg_types_p)
-        .map(|((ret_type, fn_id), arg_types)| ExternDecl {
-            ret_type,
-            fn_id,
-            arg_types,
-        })
+        .map(
+            |(((extern_kw, ret_type), fn_id), (arg_types, rparen))| ExternDecl {
+                extern_kw,
+                ret_type,
+                fn_id,
+                arg_types,
+                rparen,
+            },
+        )
 }
 
 #[cfg(test)]
@@ -46,7 +54,7 @@ mod test {
             helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     #[test]
     fn extern_decl_test() {
@@ -70,6 +78,8 @@ mod test {
         assert_eq!(
             expr,
             ExternDecl {
+                extern_kw: SimpleSpan::new(0, 0),
+                rparen: SimpleSpan::new(0, 0),
                 ret_type: ValueVarType {
                     vtype: VarType::I32,
                     array_dimensions: VecDeque::new(),

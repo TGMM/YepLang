@@ -6,7 +6,7 @@ use super::{
 use crate::{
     ast::{
         Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, Return, Stmt,
-        ValueVarType, VarType,
+        ValueVarType, VarType, InlineLlvmIr,
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
@@ -163,7 +163,7 @@ pub fn codegen_fn_def(
 pub fn codegen_llvm_fn(
     compiler: &mut Compiler,
     fn_signature: FnSignature,
-    llvm_ir: String,
+    llvm_ir_block: InlineLlvmIr,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
     let FnSignature {
@@ -172,6 +172,8 @@ pub fn codegen_llvm_fn(
         ret_type,
     } = fn_signature;
 
+    let InlineLlvmIr { lbracket: _, ir: llvm_ir, rbracket: _ } = llvm_ir_block;
+    
     let id_args = args
         .clone()
         .into_iter()
