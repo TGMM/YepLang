@@ -605,13 +605,16 @@ pub struct ElseIf<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassDecl<'a> {
+    pub class_kw: SimpleSpan,
     pub class_id: Id,
     pub extended_class_id: Option<Id>,
     pub block: ClassBlock<'a>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassBlock<'a> {
+    pub lbracket: SimpleSpan,
     pub class_stmts: Vec<ClassStmt<'a>>,
+    pub rbracket: SimpleSpan,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertyDecl<'a> {

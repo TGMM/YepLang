@@ -166,24 +166,30 @@ pub fn class_stmt_parser<'i: 'static>(
 
 pub fn class_block_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassBlock<'i>, ParserError<'i, Token<'i>>> + Clone {
-    class_stmt_parser()
-        .repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
-        .map(|class_stmts| ClassBlock { class_stmts })
+    tag(Token::LBracket)
+        .then(class_stmt_parser().repeated().collect::<Vec<_>>())
+        .then(tag(Token::RBracket))
+        .map(|((lbracket, class_stmts), rbracket)| ClassBlock {
+            lbracket,
+            class_stmts,
+            rbracket,
+        })
 }
 
 pub fn class_decl_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let class_decl = just(Token::Class)
-        .ignore_then(id_parser())
+    let class_decl = tag(Token::Class)
+        .then(id_parser())
         .then(just(Token::Extends).ignore_then(id_parser()).or_not())
         .then(class_block_parser())
-        .map(|((class_id, extended_class_id), block)| ClassDecl {
-            class_id,
-            extended_class_id,
-            block,
-        });
+        .map(
+            |(((class_kw, class_id), extended_class_id), block)| ClassDecl {
+                class_kw,
+                class_id,
+                extended_class_id,
+                block,
+            },
+        );
 
     class_decl
 }
@@ -414,6 +420,8 @@ mod test {
         assert_eq!(
             class_block,
             ClassBlock {
+                lbracket: SimpleSpan::new(0, 0),
+                rbracket: SimpleSpan::new(0, 0),
                 class_stmts: vec![
                     ClassStmt::Method(FnDef {
                         fn_signature: FnSignature {
@@ -484,9 +492,12 @@ mod test {
         assert_eq!(
             class_decl,
             ClassDecl {
+                class_kw: SimpleSpan::new(0, 0),
                 class_id: "MyClass".into(),
                 extended_class_id: None,
                 block: ClassBlock {
+                    lbracket: SimpleSpan::new(0, 0),
+                    rbracket: SimpleSpan::new(0, 0),
                     class_stmts: vec![
                         ClassStmt::Method(FnDef {
                             fn_signature: FnSignature {
