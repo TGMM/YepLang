@@ -4,22 +4,24 @@ use super::{
     main_parser::{block_parser, for_stmt_parser, stmt_end_parser, ParserError, ParserInput},
 };
 use crate::{
-    ast::{Block, ElseIf},
-    parser::main_parser::BLOCK_PARSER,
-};
-use crate::{
     ast::{DoWhile, For, If, While},
     lexer::Token,
+};
+use crate::{
+    ast::{Else, ElseIf},
+    parser::main_parser::BLOCK_PARSER,
 };
 use chumsky::{primitive::just, IterParser, Parser};
 
 pub fn else_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, Block<'i>, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, Else<'i>, ParserError<'i, Token<'i>>> + Clone {
     // Declarations
     let block = BLOCK_PARSER.read().unwrap().clone();
 
     // Main definition
-    let else_block = just(Token::Else).ignore_then(block.clone());
+    let else_block = tag(Token::Else)
+        .then(block.clone())
+        .map(|(else_kw, else_b)| Else { else_kw, else_b });
 
     // Definitions
     if !block.is_defined() {
@@ -36,13 +38,14 @@ pub fn else_if_parser<'i: 'static>(
     let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
     // Main definition
-    let else_if = just(Token::Else)
-        .ignore_then(just(Token::If))
-        .ignore_then(paren_expr.clone())
+    let else_if = tag(Token::Else)
+        .then_ignore(just(Token::If))
+        .then(paren_expr.clone())
         .then(block.clone())
-        .map(|(else_expr, else_block)| ElseIf {
+        .map(|((else_kw, else_expr), else_block)| ElseIf {
             else_expr,
             else_block,
+            else_kw,
         });
 
     // Definitions
@@ -63,16 +66,17 @@ pub fn if_parser<'i: 'static>(
     let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
     // Main definition
-    let if_p = just(Token::If)
-        .ignore_then(paren_expr.clone())
+    let if_p = tag(Token::If)
+        .then(paren_expr.clone())
         .then(block.clone())
         .then(else_if_parser().repeated().collect::<Vec<_>>())
         .then(else_parser().or_not())
-        .map(|(((if_expr, if_block), else_if), else_b)| If {
+        .map(|((((if_kw, if_expr), if_block), else_if), else_)| If {
             if_expr,
             if_block,
             else_if,
-            else_b,
+            else_,
+            if_kw,
         });
 
     // Definitions
@@ -93,10 +97,14 @@ pub fn while_parser<'i: 'static>(
     let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
     // Main definition
-    let while_p = just(Token::While)
-        .ignore_then(paren_expr.clone())
+    let while_p = tag(Token::While)
+        .then(paren_expr.clone())
         .then(block.clone())
-        .map(|(while_cond, block)| While { while_cond, block });
+        .map(|((while_kw, while_cond), block)| While {
+            while_cond,
+            block,
+            while_kw,
+        });
 
     // Definitions
     if !block.is_defined() {
@@ -116,13 +124,14 @@ pub fn do_while_parser<'i: 'static>(
     let paren_expr = PAREN_EXPR_PARSER.read().unwrap().clone();
 
     // Main definition
-    let do_while = just(Token::Do)
-        .ignore_then(block.clone())
+    let do_while = tag(Token::Do)
+        .then(block.clone())
         .then_ignore(just(Token::While))
         .then(paren_expr.clone())
-        .map(|(do_block, while_cond)| DoWhile {
+        .map(|((do_kw, do_block), while_cond)| DoWhile {
             do_block,
             while_cond,
+            do_kw,
         });
 
     // Definitions
@@ -179,7 +188,7 @@ mod test {
 
     use crate::{
         ast::{
-            Assignment, BExpr, BOp, Block, Destructure, DoWhile, ElseIf, Expr, For, If,
+            Assignment, BExpr, BOp, Block, Destructure, DoWhile, Else, ElseIf, Expr, For, If,
             NumericLiteral, PrimitiveVal, ScopeSpecifier, Stmt, VarDecl, VarDeclAssignment, While,
         },
         lexer::Token,
@@ -229,7 +238,8 @@ mod test {
                     rbracket: Some(SimpleSpan::new(0, 0))
                 },
                 else_if: vec![],
-                else_b: None
+                else_: None,
+                if_kw: SimpleSpan::new(0, 0)
             }
         )
     }
@@ -273,11 +283,15 @@ mod test {
                     rbracket: Some(SimpleSpan::new(0, 0))
                 },
                 else_if: vec![],
-                else_b: Some(Block {
-                    stmts: vec![],
-                    lbracket: Some(SimpleSpan::new(0, 0)),
-                    rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                else_: Some(Else {
+                    else_kw: SimpleSpan::new(0, 0),
+                    else_b: Block {
+                        stmts: vec![],
+                        lbracket: Some(SimpleSpan::new(0, 0)),
+                        rbracket: Some(SimpleSpan::new(0, 0))
+                    }
+                }),
+                if_kw: SimpleSpan::new(0, 0)
             }
         )
     }
@@ -342,9 +356,11 @@ mod test {
                         stmts: vec![],
                         lbracket: Some(SimpleSpan::new(0, 0)),
                         rbracket: Some(SimpleSpan::new(0, 0))
-                    }
+                    },
+                    else_kw: SimpleSpan::new(0, 0)
                 }],
-                else_b: None
+                else_: None,
+                if_kw: SimpleSpan::new(0, 0)
             }
         )
     }
@@ -412,13 +428,18 @@ mod test {
                         stmts: vec![],
                         lbracket: Some(SimpleSpan::new(0, 0)),
                         rbracket: Some(SimpleSpan::new(0, 0))
-                    }
+                    },
+                    else_kw: SimpleSpan::new(0, 0)
                 }],
-                else_b: Some(Block {
-                    stmts: vec![],
-                    lbracket: Some(SimpleSpan::new(0, 0)),
-                    rbracket: Some(SimpleSpan::new(0, 0))
-                })
+                else_: Some(Else {
+                    else_kw: SimpleSpan::new(0, 0),
+                    else_b: Block {
+                        stmts: vec![],
+                        lbracket: Some(SimpleSpan::new(0, 0)),
+                        rbracket: Some(SimpleSpan::new(0, 0))
+                    }
+                }),
+                if_kw: SimpleSpan::new(0, 0)
             }
         )
     }
@@ -458,6 +479,7 @@ mod test {
                     lbracket: Some(SimpleSpan::new(0, 0)),
                     rbracket: Some(SimpleSpan::new(0, 0))
                 },
+                while_kw: SimpleSpan::new(0, 0)
             }
         )
     }
@@ -498,6 +520,7 @@ mod test {
                     }
                     .into()
                 ),
+                do_kw: SimpleSpan::new(0, 0)
             }
         )
     }

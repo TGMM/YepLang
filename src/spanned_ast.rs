@@ -1,9 +1,9 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Expr, ExternDecl, FnCall, FnDef,
-    For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock,
-    UnaryOp, ValueVarType, VarDecl, While,
+    Assignment, BExpr, Block, BoolUnaryOp, ClassDecl, DoWhile, Else, ElseIf, Expr, ExternDecl,
+    FnCall, FnDef, For, Id, If, Indexing, MemberAcess, NumericUnaryOp, PrimitiveVal, Return, Stmt,
+    TopBlock, UnaryOp, ValueVarType, VarDecl, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -196,19 +196,51 @@ impl GetSpan for For<'_> {
 
 impl GetSpan for While<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.while_kw.start;
+        let end = self.block.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
 impl GetSpan for DoWhile<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.do_kw.start;
+        let end = self.while_cond.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
 impl GetSpan for If<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.if_kw.start;
+
+        let else_if_end = self.else_if.last().as_ref().map(|ei| ei.get_span().end);
+        let else_end = self.else_.as_ref().map(|e| e.get_span().end);
+        let if_b_end = self.if_block.get_span().end;
+
+        let end = else_end.unwrap_or(else_if_end.unwrap_or(if_b_end));
+
+        SimpleSpan::new(start, end)
+    }
+}
+
+impl GetSpan for Else<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.else_kw.start;
+        let end = self.else_b.get_span().end;
+
+        SimpleSpan::new(start, end)
+    }
+}
+
+impl GetSpan for ElseIf<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.else_kw.start;
+        let end = self.else_block.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 

@@ -560,12 +560,14 @@ pub struct FnCall<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoWhile<'a> {
+    pub do_kw: SimpleSpan,
     pub do_block: Block<'a>,
     pub while_cond: Expr<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct While<'a> {
+    pub while_kw: SimpleSpan,
     pub while_cond: Expr<'a>,
     pub block: Block<'a>,
 }
@@ -581,14 +583,22 @@ pub struct For<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct If<'a> {
+    pub if_kw: SimpleSpan,
     pub if_expr: Expr<'a>,
     pub if_block: Block<'a>,
     pub else_if: Vec<ElseIf<'a>>,
-    pub else_b: Option<Block<'a>>,
+    pub else_: Option<Else<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Else<'a> {
+    pub else_kw: SimpleSpan,
+    pub else_b: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElseIf<'a> {
+    pub else_kw: SimpleSpan,
     pub else_expr: Expr<'a>,
     pub else_block: Block<'a>,
 }

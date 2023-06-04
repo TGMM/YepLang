@@ -95,7 +95,8 @@ pub fn codegen_if(
 
     // Else
     compiler.builder.position_at_end(else_block);
-    if let Some(else_b) = if_.else_b {
+    if let Some(else_) = if_.else_ {
+        let else_b = else_.else_b;
         codegen_block(compiler, else_b, block_type)?;
     }
     compiler.builder.build_unconditional_branch(merge_block);
