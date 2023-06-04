@@ -1,14 +1,18 @@
 use super::{
-    helpers::{convert_type_to_metadata, Compiler, ScopedVal},
+    helpers::{convert_type_to_metadata, Compiler, CompilerError, ScopedVal},
     main_codegen::{add_function_to_module, convert_to_type_enum, declare_scoped_val},
 };
 use crate::{
     ast::{ExternDecl, ExternType},
     compiler::helpers::ScopedFunc,
+    spanned_ast::GetSpan,
 };
 use inkwell::{module::Linkage, types::BasicType};
 
-pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> Result<(), String> {
+pub fn codegen_extern_decl(
+    compiler: &mut Compiler,
+    extern_decl: ExternDecl,
+) -> Result<(), CompilerError> {
     let fn_name = &extern_decl.fn_id.id_str;
     let vvt_ret_type = &extern_decl.ret_type;
 
@@ -28,10 +32,11 @@ pub fn codegen_extern_decl(compiler: &mut Compiler, extern_decl: ExternDecl) -> 
                 // This is not the last element
                 // throw an error
                 if !arg_type_it.peek().is_none() {
-                    return Err(
-                        "The var args specifier must be at the end of the argument list"
+                    return Err(CompilerError {
+                        reason: "The var args specifier must be at the end of the argument list"
                             .to_string(),
-                    );
+                        span: Some(extern_decl.get_span()),
+                    });
                 }
 
                 is_var_args = true;

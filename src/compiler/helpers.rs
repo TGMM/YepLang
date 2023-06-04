@@ -1,5 +1,6 @@
 use crate::ast::{ExternType, ValueVarType, VarType};
 use bitflags::bitflags;
+use chumsky::span::SimpleSpan;
 use enum_as_inner::EnumAsInner;
 use inkwell::{
     basic_block::BasicBlock,
@@ -12,9 +13,37 @@ use inkwell::{
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
 use rustc_hash::FxHashMap;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt};
 
-pub type CompilerError = String;
+#[derive(Debug)]
+pub struct CompilerError {
+    pub reason: String,
+    pub span: Option<SimpleSpan>,
+}
+
+impl From<&str> for CompilerError {
+    fn from(msg: &str) -> Self {
+        CompilerError {
+            reason: msg.to_string(),
+            span: None,
+        }
+    }
+}
+
+impl From<String> for CompilerError {
+    fn from(msg: String) -> Self {
+        CompilerError {
+            reason: msg,
+            span: None,
+        }
+    }
+}
+
+impl fmt::Display for CompilerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.reason)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopedVar<'ctx> {
@@ -89,7 +118,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
     pub fn get_curr_scope_mut(&mut self) -> Result<&mut Scope<'ctx>, CompilerError> {
         self.var_scopes
             .last_mut()
-            .ok_or("ICE: No variable scopes".to_string())
+            .ok_or("ICE: No variable scopes".into())
     }
 
     pub fn get_scoped_val(
@@ -104,12 +133,12 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             let global_scope = self
                 .var_scopes
                 .first()
-                .ok_or("ICE: Could not find global scope".to_string())?;
+                .ok_or("ICE: Could not find global scope")?;
 
             let local_scope = self
                 .var_scopes
                 .last()
-                .ok_or("ICE: Could not find local scope".to_string())?;
+                .ok_or("ICE: Could not find local scope")?;
 
             // In a local function, we first search the local
             // scope for the value
@@ -124,7 +153,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             // If we still don't find it, we return an error
             let line_one = "Variable or function was not found on the local function scope or the global scope.";
             let line_two = "Local functions do not capture their environment, and can't refer to local variables outside their scope.";
-            return Err(format!("{}\n{}", line_one, line_two));
+            return Err(format!("{}\n{}", line_one, line_two).into());
         }
 
         for scope in self.var_scopes.iter().rev() {
@@ -133,7 +162,7 @@ impl<'input, 'ctx> Compiler<'input, 'ctx> {
             }
         }
 
-        Err(format!("Undeclared variable or function {}", name))
+        Err(format!("Undeclared variable or function {}", name).into())
     }
 }
 

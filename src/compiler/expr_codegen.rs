@@ -6,7 +6,10 @@ use super::{
     main_codegen::{convert_to_type_enum, initialize_oob_message, link_to_printf},
     primitive_codegen::codegen_primitive_val,
 };
-use crate::ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType};
+use crate::{
+    ast::{BExpr, BOp, Casting, Expr, ExternType, FnCall, Indexing, ValueVarType, VarType},
+    spanned_ast::GetSpan,
+};
 use inkwell::{
     values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, InstructionOpcode, IntValue,
@@ -23,7 +26,12 @@ pub fn codegen_fn_call<'input, 'ctx>(
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
     let fn_name = match fn_call.fn_expr {
         Expr::Id(id) => id.id_str,
-        _ => return Err("Functions as values are not yet supported".to_string()),
+        _ => {
+            return Err(CompilerError {
+                reason: "Functions as values are not yet supported".to_string(),
+                span: Some(fn_call.get_span()),
+            })
+        }
     };
     let function = compiler
         .get_scoped_val(&fn_name, block_type)?
@@ -42,13 +50,17 @@ pub fn codegen_fn_call<'input, 'ctx>(
 
     let mut args = vec![];
     for (arg_expr, arg_expected_type) in fn_call.args.into_iter().zip(arg_types_iter) {
+        let arg_expr_span = arg_expr.get_span();
         let (mut arg_val, arg_type) = codegen_rhs_expr(compiler, arg_expr, None, block_type)?;
 
         // Variadic argument promotions
         if ExternType::Spread == *arg_expected_type {
             if !arg_type.array_dimensions.is_empty() {
                 let err = "Arrays should not be passed to functions with variadic arguments, cast it to a pointer instead";
-                return Err(err.to_string());
+                return Err(CompilerError {
+                    reason: err.to_string(),
+                    span: Some(arg_expr_span),
+                });
             }
 
             match arg_val {
@@ -81,10 +93,13 @@ pub fn codegen_fn_call<'input, 'ctx>(
 
         if let ExternType::Type(expected_vvt) = arg_expected_type {
             if expected_vvt.node != arg_type {
-                return Err(format!(
-                    "Incorrect type for argument, expected {} got {}",
-                    expected_vvt, arg_type
-                ));
+                return Err(CompilerError {
+                    reason: format!(
+                        "Incorrect type for argument, expected {} got {}",
+                        expected_vvt, arg_type
+                    ),
+                    span: Some(expected_vvt.get_span()),
+                });
             }
         }
 
@@ -130,7 +145,10 @@ pub fn codegen_lhs_expr<'input, 'ctx>(
                 ScopedVal::Fn(_) => todo!(),
             }
         }
-        _ => Err("Left-hand side of assignment can't be ...".to_string()),
+        _ => Err(CompilerError {
+            reason: "A left-hand side expression can't be ...".to_string(),
+            span: Some(expr.get_span()),
+        }),
     }
 }
 
@@ -192,6 +210,7 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     casting: Casting,
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let casting_span = casting.get_span();
     let Casting {
         casted,
         as_kw: _,
@@ -209,15 +228,24 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // cast_to_val variable set
         && cast_to_type.pointer_nesting_level == 0
     {
-        return Err("Cast mismatch: Array dimensions do not match".to_string());
+        return Err(CompilerError {
+            reason: "Cast mismatch: Array dimensions do not match".to_string(),
+            span: Some(casting_span),
+        });
     } else if !cast_to_type.array_dimensions.is_empty()
         && !cast_from_type.array_dimensions.is_empty()
     {
-        return Err("Casting arrays is not yet supported".to_string());
+        return Err(CompilerError {
+            reason: "Casting arrays is not yet supported".to_string(),
+            span: Some(casting_span),
+        });
     }
 
     if cast_to_type.vtype == VarType::String {
-        return Err("Casting to string is not allowed".to_string());
+        return Err(CompilerError {
+            reason: "Casting to string is not allowed".to_string(),
+            span: Some(casting_span),
+        });
     }
 
     let mut cast_to_val = cast_from_val;
@@ -271,10 +299,10 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // None of the above was true, thus it's an invalid cast
     // if one of the types is a pointer or an array
     if cast_from_type.pointer_nesting_level > 0 || cast_to_type.pointer_nesting_level > 0 {
-        return Err(format!(
-            "Invalid cast from {} to {}",
-            cast_from_type, cast_to_type
-        ));
+        return Err(CompilerError {
+            reason: format!("Invalid cast from {} to {}", cast_from_type, cast_to_type),
+            span: Some(casting_span),
+        });
     }
 
     let cast_to_vtype = &cast_to_type.vtype;
@@ -364,10 +392,10 @@ pub fn codegen_rhs_casting<'input, 'ctx>(
     // TODO: Struct types
     // TODO: Ptr to arr?
 
-    Err(format!(
-        "Invalid cast from {} to {}",
-        cast_from_type, cast_to_type
-    ))
+    Err(CompilerError {
+        reason: format!("Invalid cast from {} to {}", cast_from_type, cast_to_type),
+        span: Some(casting_span),
+    })
 }
 
 pub fn codegen_bounds_check(
@@ -433,14 +461,18 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
     expected_type: Option<&ValueVarType>,
     block_type: BlockType,
 ) -> Result<(PointerValue<'ctx>, ValueVarType), CompilerError> {
+    let indexer_span = indexing.indexer.get_span();
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(exp_ty) = expected_type {
         if !exp_ty.array_dimensions.is_empty() && exp_ty.vtype != idxd_type.vtype {
-            return Err(format!(
-                "Assigning array of type {} to array of type {}",
-                idxd_type, exp_ty
-            ));
+            return Err(CompilerError {
+                reason: format!(
+                    "Assigning array of type {} to array of type {}",
+                    idxd_type, exp_ty
+                ),
+                span: None,
+            });
         }
     }
 
@@ -453,7 +485,10 @@ pub fn codegen_lhs_indexing<'input, 'ctx>(
         let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
         let line_two = "If index type is numeric, try casting (as u32)";
 
-        return Err(format!("{} {}", line_one, line_two));
+        return Err(CompilerError {
+            reason: format!("{} {}", line_one, line_two),
+            span: Some(indexer_span),
+        });
     }
 
     let idxr: inkwell::values::IntValue = idxr.into_int_value();
@@ -484,14 +519,18 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
     expected_type: Option<&ValueVarType>,
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let indexer_span: chumsky::span::SimpleSpan = indexing.indexer.get_span();
     let (idxd, idxd_type) = codegen_lhs_expr(compiler, indexing.indexed, None, block_type)?;
 
     if let Some(exp_ty) = expected_type {
         if !exp_ty.array_dimensions.is_empty() && exp_ty.vtype != idxd_type.vtype {
-            return Err(format!(
-                "Assigning array of type {} to array of type {}",
-                idxd_type, exp_ty
-            ));
+            return Err(CompilerError {
+                reason: format!(
+                    "Assigning array of type {} to array of type {}",
+                    idxd_type, exp_ty
+                ),
+                span: None,
+            });
         }
     }
 
@@ -504,7 +543,10 @@ pub fn codegen_rhs_indexing<'input, 'ctx>(
         let line_one = "Indexing is only supported for arrays, array indexes must be of type u32.";
         let line_two = "If index type is numeric, try casting (as u32)";
 
-        return Err(format!("{} {}", line_one, line_two));
+        return Err(CompilerError {
+            reason: format!("{} {}", line_one, line_two),
+            span: Some(indexer_span),
+        });
     }
 
     let idxr: IntValue = idxr.into_int_value();
@@ -547,20 +589,26 @@ pub fn codegen_bexpr<'input, 'ctx>(
         expected_ret_type,
     } = expected_type;
 
+    let bexpr_span = bexpr.get_span();
     let BExpr { lhs, op, rhs } = bexpr;
     let (lhs_val, lhs_type) = codegen_rhs_expr(compiler, lhs, expected_lhs_type, block_type)?;
     let (rhs_val, rhs_type) = codegen_rhs_expr(compiler, rhs, expected_rhs_type, block_type)?;
 
     if lhs_type.array_dimensions.len() > 0 || rhs_type.array_dimensions.len() > 0 {
         if lhs_type.array_dimensions.len() != rhs_type.array_dimensions.len() {
-            return Err(
-                "Operations between different array nesting levels are not supported".to_string(),
-            );
+            return Err(CompilerError {
+                reason: "Operations between different array nesting levels are not supported"
+                    .to_string(),
+                span: Some(bexpr_span),
+            });
         }
 
         match op.node {
             BOp::CmpEq => {
-                return Err("Comparing two arrays for equality is not yet supported".to_string());
+                return Err(CompilerError {
+                    reason: "Comparing two arrays for equality is not yet supported".to_string(),
+                    span: Some(bexpr_span),
+                });
             }
             unsupported_op => {
                 let error = format!(
@@ -568,7 +616,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
                     unsupported_op,
                 );
 
-                return Err(error);
+                return Err(CompilerError {
+                    reason: error,
+                    span: Some(bexpr_span),
+                });
             }
         }
     }
@@ -576,7 +627,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
     if lhs_type.pointer_nesting_level > 0 || rhs_type.pointer_nesting_level > 0 {
         match op.node {
             BOp::CmpEq => {
-                return Err("Comparing two pointers for equality is not yet supported".to_string());
+                return Err(CompilerError {
+                    reason: "Comparing two pointers for equality is not yet supported".to_string(),
+                    span: Some(bexpr_span),
+                });
             }
             unsupported_op => {
                 let error = format!(
@@ -584,7 +638,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
                     unsupported_op,
                 );
 
-                return Err(error);
+                return Err(CompilerError {
+                    reason: error,
+                    span: Some(bexpr_span),
+                });
             }
         }
     }
@@ -600,10 +657,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
     };
 
     if lhs_val.get_type() != rhs_val.get_type() {
-        return Err(format!(
+        return Err(CompilerError { reason: format!(
             "Incompatible types {} and {} for operation '{}'. If both types are numeric, try casting one side of the operation",
             lhs_type, rhs_type, op
-        ));
+        ), span: Some(bexpr_span), });
     }
 
     let operand_type = expr_type.vtype.clone();
@@ -643,7 +700,12 @@ pub fn codegen_bexpr<'input, 'ctx>(
                     b.build_int_signed_rem(lhs, rhs, "int_srem")
                 }
                 BOp::Mod => b.build_int_unsigned_rem(lhs, rhs, "int_urem"),
-                BOp::Pow => return Err(format!("The {} operator is not yet supported", BOp::Pow)),
+                BOp::Pow => {
+                    return Err(CompilerError {
+                        reason: format!("The {} operator is not yet supported", BOp::Pow),
+                        span: Some(bexpr_span),
+                    })
+                }
                 BOp::Gt if operand_type.is_signed() => {
                     b.build_int_compare(IntPredicate::SGT, lhs, rhs, "int_sgt_cmp")
                 }
@@ -663,7 +725,10 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 BOp::Ne => b.build_int_compare(IntPredicate::NE, lhs, rhs, "int_ne_cmp"),
                 BOp::CmpEq => b.build_int_compare(IntPredicate::EQ, lhs, rhs, "int_eq_cmp"),
                 BOp::And | BOp::Or => {
-                    return Err("Invalid && or || comparison for int value".to_string())
+                    return Err(CompilerError {
+                        reason: "Invalid && or || comparison for int value".to_string(),
+                        span: Some(bexpr_span),
+                    })
                 }
             };
 
@@ -688,7 +753,12 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 BOp::Mul => b.build_float_mul(lhs, rhs, "flt_mul").as_basic_value_enum(),
                 BOp::Div => b.build_float_div(lhs, rhs, "flt_div").as_basic_value_enum(),
                 BOp::Mod => b.build_float_rem(lhs, rhs, "flt_mod").as_basic_value_enum(),
-                BOp::Pow => return Err(format!("The {} operator is not yet supported", BOp::Pow)),
+                BOp::Pow => {
+                    return Err(CompilerError {
+                        reason: format!("The {} operator is not yet supported", BOp::Pow),
+                        span: Some(bexpr_span),
+                    })
+                }
                 BOp::Gt => b
                     .build_float_compare(FloatPredicate::OGT, lhs, rhs, "flt_gt_cmp")
                     .as_basic_value_enum(),
@@ -708,13 +778,21 @@ pub fn codegen_bexpr<'input, 'ctx>(
                     .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "flt_eq_cmp")
                     .as_basic_value_enum(),
                 BOp::And | BOp::Or => {
-                    return Err("Invalid && or || comparison for float value".to_string())
+                    return Err(CompilerError {
+                        reason: "Invalid && or || comparison for float value".to_string(),
+                        span: Some(bexpr_span),
+                    })
                 }
             };
 
             bop_res
         }
-        VarType::Void => return Err("Binary operations between void types are invalid".to_string()),
+        VarType::Void => {
+            return Err(CompilerError {
+                reason: "Binary operations between void types are invalid".to_string(),
+                span: Some(bexpr_span),
+            })
+        }
         VarType::Boolean => {
             // Bool values are i1, so they are ints
             let lhs = lhs_val.into_int_value();
@@ -727,10 +805,13 @@ pub fn codegen_bexpr<'input, 'ctx>(
                 BOp::And => b.build_and(lhs, rhs, "bool_and"),
                 BOp::Or => b.build_or(lhs, rhs, "bool_or"),
                 unsupported_operation => {
-                    return Err(format!(
-                        "Unsupported operation {} between two booleans",
-                        unsupported_operation
-                    ))
+                    return Err(CompilerError {
+                        reason: format!(
+                            "Unsupported operation {} between two booleans",
+                            unsupported_operation
+                        ),
+                        span: Some(bexpr_span),
+                    })
                 }
             };
 
@@ -738,7 +819,12 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
         VarType::Char => todo!(),
         VarType::String => todo!(),
-        VarType::Custom(_) => return Err("Classes are not yet supported".to_string()),
+        VarType::Custom(id) => {
+            return Err(CompilerError {
+                reason: "Classes are not yet supported".to_string(),
+                span: None,
+            })
+        }
     };
 
     let cmp_expr_type = if !op.node.is_cmp() {

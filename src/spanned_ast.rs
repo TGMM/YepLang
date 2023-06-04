@@ -1,9 +1,10 @@
 use chumsky::span::SimpleSpan;
 
 use crate::ast::{
-    ArrayVal, Assignment, BExpr, Block, BoolUnaryOp, ClassBlock, ClassDecl, Destructure, DoWhile,
-    Else, ElseIf, Expr, ExternDecl, FnCall, FnDef, FnType, For, Id, If, Indexing, MemberAcess,
-    NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType, VarDecl, While,
+    ArrayVal, Assignment, BExpr, Block, BoolUnaryOp, Casting, ClassBlock, ClassDecl, Destructure,
+    DoWhile, Else, ElseIf, Expr, ExternDecl, FnCall, FnDef, FnType, For, Id, If, Indexing,
+    MemberAcess, NumericUnaryOp, PrimitiveVal, Return, Stmt, TopBlock, UnaryOp, ValueVarType,
+    VarDecl, VarDeclAssignment, While,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,13 +88,17 @@ impl GetSpan for Expr<'_> {
             Expr::Indexing(idxing) => idxing.get_span(),
             Expr::MemberAccess(ma) => ma.get_span(),
             Expr::Id(id) => id.get_span(),
-            Expr::Cast(cast) => {
-                let start = cast.casted.get_span().start;
-                let end = cast.cast_type.get_span().end;
-
-                SimpleSpan::new(start, end)
-            }
+            Expr::Cast(cast) => cast.get_span(),
         }
+    }
+}
+
+impl GetSpan for Casting<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let start = self.casted.get_span().start;
+        let end = self.cast_type.get_span().end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
@@ -124,7 +129,10 @@ impl GetSpan for SpannedAstNode<PrimitiveVal<'_>> {
 
 impl GetSpan for ArrayVal<'_> {
     fn get_span(&self) -> SimpleSpan {
-        todo!()
+        let start = self.lsqbracket.start;
+        let end = self.rsqbracket.end;
+
+        SimpleSpan::new(start, end)
     }
 }
 
@@ -280,6 +288,20 @@ impl GetSpan for Destructure<'_> {
             Destructure::Array(_) => todo!(),
             Destructure::Object(_) => todo!(),
         }
+    }
+}
+
+impl GetSpan for VarDeclAssignment<'_> {
+    fn get_span(&self) -> SimpleSpan {
+        let destructure_span = self.destructure.get_span();
+        let start = destructure_span.start;
+
+        let expr_end = self.expr.as_ref().map(|e| e.get_span().end);
+        let vvt_end = self.var_type.as_ref().map(|vt| vt.get_span().end);
+
+        let end = expr_end.unwrap_or(vvt_end.unwrap_or(destructure_span.end));
+
+        SimpleSpan::new(start, end)
     }
 }
 

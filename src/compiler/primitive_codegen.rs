@@ -8,7 +8,7 @@ use crate::{
         ArrayVal, BoolLiteral, BoolUnaryOp, NumericLiteral, NumericUnaryOp, PrimitiveVal,
         ValueVarType, VarType,
     },
-    spanned_ast::SpannedAstNode,
+    spanned_ast::{GetSpan, SpannedAstNode},
 };
 use inkwell::{
     types::{BasicTypeEnum, FloatType, IntType},
@@ -109,7 +109,10 @@ pub fn codegen_int_val<'input, 'ctx>(
             array_dimensions: _,
             pointer_nesting_level: _,
         }) if vtype == &VarType::I128 || vtype == &VarType::U128 => {
-            return Err("128 bit integers are not supported".to_string());
+            return Err(CompilerError {
+                reason: "128 bit integers are not supported".to_string(),
+                span: None,
+            });
         }
         _ => {
             // Default value is i32
@@ -123,15 +126,9 @@ pub fn codegen_int_val<'input, 'ctx>(
     };
 
     let unsigned = !var_type.vtype.is_signed();
-    if matches!(
-        uop,
-        Some(SpannedAstNode {
-            node: NumericUnaryOp::Minus,
-            span: _
-        })
-    ) {
+    if let Some(uop) = uop && uop.node == NumericUnaryOp::Minus {
         if unsigned {
-            return Err("Can't apply the minus unary operator to an unsigned integer".to_string());
+            return Err(CompilerError { reason: "Can't apply the minus unary operator to an unsigned integer".to_string(), span: Some(uop.span) });
         }
         let mut i64_val: i64 = unsafe { transmute(int_val) };
         i64_val = -i64_val;
@@ -232,6 +229,7 @@ pub fn codegen_arr_val<'input, 'ctx>(
     expected_type: Option<&ValueVarType>,
     block_type: BlockType,
 ) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let arr_val_span = arr_val.get_span();
     let exprs = arr_val.expr_vals;
     let exprs_len: u32 = exprs
         .len()
@@ -239,7 +237,10 @@ pub fn codegen_arr_val<'input, 'ctx>(
         .expect("Array dimensions should fit inside an u32");
 
     if exprs.is_empty() && expected_type.is_none() {
-        return Err("Can't infer type of empty array".to_string());
+        return Err(CompilerError {
+            reason: "Can't infer type of empty array".to_string(),
+            span: Some(arr_val_span),
+        });
     }
     if let Some(et) = expected_type {
         let expected_dim = *et
@@ -248,10 +249,13 @@ pub fn codegen_arr_val<'input, 'ctx>(
             .ok_or(format!("Expected {}, got array instead", et))?;
 
         if expected_dim != exprs_len {
-            return Err(format!(
-                "Array declared with {} elements, but assigned value has {} elements",
-                expected_dim, exprs_len
-            ));
+            return Err(CompilerError {
+                reason: format!(
+                    "Array declared with {} elements, but assigned value has {} elements",
+                    expected_dim, exprs_len
+                ),
+                span: Some(arr_val_span),
+            });
         }
     }
 
@@ -266,14 +270,17 @@ pub fn codegen_arr_val<'input, 'ctx>(
     let mut vals = vec![];
     for expr in exprs {
         let (val, ty_) =
-            codegen_rhs_expr(compiler, expr, expected_element_type.as_ref(), block_type).unwrap();
+            codegen_rhs_expr(compiler, expr, expected_element_type.as_ref(), block_type)?;
 
         if let Some(ref eet) = expected_element_type {
             if eet != &ty_ {
-                return Err(format!(
-                    "Found element of type {} in declaration of array with elements of type {}",
-                    ty_, eet
-                ));
+                return Err(CompilerError {
+                    reason: format!(
+                        "Found element of type {} in declaration of array with elements of type {}",
+                        ty_, eet
+                    ),
+                    span: Some(arr_val_span),
+                });
             }
         }
 

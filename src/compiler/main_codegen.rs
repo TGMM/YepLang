@@ -11,6 +11,7 @@ use super::{
 use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
     parser::main_parser::parse,
+    spanned_ast::GetSpan,
 };
 use inkwell::{
     context::Context,
@@ -44,7 +45,10 @@ pub fn convert_to_type_enum<'input, 'ctx>(
             .i8_type()
             .ptr_type(AddressSpace::default())
             .as_basic_type_enum()),
-        other => Err(format!("{} is not a valid basic value", other)),
+        other => Err(CompilerError {
+            reason: format!("{} is not a valid basic value", other),
+            span: None,
+        }),
     };
 
     let mut final_type = basic_vtype?;
@@ -67,10 +71,13 @@ pub fn declare_scoped_val<'input, 'ctx>(
 ) -> Result<(), CompilerError> {
     let curr_scope_mut = compiler.get_curr_scope_mut()?;
     if curr_scope_mut.get(&var_name).is_some() {
-        return Err(format!(
-            "Cannot redeclare block-scoped variable or function '{}'.",
-            var_name
-        ));
+        return Err(CompilerError {
+            reason: format!(
+                "Cannot redeclare block-scoped variable or function '{}'.",
+                var_name
+            ),
+            span: None,
+        });
     }
 
     curr_scope_mut.insert(var_name, value);
@@ -132,10 +139,10 @@ pub fn add_function_to_module<'input, 'ctx>(
     linkage: Option<Linkage>,
 ) -> Result<FunctionValue<'ctx>, CompilerError> {
     if fn_name.starts_with("__yep_") {
-        return Err(format!(
+        return Err(CompilerError { reason: format!(
             "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
             "__yep_"
-        ));
+        ), span: None });
     }
 
     let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
@@ -148,7 +155,10 @@ pub fn add_function_to_module<'input, 'ctx>(
             "The compiler internally links to some libc functions for run-time error handling.";
 
         if fn_type != fun.get_type() {
-            return Err(format!("{}\n{}\n{}", line_one, line_two, line_three));
+            return Err(CompilerError {
+                reason: format!("{}\n{}\n{}", line_one, line_two, line_three),
+                span: None,
+            });
         }
 
         fun
@@ -301,21 +311,30 @@ fn codegen_var_decl<'input, 'ctx>(
     var_decl: VarDecl,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
+    let var_decl_span = var_decl.get_span();
+
     // TODO: Handle scope specifier
     for decl_as in var_decl.decl_assignments {
+        let decl_as_span = decl_as.get_span();
         // TODO: Handle destructures instead of only ids
         let id = match decl_as.destructure {
             Destructure::Id(id) => {
                 if id.id_str.as_str() == "this" {
-                    return Err(
-                        "'this' is a reserved keyword and can't be used as a variable name"
+                    return Err(CompilerError {
+                        reason: "'this' is a reserved keyword and can't be used as a variable name"
                             .to_string(),
-                    );
+                        span: Some(id.get_span()),
+                    });
                 }
 
                 id
             }
-            _ => return Err("Destructures are not supported yet".to_string()),
+            _ => {
+                return Err(CompilerError {
+                    reason: "Destructures are not supported yet".to_string(),
+                    span: Some(decl_as.destructure.get_span()),
+                })
+            }
         };
 
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
@@ -340,10 +359,10 @@ fn codegen_var_decl<'input, 'ctx>(
 
             // Type checking
             if let Some(ivt) = inferred_var_type && ivt != explicit_var_type.node {
-                return Err(format!(
+                return Err(CompilerError { reason: format!(
                     "Can't assign a value of {} to a variable of type {}",
                     ivt, explicit_var_type
-                ));
+                ), span: Some(var_decl_span) });
             }
 
             var_type = explicit_var_type.node;
@@ -351,16 +370,19 @@ fn codegen_var_decl<'input, 'ctx>(
             type_ = convert_to_type_enum(compiler, &inferred_var_type)?;
             var_type = inferred_var_type;
         } else {
-            return Err("Variables must have an explicit type or an initial value".to_string());
+            return Err(CompilerError {
+                reason: "Variables must have an explicit type or an initial value".to_string(),
+                span: Some(decl_as_span),
+            });
         }
 
         // Global variable
         if matches!(block_type, BlockType::GLOBAL) {
             if id.id_str.starts_with("__yep_") {
-                return Err(format!(
+                return Err(CompilerError { reason: format!(
                     "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
                     "__yep_"
-                ));
+                ), span: Some(id.get_span()) });
             }
             let new_global = compiler.module.add_global(type_, None, &id.id_str);
 
@@ -368,7 +390,10 @@ fn codegen_var_decl<'input, 'ctx>(
                 // Return error if initial_val comes from an instruction
                 // That likely means that it's not constant
                 if let Some(_) = initial_val.as_instruction_value() {
-                    return Err("Initializer element is not a compile-time constant".to_string());
+                    return Err(CompilerError {
+                        reason: "Initializer element is not a compile-time constant".to_string(),
+                        span: None,
+                    });
                 }
 
                 new_global.set_initializer(&initial_val);
@@ -416,6 +441,7 @@ pub fn codegen_assignment(
     assignment: Assignment,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
+    let assignment_span = assignment.get_span();
     let (assignee_ptr, expected_type) =
         codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None, block_type)?;
 
@@ -438,10 +464,13 @@ pub fn codegen_assignment(
         )?;
 
         if expected_type != bop_type {
-            return Err(format!(
-                "Invalid types, expected {} but got {}",
-                expected_type, bop_type
-            ));
+            return Err(CompilerError {
+                reason: format!(
+                    "Invalid types, expected {} but got {}",
+                    expected_type, bop_type
+                ),
+                span: Some(assignment_span),
+            });
         }
 
         bop_val
@@ -457,14 +486,16 @@ pub fn codegen_assignment(
             assignment.assigned_expr,
             Some(&core_type),
             block_type,
-        )
-        .unwrap();
+        )?;
 
         if expected_type != new_val_type {
-            return Err(format!(
-                "Invalid types, expected {} but got {}",
-                expected_type, new_val_type
-            ));
+            return Err(CompilerError {
+                reason: format!(
+                    "Invalid types, expected {} but got {}",
+                    expected_type, new_val_type
+                ),
+                span: Some(assignment_span),
+            });
         }
 
         new_val

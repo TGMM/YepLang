@@ -2,17 +2,20 @@ use rustc_hash::FxHashMap;
 
 use super::{
     expr_codegen::codegen_rhs_expr,
-    helpers::{BlockType, Compiler},
+    helpers::{BlockType, Compiler, CompilerError},
     main_codegen::{codegen_block, codegen_stmt},
 };
-use crate::ast::{DoWhile, For, If, ValueVarType, VarType, While};
+use crate::{
+    ast::{DoWhile, For, If, ValueVarType, VarType, While},
+    spanned_ast::GetSpan,
+};
 use std::collections::VecDeque;
 
 pub fn codegen_if(
     compiler: &mut Compiler,
     if_: If,
     mut block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     block_type.insert(BlockType::IF);
 
     let mut parent_block = compiler.builder.get_insert_block().unwrap();
@@ -22,6 +25,7 @@ pub fn codegen_if(
     let else_block = compiler.context.append_basic_block(parent_func, "else");
     let merge_block = compiler.context.append_basic_block(parent_func, "ifcont");
 
+    let if_expr_span = if_.if_expr.get_span();
     let (if_expr, if_expr_type) = codegen_rhs_expr(
         compiler,
         if_.if_expr,
@@ -32,12 +36,18 @@ pub fn codegen_if(
         }),
         block_type,
     )
-    .map_err(|err| format!("Invalid expression for if condition: {}", err))?;
+    .map_err(|err| CompilerError {
+        reason: format!("Invalid expression for if condition: {}", err.reason),
+        span: Some(if_expr_span),
+    })?;
     if !if_expr_type.array_dimensions.is_empty()
         || if_expr_type.pointer_nesting_level > 0
         || !matches!(if_expr_type.vtype, VarType::Boolean)
     {
-        return Err("Conditional expression must be of boolean type".to_string());
+        return Err(CompilerError {
+            reason: "Conditional expression must be of boolean type".to_string(),
+            span: Some(if_expr_span),
+        });
     }
     // Re-get block after condition in case of any bounds-check
     parent_block = compiler.builder.get_insert_block().unwrap();
@@ -69,15 +79,18 @@ pub fn codegen_if(
     for (else_if, (else_if_cond_bb, else_if_block_bb)) in
         else_ifs.into_iter().zip(else_if_blocks).rev()
     {
+        let else_expr_span = else_if.else_expr.get_span();
         // Condition
         compiler.builder.position_at_end(else_if_cond_bb);
-        let (comp, comp_type) =
-            codegen_rhs_expr(compiler, else_if.else_expr, None, block_type).unwrap();
+        let (comp, comp_type) = codegen_rhs_expr(compiler, else_if.else_expr, None, block_type)?;
         if !comp_type.array_dimensions.is_empty()
             || comp_type.pointer_nesting_level > 0
             || !matches!(comp_type.vtype, VarType::Boolean)
         {
-            return Err("Conditional expression must be of boolean type".to_string());
+            return Err(CompilerError {
+                reason: "Conditional expression must be of boolean type".to_string(),
+                span: Some(else_expr_span),
+            });
         }
 
         compiler.builder.build_conditional_branch(
@@ -118,7 +131,7 @@ pub fn codegen_while(
     compiler: &mut Compiler,
     while_: While,
     mut block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     block_type.insert(BlockType::WHILE);
 
     let parent_block = compiler
@@ -141,6 +154,8 @@ pub fn codegen_while(
     // While
     compiler.builder.build_unconditional_branch(comp_block);
     compiler.builder.position_at_end(comp_block);
+
+    let while_cond_span = while_.while_cond.get_span();
     let while_expr = codegen_rhs_expr(
         compiler,
         while_.while_cond,
@@ -151,7 +166,10 @@ pub fn codegen_while(
         }),
         block_type,
     )
-    .expect("Invalid expression for while condtition")
+    .map_err(|err| CompilerError {
+        reason: format!("Invalid expression for while condtition: {}", err.reason),
+        span: Some(while_cond_span),
+    })?
     .0
     .into_int_value();
     compiler
@@ -172,7 +190,7 @@ pub fn codegen_do_while(
     compiler: &mut Compiler,
     do_while: DoWhile,
     mut block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     block_type.insert(BlockType::WHILE);
 
     let parent_block = compiler
@@ -200,6 +218,7 @@ pub fn codegen_do_while(
 
     // While
     compiler.builder.position_at_end(comp_block);
+    let do_while_cond_span = do_while.while_cond.get_span();
     let while_expr = codegen_rhs_expr(
         compiler,
         do_while.while_cond,
@@ -210,7 +229,10 @@ pub fn codegen_do_while(
         }),
         block_type,
     )
-    .expect("Invalid expression for do while condtition")
+    .map_err(|err| CompilerError {
+        reason: format!("Invalid expression for do while condtition {}", err.reason),
+        span: Some(do_while_cond_span),
+    })?
     .0
     .into_int_value();
     compiler
@@ -227,7 +249,7 @@ pub fn codegen_for(
     compiler: &mut Compiler,
     for_: For,
     mut block_type: BlockType,
-) -> Result<(), String> {
+) -> Result<(), CompilerError> {
     block_type.insert(BlockType::FOR);
     compiler.var_scopes.push(FxHashMap::default());
 
@@ -277,6 +299,7 @@ pub fn codegen_for(
     // Cond
     compiler.builder.position_at_end(comp_block);
     let cond_expr = if let Some(cmp_expr) = for_.cmp_expr {
+        let cmp_expr_span = cmp_expr.get_span();
         let (val, ty) = codegen_rhs_expr(
             compiler,
             cmp_expr,
@@ -287,7 +310,10 @@ pub fn codegen_for(
             }),
             block_type,
         )
-        .map_err(|err| format!("Invalid condition expression in for loop: {}", err))?;
+        .map_err(|err| CompilerError {
+            reason: format!("Invalid condition expression in for loop: {}", err.reason),
+            span: Some(cmp_expr_span),
+        })?;
 
         if ty
             != (ValueVarType {
@@ -296,7 +322,10 @@ pub fn codegen_for(
                 pointer_nesting_level: 0,
             })
         {
-            return Err("Condition expression in for loop must be a boolean".to_string());
+            return Err(CompilerError {
+                reason: "Condition expression in for loop must be a boolean".to_string(),
+                span: Some(cmp_expr_span),
+            });
         }
 
         val.into_int_value()

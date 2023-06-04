@@ -5,13 +5,14 @@ use super::{
 };
 use crate::{
     ast::{
-        Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, Return, Stmt,
-        ValueVarType, VarType, InlineLlvmIr,
+        Block, Destructure, ExternType, FnDef, FnScope, FnSignature, FnType, InlineLlvmIr, Return,
+        Stmt, ValueVarType, VarType,
     },
     compiler::{
         helpers::{FnRetVal, ScopedFunc},
         main_codegen::{codegen_block, convert_to_type_enum, declare_scoped_val},
     },
+    spanned_ast::GetSpan,
 };
 use inkwell::{
     module::{Linkage, Module},
@@ -28,24 +29,34 @@ pub fn codegen_return(
     return_: Return,
     block_type: BlockType,
 ) -> Result<(), CompilerError> {
+    let ret_span = return_.get_span();
     let ret_expr = return_.ret_val;
     let fn_ret_val = compiler.curr_func_ret_val.clone();
 
     if ret_expr.is_some() && fn_ret_val.is_none() {
-        return Err("Void functions can't return values".to_string());
+        return Err(CompilerError {
+            reason: "Void functions can't return values".to_string(),
+            span: Some(ret_span),
+        });
     }
 
     // Return is void
     if ret_expr.is_none() {
         // Returning void on a non-void function
         if fn_ret_val.is_some() {
-            return Err("Non-void functions must return a value".to_string());
+            return Err(CompilerError {
+                reason: "Non-void functions must return a value".to_string(),
+                span: Some(ret_span),
+            });
         }
 
         if block_type.contains(BlockType::FUNC) {
             compiler.builder.build_return(None);
         } else {
-            return Err("Return statements must be inside a function".to_string());
+            return Err(CompilerError {
+                reason: "Return statements must be inside a function".to_string(),
+                span: Some(ret_span),
+            });
         }
     }
 
@@ -58,22 +69,32 @@ pub fn codegen_return(
     } = fn_ret_val.unwrap();
 
     let (ret_val, ret_type) =
-        codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type), block_type)
-            .map_err(|err| format!("Invalid value for function return: {}", err))?;
+        codegen_rhs_expr(compiler, ret_expr, Some(&expected_ret_type), block_type).map_err(
+            |err| CompilerError {
+                reason: format!("Invalid value for function return: {}", err.reason),
+                span: Some(ret_span),
+            },
+        )?;
 
     let expected_ret_type: ValueVarType = expected_ret_type;
     if ret_type != expected_ret_type {
-        return Err(format!(
-            "Invalid type for returned value, expected {}, got {}",
-            expected_ret_type, ret_type
-        ));
+        return Err(CompilerError {
+            reason: format!(
+                "Invalid type for returned value, expected {}, got {}",
+                expected_ret_type, ret_type
+            ),
+            span: Some(ret_span),
+        });
     }
 
     if block_type.contains(BlockType::FUNC) {
         compiler.builder.build_store(ret_val_ptr, ret_val);
         compiler.builder.build_unconditional_branch(ret_bb);
     } else {
-        return Err("Return statements must be inside a function".to_string());
+        return Err(CompilerError {
+            reason: "Return statements must be inside a function".to_string(),
+            span: Some(ret_span),
+        });
     }
 
     Ok(())
@@ -91,12 +112,15 @@ pub fn codegen_fn_decl<'input, 'ctx>(
         .iter()
         .map(|(d, vvt)| {
             if !matches!(d, Destructure::Id(_)) {
-                return Err("Destructuring of arguments is not supported yet".to_string());
+                return Err(CompilerError {
+                    reason: "Destructuring of arguments is not supported yet".to_string(),
+                    span: Some(d.get_span()),
+                });
             }
 
             Ok(vvt)
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect::<Result<Vec<_>, CompilerError>>()?;
     let param_types = arg_types
         .iter()
         .map(|vvt| {
@@ -104,13 +128,17 @@ pub fn codegen_fn_decl<'input, 'ctx>(
                 compiler, &vvt.node,
             )?))
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect::<Result<Vec<_>, CompilerError>>()?;
 
-    let ret_type = fn_signature.ret_type.clone().map(|svvt| svvt.node).unwrap_or(ValueVarType {
-        vtype: VarType::Void,
-        array_dimensions: VecDeque::new(),
-        pointer_nesting_level: 0,
-    });
+    let ret_type = fn_signature
+        .ret_type
+        .clone()
+        .map(|svvt| svvt.node)
+        .unwrap_or(ValueVarType {
+            vtype: VarType::Void,
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        });
 
     let fn_type = if ret_type.vtype == VarType::Void {
         compiler.context.void_type().fn_type(&param_types, false)
@@ -172,15 +200,22 @@ pub fn codegen_llvm_fn(
         ret_type,
     } = fn_signature;
 
-    let InlineLlvmIr { lbracket: _, ir: llvm_ir, rbracket: _ } = llvm_ir_block;
-    
+    let InlineLlvmIr {
+        lbracket: _,
+        ir: llvm_ir,
+        rbracket: _,
+    } = llvm_ir_block;
+
     let id_args = args
         .clone()
         .into_iter()
         .map(|(arg, arg_type)| match arg {
             Destructure::Id(id) => Ok((id, arg_type)),
             _ => {
-                return Err("Destructuring is not supported inside LLVM IR".to_string());
+                return Err(CompilerError {
+                    reason: "Destructuring is not supported inside LLVM IR".to_string(),
+                    span: Some(arg.get_span()),
+                });
             }
         })
         .collect::<Result<Vec<_>, CompilerError>>()?;
@@ -207,10 +242,10 @@ pub fn codegen_llvm_fn(
     );
 
     let ir_str = to_c_str(&fun_def);
-    let data_layout = compiler
-        .data_layout
-        .as_ref()
-        .ok_or("Can't compile inline LLVM IR without a data layout".to_string())?;
+    let data_layout = compiler.data_layout.as_ref().ok_or(CompilerError {
+        reason: "Can't compile inline LLVM IR without a data layout".to_string(),
+        span: None,
+    })?;
     let data_layout_str = to_c_str(data_layout.as_str().to_str().unwrap());
     let m = unsafe {
         LLVMParseAssemblyString(
@@ -227,18 +262,24 @@ pub fn codegen_llvm_fn(
     compiler
         .module
         .link_in_module(inline_module)
-        .expect("Error linking inline LLVM IR");
+        .map_err(|err| CompilerError {
+            reason: format!("Error linking inline LLVM IR: {}", err),
+            span: None,
+        })?;
 
     let arg_vvtypes = args
         .iter()
         .map(|(d, vvt)| {
             if !matches!(d, Destructure::Id(_)) {
-                return Err("Destructuring of arguments is not supported yet".to_string());
+                return Err(CompilerError {
+                    reason: "Destructuring of arguments is not supported yet".to_string(),
+                    span: Some(d.get_span()),
+                });
             }
 
             Ok(vvt)
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect::<Result<Vec<_>, CompilerError>>()?;
     let arg_extypes = arg_vvtypes
         .into_iter()
         .map(|vvt| ExternType::Type(vvt.clone()))
@@ -277,7 +318,10 @@ pub fn codegen_native_fn(
     let fun = compiler
         .get_scoped_val(&fn_name, block_type)?
         .as_fn()
-        .ok_or("ICE: Couldn't get forward-declared function".to_string())?
+        .ok_or(CompilerError {
+            reason: "ICE: Couldn't get forward-declared function".to_string(),
+            span: None,
+        })?
         .ptr_val;
 
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
@@ -292,7 +336,7 @@ pub fn codegen_native_fn(
 
         if !has_return {
             let err = "Non-void functions must have at least 1 top-level (as in, not nested) return statement.";
-            return Err(err.to_string());
+            return Err(CompilerError { reason: err.to_string(), span: Some(fn_block.get_span()) });
         }
     }
 
@@ -358,8 +402,8 @@ pub fn codegen_native_fn(
     // Building the return
     // Every block must end with a br statement, so we jump to the return block
     // If the previous instruction is an unconditional branch, then we don't build another
-    if let Some(instr) = prev_bb.get_last_instruction() 
-        && instr.get_opcode() == InstructionOpcode::Br 
+    if let Some(instr) = prev_bb.get_last_instruction()
+        && instr.get_opcode() == InstructionOpcode::Br
     {} else {
         compiler.builder.build_unconditional_branch(ret_basic_block);
     }
