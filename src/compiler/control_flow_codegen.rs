@@ -182,6 +182,9 @@ pub fn codegen_while(
     compiler.builder.build_unconditional_branch(comp_block);
 
     compiler.builder.position_at_end(merge_block);
+    if block_type.contains(BlockType::GLOBAL) {
+        compiler.basic_block_stack.push(merge_block);
+    }
 
     Ok(())
 }
@@ -241,6 +244,9 @@ pub fn codegen_do_while(
 
     // Cont
     compiler.builder.position_at_end(merge_block);
+    if block_type.contains(BlockType::GLOBAL) {
+        compiler.basic_block_stack.push(merge_block);
+    }
 
     Ok(())
 }
@@ -342,6 +348,9 @@ pub fn codegen_for(
 
     // Cont
     compiler.builder.position_at_end(merge_block);
+    if block_type.contains(BlockType::GLOBAL) {
+        compiler.basic_block_stack.push(merge_block);
+    }
 
     // Pop the For block
     compiler.var_scopes.pop();

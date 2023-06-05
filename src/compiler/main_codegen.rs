@@ -248,6 +248,17 @@ pub fn codegen_top_block(
 
     let main_ret_ty = compiler.context.i32_type();
     let int_zero = main_ret_ty.const_zero();
+
+    println!(
+        "{}",
+        compiler
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_name()
+            .to_str()
+            .unwrap()
+    );
     compiler.builder.build_return(Some(&int_zero));
 
     Ok(())
@@ -560,17 +571,6 @@ pub fn compile<'input, 'ctx>(
 
     let out_path = Path::new(path.as_str());
 
-    if !compiler_args.skip_compile {
-        let out_file = &out_path.with_extension("o");
-
-        target_machine
-            .write_to_file(compiler.module, FileType::Object, out_file)
-            .map_err(|err| CompilerError {
-                reason: format!("Invalid out dir: {}", err),
-                span: None,
-            })?;
-    }
-
     if compiler_args.emit_llvm {
         let out_file = &out_path.with_extension("ll");
 
@@ -588,6 +588,17 @@ pub fn compile<'input, 'ctx>(
 
         target_machine
             .write_to_file(compiler.module, FileType::Assembly, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
+    }
+
+    if !compiler_args.skip_compile {
+        let out_file = &out_path.with_extension("o");
+
+        target_machine
+            .write_to_file(compiler.module, FileType::Object, out_file)
             .map_err(|err| CompilerError {
                 reason: format!("Invalid out dir: {}", err),
                 span: None,
