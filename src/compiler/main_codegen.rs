@@ -552,6 +552,12 @@ pub fn compile<'input, 'ctx>(
 
     codegen_top_block(compiler, top_block, yep_target)?;
 
+    if compiler_args.lib_only {
+        unsafe {
+            compiler.module.get_function("main").unwrap().delete();
+        }
+    }
+
     let out_path = Path::new(path.as_str());
 
     if !compiler_args.skip_compile {
@@ -596,6 +602,7 @@ pub struct CompilerArgs {
     pub emit_llvm: bool,
     pub emit_assembly: bool,
     pub skip_compile: bool,
+    pub lib_only: bool,
 }
 
 pub fn compile_yep(
@@ -639,6 +646,8 @@ pub fn compile_yep(
     };
 
     let skip_link = compiler_args.skip_link;
+    let lib_only = compiler_args.lib_only;
+
     let out_obj = compile(
         &mut compiler,
         top_block,
@@ -652,7 +661,7 @@ pub fn compile_yep(
     let exe_path = out_path.with_extension("exe").to_str().unwrap().to_string();
     let obj_path = out_path.with_extension("o").to_str().unwrap().to_string();
 
-    if !skip_link {
+    if !skip_link && !lib_only {
         link_exe(exe_path, obj_path.clone())?;
         fs::remove_file(obj_path).map_err(|_| "Could not remove .o file".to_string())?;
     }

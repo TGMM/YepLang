@@ -36,6 +36,11 @@ struct Args {
     /// target environment doesn't have libc available
     #[arg(long)]
     no_std: bool,
+    /// Compiles the program without an implicit main
+    /// function, designed for linking with other
+    /// modules
+    #[arg(long)]
+    lib_only: bool,
 }
 
 fn main() -> Result<(), String> {
@@ -62,7 +67,13 @@ fn main() -> Result<(), String> {
         emit_llvm: args.emit_llvm,
         emit_assembly: args.emit_assembly,
         skip_compile: false,
+        lib_only: args.lib_only,
     };
+
+    if compiler_args.lib_only && !compiler_args.skip_link {
+        println!("Warning: Lib-only mode can't produce an executable");
+        println!("The value of the skip_link flag is ignored");
+    }
 
     let (out_path, out_name): (String, String) = if let Some(arg_path_str) = args.out {
         let arg_path = Path::new(&arg_path_str);

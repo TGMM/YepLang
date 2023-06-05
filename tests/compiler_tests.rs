@@ -31,6 +31,7 @@ macro_rules! compiler_test {
                 emit_llvm: true,
                 emit_assembly: false,
                 skip_compile: true,
+                lib_only: false,
             };
             compile_yep(
                 input,
