@@ -89,6 +89,13 @@ impl GetSpan for Expr<'_> {
             Expr::MemberAccess(ma) => ma.get_span(),
             Expr::Id(id) => id.get_span(),
             Expr::Cast(cast) => cast.get_span(),
+            Expr::Referencing(expr) | Expr::Dereferencing(expr) => {
+                let expr_span = &expr.get_span();
+                let start = expr_span.start - 1;
+                let end = expr_span.end;
+
+                SimpleSpan::new(start, end)
+            }
         }
     }
 }

@@ -425,6 +425,12 @@ pub struct VarDecl<'input> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DeReferencingOp {
+    Ref,
+    Deref,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BOp {
     Add,
     Sub,
@@ -534,6 +540,8 @@ pub enum Expr<'input> {
     MemberAccess(Box<MemberAcess<'input>>),
     Id(Id),
     Cast(Box<Casting<'input>>),
+    Referencing(Box<Expr<'input>>),
+    Dereferencing(Box<Expr<'input>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
