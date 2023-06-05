@@ -347,6 +347,9 @@ pub fn codegen_native_fn(
     let basic_block_name = format!("{}_bb", fn_name);
     let fn_basic_block = compiler.context.append_basic_block(fun, &basic_block_name);
     compiler.builder.position_at_end(fn_basic_block);
+
+    // We entered with X basic blocks
+    let initial_blocks = compiler.basic_block_stack.len();
     compiler.basic_block_stack.push(fn_basic_block);
 
     let ret_basic_block_name = format!("{}_ret_bb", fn_name);
@@ -445,7 +448,10 @@ pub fn codegen_native_fn(
         .build_return(ret_val_load.as_ref().map(|ptr| ptr as &dyn BasicValue));
 
     // Return from function, get back to main basic block
-    compiler.basic_block_stack.pop();
+    // We leave with X basic blocks
+    while compiler.basic_block_stack.len() > initial_blocks {
+        compiler.basic_block_stack.pop();
+    }
     let prev_basic_block = compiler
         .basic_block_stack
         .last()

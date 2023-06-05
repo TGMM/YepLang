@@ -210,6 +210,98 @@ pub fn codegen_rhs_expr<'input, 'ctx>(
             Ok((var_val, scoped_var.var_type))
         }
         Expr::Cast(casting) => codegen_rhs_casting(compiler, *casting, block_type),
+        Expr::Referencing(referencing_expr) => {
+            codegen_referencing(compiler, *referencing_expr, block_type)
+        }
+        Expr::Dereferencing(dereferencing_expr) => {
+            codegen_dereferencing(compiler, *dereferencing_expr, block_type)
+        }
+    }
+}
+
+pub fn codegen_referencing<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+    referencing_expr: Expr<'input>,
+    block_type: BlockType,
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let expr_span = referencing_expr.get_span();
+    match referencing_expr {
+        Expr::Id(id) => {
+            let var_name = id.id_str;
+            let id_span = id.span;
+            let scoped_val =
+                compiler.get_scoped_val(var_name.as_str(), block_type, Some(id_span))?;
+
+            match scoped_val {
+                ScopedVal::Var(var) => {
+                    let mut ref_ty = var.var_type.clone();
+                    ref_ty.pointer_nesting_level += 1;
+                    return Ok((var.ptr_val.as_basic_value_enum(), ref_ty));
+                }
+                ScopedVal::Fn(_) => Err(CompilerError {
+                    reason: "Can't reference a function".to_string(),
+                    span: Some(expr_span),
+                }),
+            }
+        }
+        _ => Err(CompilerError {
+            reason: "Referencing is only supported for variables".to_string(),
+            span: Some(expr_span),
+        }),
+    }
+}
+
+pub fn codegen_dereferencing<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+    dereferencing_expr: Expr<'input>,
+    block_type: BlockType,
+) -> Result<(BasicValueEnum<'ctx>, ValueVarType), CompilerError> {
+    let expr_span = dereferencing_expr.get_span();
+    match dereferencing_expr {
+        Expr::Id(id) => {
+            let var_name = id.id_str;
+            let id_span = id.span;
+            let scoped_val =
+                compiler.get_scoped_val(var_name.as_str(), block_type, Some(id_span))?;
+
+            match scoped_val {
+                ScopedVal::Var(var) => {
+                    if var.var_type.pointer_nesting_level == 0 {
+                        return Err(CompilerError {
+                            reason: "Only pointers can be de-referenced".to_string(),
+                            span: Some(expr_span),
+                        });
+                    }
+
+                    let mut deref_ty = var.var_type.clone();
+                    deref_ty.pointer_nesting_level -= 1;
+
+                    let deref_bt = convert_to_type_enum(compiler, &deref_ty)?;
+                    let const_zero = compiler.context.i32_type().const_zero();
+                    let var_gep = unsafe {
+                        compiler.builder.build_in_bounds_gep(
+                            deref_bt,
+                            var.ptr_val,
+                            &[const_zero],
+                            "dereference_gep",
+                        )
+                    };
+                    let var_val =
+                        compiler
+                            .builder
+                            .build_load(deref_bt, var_gep, "dereference_load");
+                    return Ok((var_val.as_basic_value_enum(), deref_ty));
+                }
+                ScopedVal::Fn(_) => Err(CompilerError {
+                    reason: "Can't reference a function".to_string(),
+                    span: Some(expr_span),
+                }),
+            }
+        }
+        _ => Err(CompilerError {
+            reason: "De-referencing is only supported for variables".to_string(),
+            span: Some(expr_span),
+        }),
     }
 }
 

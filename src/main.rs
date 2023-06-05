@@ -41,6 +41,9 @@ struct Args {
     /// modules
     #[arg(long)]
     lib_only: bool,
+    /// The path of an .o file to link to
+    #[arg(long)]
+    link_to_objects: Option<Vec<String>>,
 }
 
 fn main() -> Result<(), String> {
@@ -68,6 +71,7 @@ fn main() -> Result<(), String> {
         emit_assembly: args.emit_assembly,
         skip_compile: false,
         lib_only: args.lib_only,
+        link_to_object: args.link_to_objects,
     };
 
     if compiler_args.lib_only && !compiler_args.skip_link {

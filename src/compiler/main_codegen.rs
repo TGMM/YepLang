@@ -248,6 +248,17 @@ pub fn codegen_top_block(
 
     let main_ret_ty = compiler.context.i32_type();
     let int_zero = main_ret_ty.const_zero();
+
+    println!(
+        "{}",
+        compiler
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_name()
+            .to_str()
+            .unwrap()
+    );
     compiler.builder.build_return(Some(&int_zero));
 
     Ok(())
@@ -560,17 +571,6 @@ pub fn compile<'input, 'ctx>(
 
     let out_path = Path::new(path.as_str());
 
-    if !compiler_args.skip_compile {
-        let out_file = &out_path.with_extension("o");
-
-        target_machine
-            .write_to_file(compiler.module, FileType::Object, out_file)
-            .map_err(|err| CompilerError {
-                reason: format!("Invalid out dir: {}", err),
-                span: None,
-            })?;
-    }
-
     if compiler_args.emit_llvm {
         let out_file = &out_path.with_extension("ll");
 
@@ -594,6 +594,17 @@ pub fn compile<'input, 'ctx>(
             })?;
     }
 
+    if !compiler_args.skip_compile {
+        let out_file = &out_path.with_extension("o");
+
+        target_machine
+            .write_to_file(compiler.module, FileType::Object, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
+    }
+
     Ok(out_path.to_str().unwrap().to_string())
 }
 
@@ -603,6 +614,7 @@ pub struct CompilerArgs {
     pub emit_assembly: bool,
     pub skip_compile: bool,
     pub lib_only: bool,
+    pub link_to_object: Option<Vec<String>>,
 }
 
 pub fn compile_yep(
@@ -610,7 +622,7 @@ pub fn compile_yep(
     path: String,
     out_name: String,
     target: YepTarget,
-    compiler_args: CompilerArgs,
+    mut compiler_args: CompilerArgs,
 ) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
 
@@ -647,6 +659,7 @@ pub fn compile_yep(
 
     let skip_link = compiler_args.skip_link;
     let lib_only = compiler_args.lib_only;
+    let link_to_object = compiler_args.link_to_object.take();
 
     let out_obj = compile(
         &mut compiler,
@@ -662,7 +675,7 @@ pub fn compile_yep(
     let obj_path = out_path.with_extension("o").to_str().unwrap().to_string();
 
     if !skip_link && !lib_only {
-        link_exe(exe_path, obj_path.clone())?;
+        link_exe(exe_path, obj_path.clone(), link_to_object)?;
         fs::remove_file(obj_path).map_err(|_| "Could not remove .o file".to_string())?;
     }
 

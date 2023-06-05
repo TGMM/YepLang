@@ -26,7 +26,15 @@ use std::{
 
 pub fn bop_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<BOp>, ParserError<'i, Token<'i>>> + Clone {
-    select! { Token::BOp(bop) => bop }
+    let and_op = just(Token::Ampersand)
+        .repeated()
+        .at_least(2)
+        .at_most(2)
+        .map_with_span(|_, span| SpannedAstNode {
+            node: BOp::And,
+            span,
+        });
+    select! { Token::BOp(bop) => bop }.or(and_op)
 }
 
 pub fn id_parser<'i>() -> impl Parser<'i, ParserInput<'i>, Id, ParserError<'i, Token<'i>>> + Clone {

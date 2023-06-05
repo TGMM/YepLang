@@ -4,8 +4,8 @@ use super::primitive_parser::{
     bop_parser, id_parser, primitive_val_parser, value_var_type_parser, PRIMITIVE_VAL_PARSER,
 };
 use crate::ast::{
-    BOp, BoolUnaryOp, Casting, FnCall, FnCallArgs, Id, Indexing, MemberAcess, NumericUnaryOp,
-    ValueVarType,
+    BOp, BoolUnaryOp, Casting, DeReferencingOp, FnCall, FnCallArgs, Id, Indexing, MemberAcess,
+    NumericUnaryOp, ValueVarType,
 };
 use crate::lexer::Token;
 use crate::parser::main_parser::{GlobalParser, RecursiveParser};
@@ -128,6 +128,23 @@ enum PExprSuffix<'i> {
     MemberAccess(Id),
 }
 
+pub fn de_referencing_op<'i>(
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<DeReferencingOp>, ParserError<'i, Token<'i>>> + Clone
+{
+    let ref_op = bop_parser()
+        .filter(|b| matches!(b.node, BOp::Mul))
+        .map_with_span(|_, span| SpannedAstNode {
+            node: DeReferencingOp::Deref,
+            span,
+        });
+    let deref_op = just(Token::Ampersand).map_with_span(|_, span| SpannedAstNode {
+        node: DeReferencingOp::Ref,
+        span,
+    });
+
+    ref_op.or(deref_op)
+}
+
 recursive_parser!(
     PRIMARY_EXPR_PARSER,
     primary_expr_parser,
@@ -143,6 +160,15 @@ recursive_parser!(
         let primitive = primitive_val.clone().map(Expr::PrimitiveVal);
 
         let primary_expr = id.or(primitive).or(paren_expr.clone());
+        let de_referenced_expr =
+        de_referencing_op()
+            .or_not()
+            .then(primary_expr)
+            .map(|(deref_op, pexpr)| match deref_op.map(|dop| dop.node) {
+                Some(DeReferencingOp::Deref) => Expr::Dereferencing(Box::new(pexpr)),
+                Some(DeReferencingOp::Ref) => Expr::Referencing(Box::new(pexpr)),
+                None => pexpr,
+            });
 
         let indexed_suffix = indexer.clone().map(PExprSuffix::Index);
         let fn_call_suffix = fn_call_args.clone().map(PExprSuffix::FnCall);
@@ -152,7 +178,7 @@ recursive_parser!(
             .or(member_access_suffix)
             .repeated();
 
-        let suffixed_pexpr = primary_expr.foldl(pexpr_suffix, |pexpr, suffix| match suffix {
+        let suffixed_pexpr = de_referenced_expr.foldl(pexpr_suffix, |pexpr, suffix| match suffix {
             PExprSuffix::Index(indexer) => Expr::Indexing(Box::new(Indexing {
                 indexed: pexpr,
                 indexer,

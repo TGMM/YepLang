@@ -32,10 +32,15 @@ macro_rules! compiler_test {
                 emit_assembly: false,
                 skip_compile: true,
                 lib_only: false,
+                link_to_object: None,
             };
             compile_yep(
                 input,
-                compiled_tests_dir.to_str().unwrap().to_string(),
+                compiled_tests_dir
+                    .join(test_name)
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
                 test_name.to_string(),
                 target,
                 compiler_args,
