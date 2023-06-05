@@ -827,7 +827,7 @@ pub fn codegen_bexpr<'input, 'ctx>(
         }
         VarType::Char => todo!(),
         VarType::String => todo!(),
-        VarType::Custom(id) => {
+        VarType::Custom(_) => {
             return Err(CompilerError {
                 reason: "Classes are not yet supported".to_string(),
                 span: None,

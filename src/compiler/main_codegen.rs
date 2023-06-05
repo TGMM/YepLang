@@ -522,10 +522,10 @@ pub fn codegen_assignment(
 pub fn compile<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     top_block: TopBlock,
-    path: &str,
-    file_name: &str,
+    path: String,
+    file_name: String,
     yep_target: YepTarget,
-    should_compile_extras: bool,
+    compiler_args: CompilerArgs,
 ) -> Result<String, CompilerError> {
     Target::initialize_all(&InitializationConfig::default());
 
@@ -551,16 +551,13 @@ pub fn compile<'input, 'ctx>(
 
     codegen_top_block(compiler, top_block, yep_target)?;
 
-    let out_path = Path::new(path)
+    let out_path = Path::new(path.as_str())
         .join(file_name)
         .to_str()
         .ok_or("Invalid directory")?
         .to_string();
-    compiler
-        .module
-        .print_to_file(&format!("{out_path}.ll"))
-        .unwrap();
-    if should_compile_extras {
+
+    if !compiler_args.skip_compile {
         target_machine
             .write_to_file(
                 compiler.module,
@@ -568,6 +565,16 @@ pub fn compile<'input, 'ctx>(
                 Path::new(&format!("{out_path}.o")),
             )
             .unwrap();
+    }
+
+    if compiler_args.emit_llvm {
+        compiler
+            .module
+            .print_to_file(&format!("{out_path}.ll"))
+            .unwrap();
+    }
+
+    if compiler_args.emit_assembly {
         target_machine
             .write_to_file(
                 compiler.module,
@@ -580,11 +587,19 @@ pub fn compile<'input, 'ctx>(
     Ok(out_path)
 }
 
+pub struct CompilerArgs {
+    pub skip_link: bool,
+    pub emit_llvm: bool,
+    pub emit_assembly: bool,
+    pub skip_compile: bool,
+}
+
 pub fn compile_yep(
     input: &'static str,
-    path: &str,
-    out_name: &str,
+    path: String,
+    out_name: String,
     target: YepTarget,
+    compiler_args: CompilerArgs,
 ) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
 
@@ -619,7 +634,14 @@ pub fn compile_yep(
         },
     };
 
-    compile(&mut compiler, top_block, path, out_name, target, false)?;
+    compile(
+        &mut compiler,
+        top_block,
+        path,
+        out_name,
+        target,
+        compiler_args,
+    )?;
 
     Ok(())
 }

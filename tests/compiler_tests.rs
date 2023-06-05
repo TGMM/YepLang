@@ -1,7 +1,7 @@
 use std::fs;
 use std::{path::Path, process::Command};
 use yep_lang::compiler::helpers::YepTarget;
-use yep_lang::compiler::main_codegen::compile_yep;
+use yep_lang::compiler::main_codegen::{compile_yep, CompilerArgs};
 
 const TARGET: &str = env!("TARGET");
 
@@ -26,11 +26,18 @@ macro_rules! compiler_test {
                 /// have a nostd environment
                 nostd: false,
             };
+            let compiler_args = CompilerArgs {
+                skip_link: true,
+                emit_llvm: true,
+                emit_assembly: false,
+                skip_compile: true,
+            };
             compile_yep(
                 input,
-                compiled_tests_dir.to_str().unwrap(),
-                test_name,
+                compiled_tests_dir.to_str().unwrap().to_string(),
+                test_name.to_string(),
                 target,
+                compiler_args,
             )
             .unwrap();
             let out_path = compiled_tests_dir.join(format!("{}.ll", test_name));
