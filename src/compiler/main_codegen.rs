@@ -551,40 +551,43 @@ pub fn compile<'input, 'ctx>(
 
     codegen_top_block(compiler, top_block, yep_target)?;
 
-    let out_path = Path::new(path.as_str())
-        .join(file_name)
-        .to_str()
-        .ok_or("Invalid directory")?
-        .to_string();
+    let out_path = Path::new(path.as_str());
 
     if !compiler_args.skip_compile {
+        let out_file = &out_path.with_extension("o");
+
         target_machine
-            .write_to_file(
-                compiler.module,
-                FileType::Object,
-                Path::new(&format!("{out_path}.o")),
-            )
-            .unwrap();
+            .write_to_file(compiler.module, FileType::Object, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
     }
 
     if compiler_args.emit_llvm {
+        let out_file = &out_path.with_extension("ll");
+
         compiler
             .module
-            .print_to_file(&format!("{out_path}.ll"))
-            .unwrap();
+            .print_to_file(out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
     }
 
     if compiler_args.emit_assembly {
+        let out_file = &out_path.with_extension("asm");
+
         target_machine
-            .write_to_file(
-                compiler.module,
-                FileType::Assembly,
-                Path::new(&format!("{out_path}.asm")),
-            )
-            .unwrap();
+            .write_to_file(compiler.module, FileType::Assembly, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
     }
 
-    Ok(out_path)
+    Ok(out_path.to_str().unwrap().to_string())
 }
 
 pub struct CompilerArgs {
