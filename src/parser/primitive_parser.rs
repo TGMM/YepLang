@@ -1,11 +1,16 @@
 use super::{
     expr_parser::{boolean_unary_op_parser, expr_parser, numeric_unary_op_parser, EXPR_PARSER},
+    keyword_parser::tag,
     main_parser::{ParserError, ParserInput},
 };
-use crate::parser::main_parser::{GlobalParser, RecursiveParser};
+use crate::{
+    ast::BOp,
+    parser::main_parser::{GlobalParser, RecursiveParser},
+    spanned_ast::SpannedAstNode,
+};
 use crate::{
     ast::{
-        ArrayVal, BOp, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
+        ArrayVal, BoolLiteral, Id, NumericLiteral, PrimitiveVal, PropertyName, ScopeSpecifier,
         StructVal, ValueVarType, VarType,
     },
     lexer::Token,
@@ -19,8 +24,8 @@ use std::{
     sync::{Arc, LazyLock, RwLock},
 };
 
-pub fn bop_parser<'i>() -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone
-{
+pub fn bop_parser<'i>(
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<BOp>, ParserError<'i, Token<'i>>> + Clone {
     select! { Token::BOp(bop) => bop }
 }
 
@@ -92,12 +97,18 @@ recursive_parser!(
         let expr = EXPR_PARSER.read().unwrap().clone()
     },
     main_definition {
-        let arr = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LSqBracket), just(Token::RSqBracket))
-            .map(ArrayVal);
+        let arr = tag(Token::LSqBracket)
+        .then(
+            expr.clone()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then(tag(Token::RSqBracket))
+        .map(|((lsqbracket, expr_vals), rsqbracket)| ArrayVal {
+            lsqbracket,
+            expr_vals,
+            rsqbracket,
+        });
 
         arr
     },
@@ -139,7 +150,7 @@ recursive_parser!(
 recursive_parser!(
     PRIMITIVE_VAL_PARSER,
     primitive_val_parser,
-    PrimitiveVal<'static>,
+    SpannedAstNode<PrimitiveVal<'static>>,
     declarations {
         let array_val = ARRAY_VAL_PARSER.read().unwrap().clone()
         let struct_val = STRUCT_VAL_PARSER.read().unwrap().clone()
@@ -154,7 +165,10 @@ recursive_parser!(
 
         let primitive_val = num.or(bool).or(char).or(string).or(arr).or(struct_v);
 
-        primitive_val
+        primitive_val.map_with_span(|pv, span| SpannedAstNode {
+            node: pv,
+            span
+        })
     },
     definitions {
         if !array_val.is_defined() {
@@ -167,25 +181,29 @@ recursive_parser!(
 );
 
 pub fn scope_specifier_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ScopeSpecifier, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ScopeSpecifier>, ParserError<'i, Token<'i>>> + Clone
+{
     select! { Token::ScopeSpecifier(ss) => ss }
+        .map_with_span(|ss, span| SpannedAstNode { node: ss, span })
 }
 
 pub fn var_type_parser<'i>(
 ) -> impl Parser<'i, ParserInput<'i>, VarType, ParserError<'i, Token<'i>>> + Clone {
     let vt = select! { Token::VarType(vt) => vt };
-    let custom = select! { Token::Id(id) => id }.map(|id| VarType::Custom(id.into()));
+    let custom = select! { Token::Id(id) => id }.map(VarType::Custom);
 
     vt.or(custom)
 }
 
 pub fn pointer_symbol_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, BOp, ParserError<'i, Token<'i>>> + Clone {
-    bop_parser().filter(|b| matches!(b, BOp::Mul))
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<BOp>, ParserError<'i, Token<'i>>> + Clone {
+    use BOp::*;
+    bop_parser().filter(|b| matches!(b.node, Mul))
 }
 
 pub fn value_var_type_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ValueVarType>, ParserError<'i, Token<'i>>> + Clone
+{
     // TODO: We could try_map in count to convert usize to u8
     let ptr_nesting = pointer_symbol_parser().repeated().count();
     let vtype = var_type_parser();
@@ -202,18 +220,21 @@ pub fn value_var_type_parser<'i>(
         .collect::<Vec<_>>()
         .map(|v| VecDeque::from(v));
 
-    ptr_nesting
-        .then(vtype)
-        .then(array_nesting)
-        .map(|((ptr_nl, vtype), array_dimensions)| ValueVarType {
-            array_dimensions,
-            vtype,
-            pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
-        })
+    ptr_nesting.then(vtype).then(array_nesting).map_with_span(
+        |((ptr_nl, vtype), array_dimensions), span| SpannedAstNode {
+            node: ValueVarType {
+                array_dimensions,
+                vtype,
+                pointer_nesting_level: ptr_nl.try_into().expect("Pointer nesting too deep"),
+            },
+            span,
+        },
+    )
 }
 
 pub fn type_specifier_parser<'i>(
-) -> impl Parser<'i, ParserInput<'i>, ValueVarType, ParserError<'i, Token<'i>>> + Clone {
+) -> impl Parser<'i, ParserInput<'i>, SpannedAstNode<ValueVarType>, ParserError<'i, Token<'i>>> + Clone
+{
     just(Token::Colon).ignore_then(value_var_type_parser())
 }
 
@@ -223,12 +244,12 @@ mod test {
 
     use crate::{
         ast::{
-            ArrayVal, BExpr, BOp, BoolLiteral, Expr, Id, NumericLiteral, NumericUnaryOp,
-            PrimitiveVal, PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
+            ArrayVal, BExpr, BOp, BoolLiteral, Expr, NumericLiteral, NumericUnaryOp, PrimitiveVal,
+            PropertyName, ScopeSpecifier, StructVal, ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
-            helpers::test::stream_token_vec,
+            helpers::test::{stream_token_vec, IntoSpanned},
             primitive_parser::{
                 array_val_parser, bool_parser, char_parser, id_parser, number_parser,
                 primitive_val_parser, scope_specifier_parser, signed_number_parser, string_parser,
@@ -236,16 +257,16 @@ mod test {
             },
         },
     };
-    use chumsky::{IterParser, Parser};
+    use chumsky::{span::SimpleSpan, IterParser, Parser};
 
     #[test]
     fn id_test() {
-        let tokens = stream_token_vec(vec![Token::Id("アイヂ")]);
+        let tokens = stream_token_vec(vec![Token::Id("アイヂ".into())]);
         let res = id_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
         let id = res.unwrap();
-        assert_eq!(id, Id("アイヂ".to_string()))
+        assert_eq!(id, "アイヂ".into())
     }
 
     #[test]
@@ -269,6 +290,16 @@ mod test {
     }
 
     #[test]
+    fn negative_float_test() {
+        let tokens = stream_token_vec(vec![Token::FloatVal("-10.0")]);
+        let res = number_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let float_val = res.unwrap();
+        assert_eq!(float_val, NumericLiteral::Float("-10.0"))
+    }
+
+    #[test]
     fn float_scientific_notation_test() {
         let tokens = stream_token_vec(vec![Token::FloatVal("1e+10")]);
 
@@ -281,7 +312,10 @@ mod test {
 
     #[test]
     fn signed_number_test() {
-        let tokens = stream_token_vec(vec![Token::BOp(BOp::Add), Token::IntVal("10")]);
+        let tokens = stream_token_vec(vec![
+            Token::BOp(BOp::Add.into_spanned()),
+            Token::IntVal("10"),
+        ]);
 
         let res = signed_number_parser().parse(tokens).into_result();
         assert!(res.is_ok());
@@ -289,7 +323,10 @@ mod test {
         let primitive_val = res.unwrap();
         assert_eq!(
             primitive_val,
-            PrimitiveVal::Number(Some(NumericUnaryOp::Plus), NumericLiteral::Int("10"))
+            PrimitiveVal::Number(
+                Some(NumericUnaryOp::Plus.into_spanned()),
+                NumericLiteral::Int("10")
+            )
         )
     }
 
@@ -341,10 +378,10 @@ mod test {
     fn array_test() {
         let tokens = stream_token_vec(vec![
             Token::LSqBracket,
-            Token::Id("x"),
+            Token::Id("x".into()),
             Token::Comma,
             Token::IntVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::IntVal("10"),
             Token::RSqBracket,
         ]);
@@ -355,23 +392,27 @@ mod test {
         let arr_val = res.unwrap();
         assert_eq!(
             arr_val,
-            ArrayVal(vec![
-                Expr::Id("x".into()),
-                Expr::BinaryExpr(
-                    BExpr {
-                        lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        )),
-                        op: BOp::Add,
-                        rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
-                        ))
-                    }
-                    .into()
-                )
-            ])
+            ArrayVal {
+                lsqbracket: SimpleSpan::new(0, 0),
+                expr_vals: vec![
+                    Expr::Id("x".into()),
+                    Expr::BinaryExpr(
+                        BExpr {
+                            lhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            ),
+                            op: BOp::Add.into_spanned(),
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
+                            )
+                        }
+                        .into()
+                    )
+                ],
+                rsqbracket: SimpleSpan::new(0, 0)
+            }
         )
     }
 
@@ -386,7 +427,7 @@ mod test {
             Token::Str("this is a str id".into()),
             Token::Colon,
             Token::FloatVal("10"),
-            Token::BOp(BOp::Add),
+            Token::BOp(BOp::Add.into_spanned()),
             Token::FloatVal("10"),
             Token::RBracket,
         ]);
@@ -400,21 +441,23 @@ mod test {
             StructVal(vec![
                 (
                     PropertyName::Id("x".into()),
-                    Expr::PrimitiveVal(PrimitiveVal::Number(None, NumericLiteral::Int("10")))
+                    Expr::PrimitiveVal(
+                        PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
+                    )
                 ),
                 (
                     PropertyName::String("this is a str id".to_string()),
                     Expr::BinaryExpr(
                         BExpr {
-                            lhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Float("10")
-                            )),
-                            op: BOp::Add,
-                            rhs: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Float("10")
-                            ))
+                            lhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Float("10"))
+                                    .into_spanned()
+                            ),
+                            op: BOp::Add.into_spanned(),
+                            rhs: Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Float("10"))
+                                    .into_spanned()
+                            )
                         }
                         .into()
                     )
@@ -446,11 +489,16 @@ mod test {
         assert_eq!(
             primitive_vals,
             vec![
-                PrimitiveVal::Boolean(None, BoolLiteral(true)),
-                PrimitiveVal::Char('a'),
-                PrimitiveVal::String("String!".to_string()),
-                PrimitiveVal::Array(ArrayVal(vec![])),
-                PrimitiveVal::Struct(StructVal(vec![])),
+                PrimitiveVal::Boolean(None, BoolLiteral(true)).into_spanned(),
+                PrimitiveVal::Char('a').into_spanned(),
+                PrimitiveVal::String("String!".to_string()).into_spanned(),
+                PrimitiveVal::Array(ArrayVal {
+                    lsqbracket: SimpleSpan::new(0, 0),
+                    expr_vals: vec![],
+                    rsqbracket: SimpleSpan::new(0, 0)
+                })
+                .into_spanned(),
+                PrimitiveVal::Struct(StructVal(vec![])).into_spanned(),
             ]
         )
     }
@@ -471,12 +519,13 @@ mod test {
         assert!(res.is_ok());
 
         let scope_spec = res.unwrap();
+
         assert_eq!(
             scope_spec,
             vec![
-                ScopeSpecifier::Const,
-                ScopeSpecifier::Let,
-                ScopeSpecifier::Var,
+                ScopeSpecifier::Const.into_spanned(),
+                ScopeSpecifier::Let.into_spanned(),
+                ScopeSpecifier::Var.into_spanned(),
             ]
         )
     }
@@ -496,6 +545,7 @@ mod test {
                 array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 
@@ -520,6 +570,7 @@ mod test {
                 array_dimensions: VecDeque::from([5]),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 
@@ -538,6 +589,7 @@ mod test {
                 array_dimensions: VecDeque::new(),
                 pointer_nesting_level: 0
             }
+            .into_spanned()
         )
     }
 }

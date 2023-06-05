@@ -1,23 +1,26 @@
 use super::{
     expr_parser::{expr_parser, EXPR_PARSER},
+    keyword_parser::tag,
     main_parser::{
         block_parser, destructure_parser, stmt_end_parser, ParserError, ParserInput,
         DESTRUCTURE_PARSER,
     },
     primitive_parser::{id_parser, type_specifier_parser},
 };
-use crate::{ast::Return, parser::main_parser::BLOCK_PARSER};
 use crate::{
-    ast::{ClassBlock, ClassDecl, ClassStmt, FnDecl, MethodDecl, PropertyDecl},
+    ast::{ClassBlock, ClassDecl, ClassStmt, FnDef, FnScope, FnSignature, FnType, PropertyDecl},
     lexer::Token,
 };
-use chumsky::{primitive::just, IterParser, Parser};
+use crate::{
+    ast::{InlineLlvmIr, Return},
+    parser::main_parser::BLOCK_PARSER,
+};
+use chumsky::{primitive::just, select, IterParser, Parser};
 
-pub fn method_decl_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, MethodDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
+pub fn fn_signature_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnSignature<'i>, ParserError<'i, Token<'i>>> + Clone {
     // Declarations
     let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
-    let block = BLOCK_PARSER.read().unwrap().clone();
 
     // Main definition
     let args = destructure
@@ -25,35 +28,105 @@ pub fn method_decl_parser<'i: 'static>(
         .then(type_specifier_parser())
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>();
-    let method_decl = id_parser()
+    let fn_signature = id_parser()
         .then_ignore(just(Token::LParen))
         .then(args)
         .then_ignore(just(Token::RParen))
         .then(type_specifier_parser().or_not())
-        .then(block.clone())
-        .map(|(((method_id, args), ret_type), block)| MethodDecl {
-            method_id,
+        .map(|((fn_id, args), ret_type)| FnSignature {
+            fn_id,
             args,
             ret_type,
-            block,
         });
 
     // Definitions
     if !destructure.is_defined() {
         destructure_parser();
     }
+
+    fn_signature
+}
+
+pub fn fn_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let block = BLOCK_PARSER.read().unwrap().clone();
+
+    // Main definition
+    let fn_def = tag(Token::Function)
+        .or_not()
+        .then(fn_signature_parser())
+        .then(block.clone())
+        .map(|((fn_kw, fn_sign), block)| FnDef {
+            fn_kw,
+            fn_signature: fn_sign,
+            fn_type: FnType::Native(block),
+            // If function keyword is not present,
+            // then this is a method
+            fn_scope: if fn_kw.is_some() {
+                FnScope::Function
+            } else {
+                FnScope::Method
+            },
+        });
+
+    // Definitions
     if !block.is_defined() {
         block_parser();
     }
 
-    method_decl
+    fn_def
 }
 
-pub fn fn_decl_parser<'i: 'static>(
-) -> impl Parser<'i, ParserInput<'i>, FnDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
-    just(Token::Function)
-        .ignore_then(method_decl_parser())
-        .map(|md| md.into())
+pub fn llvm_fn_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
+    // Declarations
+    let destructure = DESTRUCTURE_PARSER.read().unwrap().clone();
+
+    // Main definition
+    let llvm_decorator = just(Token::At)
+        .then(select! { Token::Id(id) => id }.filter(|id| id.id_str.as_str() == "llvm"));
+
+    let llvm_fn = llvm_decorator
+        .ignore_then(tag(Token::Function).or_not())
+        .then(fn_signature_parser())
+        .then(
+            tag(Token::LBracket)
+                .then(select! { Token::LlvmIr(ir) => ir })
+                .then(tag(Token::RBracket))
+                .map(|((lbracket, ir), rbracket)| InlineLlvmIr {
+                    lbracket,
+                    ir: ir.to_string(),
+                    rbracket,
+                }),
+        )
+        .map(|((fn_kw, fn_signature), ir)| FnDef {
+            fn_kw,
+            fn_signature,
+            fn_type: FnType::InlineLlvmIr(ir),
+            // If function keyword is not present,
+            // then this is a method
+            fn_scope: if fn_kw.is_some() {
+                FnScope::Function
+            } else {
+                FnScope::Method
+            },
+        });
+
+    // Definitions
+    if !destructure.is_defined() {
+        destructure_parser();
+    }
+
+    llvm_fn
+}
+
+pub fn fn_def_parser<'i: 'static>(
+) -> impl Parser<'i, ParserInput<'i>, FnDef<'i>, ParserError<'i, Token<'i>>> + Clone {
+    let native = fn_parser();
+    let llvm = llvm_fn_parser();
+
+    llvm.or(native)
 }
 
 pub fn class_prop_decl_parser<'i: 'static>(
@@ -65,7 +138,7 @@ pub fn class_prop_decl_parser<'i: 'static>(
     let class_prop = id_parser()
         .then(type_specifier_parser().or_not())
         .then_ignore(just(Token::AssignmentEq))
-        .then(expr.clone())
+        .then(expr.clone().or_not())
         .map(|((id, vtype), assigned_expr)| PropertyDecl {
             id,
             vtype,
@@ -82,7 +155,7 @@ pub fn class_prop_decl_parser<'i: 'static>(
 
 pub fn class_stmt_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassStmt<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let method = method_decl_parser().map(ClassStmt::Method);
+    let method = fn_def_parser().map(ClassStmt::Method);
     let _accessor = {}; // TODO?: Maybe won't be doing this
     let property = class_prop_decl_parser()
         .then_ignore(stmt_end_parser())
@@ -93,57 +166,62 @@ pub fn class_stmt_parser<'i: 'static>(
 
 pub fn class_block_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassBlock<'i>, ParserError<'i, Token<'i>>> + Clone {
-    class_stmt_parser()
-        .repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
-        .map(|class_stmts| ClassBlock { class_stmts })
+    tag(Token::LBracket)
+        .then(class_stmt_parser().repeated().collect::<Vec<_>>())
+        .then(tag(Token::RBracket))
+        .map(|((lbracket, class_stmts), rbracket)| ClassBlock {
+            lbracket,
+            class_stmts,
+            rbracket,
+        })
 }
 
 pub fn class_decl_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, ClassDecl<'i>, ParserError<'i, Token<'i>>> + Clone {
-    let class_decl = just(Token::Class)
-        .ignore_then(id_parser())
+    let class_decl = tag(Token::Class)
+        .then(id_parser())
         .then(just(Token::Extends).ignore_then(id_parser()).or_not())
         .then(class_block_parser())
-        .map(|((class_id, extended_class_id), block)| ClassDecl {
-            class_id,
-            extended_class_id,
-            block,
-        });
+        .map(
+            |(((class_kw, class_id), extended_class_id), block)| ClassDecl {
+                class_kw,
+                class_id,
+                extended_class_id,
+                block,
+            },
+        );
 
     class_decl
 }
 
 pub fn return_parser<'i: 'static>(
 ) -> impl Parser<'i, ParserInput<'i>, Return<'i>, ParserError<'i, Token<'i>>> + Clone {
-    just(Token::Return)
-        .ignore_then(expr_parser().or_not())
-        .map(Return)
+    tag(Token::Return)
+        .then(expr_parser().or_not())
+        .map(|(ret_kw, ret_val)| Return { ret_kw, ret_val })
 }
 
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
 
-    use chumsky::Parser;
+    use chumsky::{span::SimpleSpan, Parser};
 
     use crate::{
         ast::{
-            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDecl, MethodDecl,
-            NumericLiteral, PrimitiveVal, PropertyDecl, ValueVarType, VarType,
+            Block, ClassBlock, ClassDecl, ClassStmt, Destructure, Expr, FnDef, FnScope,
+            FnSignature, FnType, InlineLlvmIr, NumericLiteral, PrimitiveVal, PropertyDecl,
+            ValueVarType, VarType,
         },
         lexer::Token,
         parser::{
-            class_parser::{
-                class_block_parser, class_decl_parser, fn_decl_parser, method_decl_parser,
-            },
-            helpers::test::stream_token_vec,
+            class_parser::{class_block_parser, class_decl_parser, fn_def_parser},
+            helpers::test::{stream_token_vec, IntoSpanned},
         },
     };
 
     #[test]
-    fn method_decl_test() {
+    fn method_def_test() {
         let tokens = stream_token_vec(vec![
             Token::Id("myMethod".into()),
             Token::LParen,
@@ -154,27 +232,38 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = method_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let method_decl = res.unwrap();
+        let method_def = res.unwrap();
         assert_eq!(
-            method_decl,
-            MethodDecl {
-                method_id: "myMethod".into(),
-                args: vec![],
-                ret_type: Some(ValueVarType {
-                    vtype: VarType::I32,
-                    array_dimensions: VecDeque::new(),
-                    pointer_nesting_level: 0
+            method_def,
+            FnDef {
+                fn_signature: FnSignature {
+                    fn_id: "myMethod".into(),
+                    args: vec![],
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
+                },
+                fn_scope: FnScope::Method,
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
                 }),
-                block: Block { stmts: vec![] }
+                fn_kw: None
             }
         )
     }
 
     #[test]
-    fn fn_decl_test() {
+    fn fn_def_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -186,27 +275,38 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl {
-                fn_id: "myFunction".into(),
-                args: vec![],
-                ret_type: Some(ValueVarType {
-                    vtype: VarType::I32,
-                    array_dimensions: VecDeque::new(),
-                    pointer_nesting_level: 0
+            fn_def,
+            FnDef {
+                fn_signature: FnSignature {
+                    fn_id: "myFunction".into(),
+                    args: vec![],
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
+                },
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
                 }),
-                block: Block { stmts: vec![] }
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
 
     #[test]
-    fn fn_decl_void_test() {
+    fn fn_def_void_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -216,23 +316,31 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl {
-                fn_id: "myFunction".into(),
-                args: vec![],
-                ret_type: None,
-                block: Block { stmts: vec![] }
+            fn_def,
+            FnDef {
+                fn_signature: FnSignature {
+                    fn_id: "myFunction".into(),
+                    args: vec![],
+                    ret_type: None
+                },
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
 
     #[test]
-    fn fn_decl_args_test() {
+    fn fn_def_args_test() {
         let tokens = stream_token_vec(vec![
             Token::Function,
             Token::Id("myFunction".into()),
@@ -247,28 +355,40 @@ mod test {
             Token::RBracket,
         ]);
 
-        let res = fn_decl_parser().parse(tokens).into_result();
+        let res = fn_def_parser().parse(tokens).into_result();
         assert!(res.is_ok());
 
-        let fn_decl = res.unwrap();
+        let fn_def = res.unwrap();
         assert_eq!(
-            fn_decl,
-            FnDecl {
-                fn_id: "myFunction".into(),
-                args: vec![(
-                    Destructure::Id("x".into()),
-                    ValueVarType {
-                        vtype: VarType::I32,
-                        array_dimensions: VecDeque::new(),
-                        pointer_nesting_level: 0
-                    }
-                )],
-                ret_type: Some(ValueVarType {
-                    vtype: VarType::I32,
-                    array_dimensions: VecDeque::new(),
-                    pointer_nesting_level: 0
+            fn_def,
+            FnDef {
+                fn_signature: FnSignature {
+                    fn_id: "myFunction".into(),
+                    args: vec![(
+                        Destructure::Id("x".into()),
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )],
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
+                },
+                fn_scope: FnScope::Function,
+                fn_type: FnType::Native(Block {
+                    stmts: vec![],
+                    lbracket: Some(SimpleSpan::new(0, 0)),
+                    rbracket: Some(SimpleSpan::new(0, 0))
                 }),
-                block: Block { stmts: vec![] }
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }
@@ -300,27 +420,42 @@ mod test {
         assert_eq!(
             class_block,
             ClassBlock {
+                lbracket: SimpleSpan::new(0, 0),
+                rbracket: SimpleSpan::new(0, 0),
                 class_stmts: vec![
-                    ClassStmt::Method(MethodDecl {
-                        method_id: "myClassMethod".into(),
-                        args: vec![],
-                        ret_type: Some(ValueVarType {
-                            vtype: VarType::I32,
-                            array_dimensions: VecDeque::new(),
-                            pointer_nesting_level: 0
+                    ClassStmt::Method(FnDef {
+                        fn_signature: FnSignature {
+                            fn_id: "myClassMethod".into(),
+                            args: vec![],
+                            ret_type: Some(
+                                ValueVarType {
+                                    vtype: VarType::I32,
+                                    array_dimensions: VecDeque::new(),
+                                    pointer_nesting_level: 0
+                                }
+                                .into_spanned()
+                            )
+                        },
+                        fn_scope: FnScope::Method,
+                        fn_type: FnType::Native(Block {
+                            stmts: vec![],
+                            lbracket: Some(SimpleSpan::new(0, 0)),
+                            rbracket: Some(SimpleSpan::new(0, 0))
                         }),
-                        block: Block { stmts: vec![] }
+                        fn_kw: None
                     }),
                     ClassStmt::Property(PropertyDecl {
                         id: "myClassProp".into(),
-                        vtype: Some(ValueVarType {
-                            vtype: VarType::F32,
-                            array_dimensions: VecDeque::new(),
-                            pointer_nesting_level: 0
-                        }),
-                        assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
-                            None,
-                            NumericLiteral::Int("10")
+                        vtype: Some(
+                            ValueVarType {
+                                vtype: VarType::F32,
+                                array_dimensions: VecDeque::new(),
+                                pointer_nesting_level: 0
+                            }
+                            .into_spanned()
+                        ),
+                        assigned_expr: Some(Expr::PrimitiveVal(
+                            PrimitiveVal::Number(None, NumericLiteral::Int("10")).into_spanned()
                         )),
                     })
                 ]
@@ -332,7 +467,7 @@ mod test {
     fn class_decl_test() {
         let tokens = stream_token_vec(vec![
             Token::Class,
-            Token::Id("MyClass"),
+            Token::Id("MyClass".into()),
             Token::LBracket,
             Token::Id("myClassMethod".into()),
             Token::LParen,
@@ -357,34 +492,123 @@ mod test {
         assert_eq!(
             class_decl,
             ClassDecl {
+                class_kw: SimpleSpan::new(0, 0),
                 class_id: "MyClass".into(),
                 extended_class_id: None,
                 block: ClassBlock {
+                    lbracket: SimpleSpan::new(0, 0),
+                    rbracket: SimpleSpan::new(0, 0),
                     class_stmts: vec![
-                        ClassStmt::Method(MethodDecl {
-                            method_id: "myClassMethod".into(),
-                            args: vec![],
-                            ret_type: Some(ValueVarType {
-                                vtype: VarType::I32,
-                                array_dimensions: VecDeque::new(),
-                                pointer_nesting_level: 0
+                        ClassStmt::Method(FnDef {
+                            fn_signature: FnSignature {
+                                fn_id: "myClassMethod".into(),
+                                args: vec![],
+                                ret_type: Some(
+                                    ValueVarType {
+                                        vtype: VarType::I32,
+                                        array_dimensions: VecDeque::new(),
+                                        pointer_nesting_level: 0
+                                    }
+                                    .into_spanned()
+                                )
+                            },
+                            fn_scope: FnScope::Method,
+                            fn_type: FnType::Native(Block {
+                                stmts: vec![],
+                                lbracket: Some(SimpleSpan::new(0, 0)),
+                                rbracket: Some(SimpleSpan::new(0, 0))
                             }),
-                            block: Block { stmts: vec![] }
+                            fn_kw: None
                         }),
                         ClassStmt::Property(PropertyDecl {
                             id: "myClassProp".into(),
-                            vtype: Some(ValueVarType {
-                                vtype: VarType::F32,
-                                array_dimensions: VecDeque::new(),
-                                pointer_nesting_level: 0
-                            }),
-                            assigned_expr: Expr::PrimitiveVal(PrimitiveVal::Number(
-                                None,
-                                NumericLiteral::Int("10")
+                            vtype: Some(
+                                ValueVarType {
+                                    vtype: VarType::F32,
+                                    array_dimensions: VecDeque::new(),
+                                    pointer_nesting_level: 0
+                                }
+                                .into_spanned()
+                            ),
+                            assigned_expr: Some(Expr::PrimitiveVal(
+                                PrimitiveVal::Number(None, NumericLiteral::Int("10"))
+                                    .into_spanned()
                             )),
                         })
                     ]
                 }
+            }
+        )
+    }
+
+    #[test]
+    fn llvm_ir_test() {
+        let tokens = stream_token_vec(vec![
+            Token::At,
+            Token::Id("llvm".into()),
+            Token::Function,
+            Token::Id("myFunction".into()),
+            Token::LParen,
+            Token::Id("a".into()),
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::Comma,
+            Token::Id("b".into()),
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::RParen,
+            Token::Colon,
+            Token::VarType(VarType::I32),
+            Token::LBracket,
+            Token::LlvmIr("%res = add i32 %a, %b\nret i32 %res"),
+            Token::RBracket,
+        ]);
+
+        let res = fn_def_parser().parse(tokens).into_result();
+        assert!(res.is_ok());
+
+        let fn_def = res.unwrap();
+        assert_eq!(
+            fn_def,
+            FnDef {
+                fn_signature: FnSignature {
+                    fn_id: "myFunction".into(),
+                    args: vec![
+                        (
+                            Destructure::Id("a".into()),
+                            ValueVarType {
+                                vtype: VarType::I32,
+                                array_dimensions: VecDeque::new(),
+                                pointer_nesting_level: 0
+                            }
+                            .into_spanned()
+                        ),
+                        (
+                            Destructure::Id("b".into()),
+                            ValueVarType {
+                                vtype: VarType::I32,
+                                array_dimensions: VecDeque::new(),
+                                pointer_nesting_level: 0
+                            }
+                            .into_spanned()
+                        )
+                    ],
+                    ret_type: Some(
+                        ValueVarType {
+                            vtype: VarType::I32,
+                            array_dimensions: VecDeque::new(),
+                            pointer_nesting_level: 0
+                        }
+                        .into_spanned()
+                    )
+                },
+                fn_scope: FnScope::Function,
+                fn_type: FnType::InlineLlvmIr(InlineLlvmIr {
+                    lbracket: SimpleSpan::new(0, 0),
+                    ir: "%res = add i32 %a, %b\nret i32 %res".to_string(),
+                    rbracket: SimpleSpan::new(0, 0)
+                }),
+                fn_kw: Some(SimpleSpan::new(0, 0))
             }
         )
     }

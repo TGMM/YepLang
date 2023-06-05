@@ -6,8 +6,12 @@ edition = "2021"
 [dependencies]
 ariadne = "0.2.0"
 chumsky = { git = "https://github.com/TGMM/chumsky/", version = "1.0.0-alpha.3", features = ["label", "sync"] }
-logos = "0.13.0"
+logos = { version = "0.13.0", git = "https://github.com/TGMM/logos" }
 snailquote = "0.3.1"
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0"] }
+inkwell = { features = ["llvm16-0"], version = "0.2.0", git = "https://github.com/TGMM/inkwell" }
 enum-as-inner = "0.5.1"
 bitflags = "2.2.1"
+llvm-sys = { git = "https://github.com/TGMM/llvm-sys.rs", version = "160.1.0" }
+rustc-hash = "1.1.0"
+clap = { version = "4.3.1", features = ["derive"] }
+lld_rs = { git = "https://github.com/TGMM/lld-rs.git", version = "160.0.0" }

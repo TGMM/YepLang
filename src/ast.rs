@@ -1,7 +1,10 @@
-use std::collections::VecDeque;
+use std::{cmp::Ordering, collections::VecDeque, hash::Hash};
 
-use crate::lexer::Token;
-use chumsky::pratt::{Associativity, InfixOperator, InfixPrecedence};
+use crate::{lexer::Token, spanned_ast::SpannedAstNode};
+use chumsky::{
+    pratt::{Associativity, InfixOperator, InfixPrecedence},
+    span::SimpleSpan,
+};
 use enum_as_inner::EnumAsInner;
 use logos::Lexer;
 
@@ -27,11 +30,167 @@ pub enum VarType {
 }
 impl VarType {
     pub fn is_signed(&self) -> bool {
+        use VarType::*;
+
         match self {
-            VarType::I8 | VarType::I16 | VarType::I32 | VarType::I64 | VarType::I128 => true,
-            VarType::U8 | VarType::U16 | VarType::U32 | VarType::U64 | VarType::U128 => false,
+            I8 | I16 | I32 | I64 | I128 => true,
+            U8 | U16 | U32 | U64 | U128 => false,
             _ => panic!("Only integer types can be signed"),
         }
+    }
+
+    pub fn is_bool(&self) -> bool {
+        use VarType::*;
+
+        matches!(self, Boolean)
+    }
+
+    pub fn is_int(&self) -> bool {
+        use VarType::*;
+
+        match self {
+            I8 | I16 | I32 | I64 | I128 | U8 | U16 | U32 | U64 | U128 => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_int_val(&self) -> i32 {
+        use VarType::*;
+
+        match self {
+            I8 => 8,
+            I16 => 16,
+            I32 => 32,
+            I64 => 64,
+            I128 => 128,
+            U8 => 8,
+            U32 => 32,
+            U16 => 16,
+            U64 => 64,
+            U128 => 128,
+            _ => panic!("Only ints can have int values"),
+        }
+    }
+
+    pub fn to_signed_int(&self) -> Self {
+        use VarType::*;
+        match self {
+            I8 | U8 => I8,
+            I16 | U16 => I16,
+            I32 | U32 => I32,
+            I64 | U64 => I64,
+            I128 | U128 => I128,
+            _ => panic!("Only ints can have int values"),
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            VarType::F32 | VarType::F64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_float_val(&self) -> i32 {
+        match self {
+            VarType::F32 => 32,
+            VarType::F64 => 64,
+            _ => panic!("Only float can have float values"),
+        }
+    }
+}
+impl PartialOrd for VarType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self > other {
+            return Some(Ordering::Greater);
+        }
+
+        if self < other {
+            return Some(Ordering::Less);
+        }
+
+        if self.is_int() && other.is_int() {
+            return self.get_int_val().partial_cmp(&other.get_int_val());
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val().partial_cmp(&other.get_float_val());
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return Some(Ordering::Equal);
+        }
+
+        None
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() < other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() < other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() <= other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() <= other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() > other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() > other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
+        panic!("Incompatible types")
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        if self.is_int() && other.is_int() {
+            return self.get_int_val() >= other.get_int_val();
+        }
+
+        if self.is_float() && other.is_float() {
+            return self.get_float_val() >= other.get_float_val();
+        }
+
+        if self.is_bool() && other.is_bool() {
+            return false;
+        }
+
+        panic!("Incompatible types")
+    }
+}
+impl Ord for VarType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).expect("Invalid ordering")
     }
 }
 
@@ -46,6 +205,13 @@ pub struct ValueVarType {
     /// This is the nesting level of the pointer.
     /// 0 means the type is not a pointer
     pub pointer_nesting_level: u8,
+}
+impl ValueVarType {
+    pub fn is_void(&self) -> bool {
+        return self.array_dimensions.is_empty()
+            && self.pointer_nesting_level == 0
+            && self.vtype == VarType::Void;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, EnumAsInner)]
@@ -76,42 +242,52 @@ pub enum BoolUnaryOp {
     Not,
 }
 
-pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> BoolUnaryOp {
+pub fn str_to_bool_uop<'input>(lex: &Lexer<'input, Token<'input>>) -> SpannedAstNode<BoolUnaryOp> {
     let exp_op_str = lex.slice();
     match exp_op_str {
-        "!" => BoolUnaryOp::Not,
+        "!" => SpannedAstNode {
+            node: BoolUnaryOp::Not,
+            span: lex.span().into(),
+        },
         _ => unreachable!(),
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
-    Numeric(NumericUnaryOp),
-    Bool(BoolUnaryOp),
+    Numeric(SpannedAstNode<NumericUnaryOp>),
+    Bool(SpannedAstNode<BoolUnaryOp>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrimitiveVal<'input> {
-    Number(Option<NumericUnaryOp>, NumericLiteral<'input>),
-    Boolean(Option<BoolUnaryOp>, BoolLiteral),
+    Number(
+        Option<SpannedAstNode<NumericUnaryOp>>,
+        NumericLiteral<'input>,
+    ),
+    Boolean(Option<SpannedAstNode<BoolUnaryOp>>, BoolLiteral),
     Char(char),
     String(String),
     Array(ArrayVal<'input>),
     Struct(StructVal<'input>),
 }
 impl<'input> From<NumericLiteral<'input>> for PrimitiveVal<'input> {
-    fn from(value: NumericLiteral<'input>) -> Self {
-        PrimitiveVal::Number(None, value)
+    fn from(num_lit: NumericLiteral<'input>) -> Self {
+        PrimitiveVal::Number(None, num_lit)
     }
 }
-impl<'input> From<PrimitiveVal<'input>> for Expr<'input> {
-    fn from(value: PrimitiveVal<'input>) -> Self {
-        Expr::PrimitiveVal(value)
+impl<'input> From<SpannedAstNode<PrimitiveVal<'input>>> for Expr<'input> {
+    fn from(prim_val: SpannedAstNode<PrimitiveVal<'input>>) -> Self {
+        Expr::PrimitiveVal(prim_val)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayVal<'input>(pub Vec<Expr<'input>>);
+pub struct ArrayVal<'input> {
+    pub lsqbracket: SimpleSpan,
+    pub expr_vals: Vec<Expr<'input>>,
+    pub rsqbracket: SimpleSpan,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructVal<'input>(pub Vec<(PropertyName, Expr<'input>)>);
@@ -135,7 +311,10 @@ pub fn str_to_var_type<'input>(lex: &Lexer<'input, Token<'input>>) -> VarType {
         "boolean" => VarType::Boolean,
         "char" => VarType::Char,
         "string" => VarType::String,
-        custom => VarType::Custom(custom.into()),
+        custom => VarType::Custom(Id {
+            id_str: custom.to_string(),
+            span: lex.span().into(),
+        }),
     }
 }
 
@@ -156,13 +335,18 @@ pub fn str_to_scope_spec<'input>(lex: &Lexer<'input, Token<'input>>) -> ScopeSpe
     }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub struct Id(pub String);
-impl From<&str> for Id {
-    fn from(value: &str) -> Self {
-        Id(value.to_string())
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Id {
+    pub id_str: String,
+    pub span: SimpleSpan,
+}
+
+impl Hash for Id {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id_str.hash(state);
     }
 }
+
 impl<'a> From<Id> for Expr<'a> {
     fn from(value: Id) -> Self {
         Expr::Id(value)
@@ -174,7 +358,9 @@ pub struct TopBlock<'input>(pub Block<'input>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block<'input> {
+    pub lbracket: Option<SimpleSpan>,
     pub stmts: Vec<Stmt<'input>>,
+    pub rbracket: Option<SimpleSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -182,7 +368,7 @@ pub enum Stmt<'input> {
     Assignment(Assignment<'input>),
     Expr(Expr<'input>),
     ClassDecl(ClassDecl<'input>),
-    FnDecl(FnDecl<'input>),
+    FnDef(FnDef<'input>),
     For(For<'input>),
     While(While<'input>),
     DoWhile(DoWhile<'input>),
@@ -194,7 +380,10 @@ pub enum Stmt<'input> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Return<'input>(pub Option<Expr<'input>>);
+pub struct Return<'input> {
+    pub ret_kw: SimpleSpan,
+    pub ret_val: Option<Expr<'input>>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyName {
@@ -225,13 +414,13 @@ impl<'input> From<Id> for Destructure<'input> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDeclAssignment<'input> {
     pub destructure: Destructure<'input>,
-    pub var_type: Option<ValueVarType>,
+    pub var_type: Option<SpannedAstNode<ValueVarType>>,
     pub expr: Option<Expr<'input>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl<'input> {
-    pub scope_spec: ScopeSpecifier,
+    pub scope_spec: SpannedAstNode<ScopeSpecifier>,
     pub decl_assignments: Vec<VarDeclAssignment<'input>>,
 }
 
@@ -248,27 +437,31 @@ pub enum BOp {
     Lt,
     Lte,
     Ne,
-    Eq,
+    CmpEq,
+    And,
+    Or,
 }
 impl BOp {
     pub fn is_cmp(&self) -> bool {
+        use BOp::*;
         match self {
-            BOp::Gt | BOp::Gte | BOp::Lt | BOp::Lte | BOp::Ne | BOp::Eq => true,
+            Gt | Gte | Lt | Lte | Ne | CmpEq => true,
             _ => false,
         }
     }
 }
 
-impl<'input> InfixOperator<Expr<'input>> for BOp {
+impl<'input> InfixOperator<Expr<'input>> for SpannedAstNode<BOp> {
     type Strength = u8;
 
     fn precedence(&self) -> InfixPrecedence<Self::Strength> {
         use BOp::*;
-        match self {
-            Add | Sub => InfixPrecedence::new(3, Associativity::Left),
-            Mul | Div | Mod => InfixPrecedence::new(5, Associativity::Left),
-            Pow => InfixPrecedence::new(7, Associativity::Left),
-            Gt | Gte | Lt | Lte | Ne | Eq => InfixPrecedence::new(1, Associativity::Left),
+        match self.node {
+            Add | Sub => InfixPrecedence::new(5, Associativity::Left),
+            Mul | Div | Mod => InfixPrecedence::new(7, Associativity::Left),
+            Pow => InfixPrecedence::new(9, Associativity::Left),
+            Gt | Gte | Lt | Lte | Ne | CmpEq => InfixPrecedence::new(3, Associativity::Left),
+            And | Or => InfixPrecedence::new(1, Associativity::Left),
         }
     }
 
@@ -279,33 +472,47 @@ impl<'input> InfixOperator<Expr<'input>> for BOp {
 }
 impl From<&str> for BOp {
     fn from(value: &str) -> Self {
+        use BOp::*;
         match value {
-            "+" => BOp::Add,
-            "-" => BOp::Sub,
-            "*" => BOp::Mul,
-            "/" => BOp::Div,
-            "%" => BOp::Mod,
-            "**" => BOp::Pow,
-            ">" => BOp::Gt,
-            ">=" => BOp::Gte,
-            "<" => BOp::Lt,
-            "<=" => BOp::Lte,
-            "!=" => BOp::Ne,
-            "==" => BOp::Eq,
+            "+" => Add,
+            "-" => Sub,
+            "*" => Mul,
+            "/" => Div,
+            "%" => Mod,
+            "**" => Pow,
+            ">" => Gt,
+            ">=" => Gte,
+            "<" => Lt,
+            "<=" => Lte,
+            "!=" => Ne,
+            "==" => CmpEq,
+            "&&" => And,
+            "||" => Or,
             _ => todo!(),
         }
     }
 }
-pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> BOp {
+pub fn str_to_bop<'input>(lex: &Lexer<'input, Token<'input>>) -> SpannedAstNode<BOp> {
     let op = lex.slice();
-    op.into()
+
+    SpannedAstNode {
+        node: op.into(),
+        span: lex.span().into(),
+    }
 }
 
-impl From<BOp> for NumericUnaryOp {
-    fn from(value: BOp) -> Self {
-        match value {
-            BOp::Add => NumericUnaryOp::Plus,
-            BOp::Sub => NumericUnaryOp::Minus,
+impl From<SpannedAstNode<BOp>> for SpannedAstNode<NumericUnaryOp> {
+    fn from(bop: SpannedAstNode<BOp>) -> Self {
+        use BOp::*;
+        match bop.node {
+            Add => SpannedAstNode {
+                node: NumericUnaryOp::Plus,
+                span: bop.span,
+            },
+            Sub => SpannedAstNode {
+                node: NumericUnaryOp::Minus,
+                span: bop.span,
+            },
             _ => unreachable!(),
         }
     }
@@ -314,18 +521,26 @@ impl From<BOp> for NumericUnaryOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BExpr<'input> {
     pub lhs: Expr<'input>,
-    pub op: BOp,
+    pub op: SpannedAstNode<BOp>,
     pub rhs: Expr<'input>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<'input> {
     ParenExpr(Option<UnaryOp>, Box<Expr<'input>>),
     BinaryExpr(Box<BExpr<'input>>),
-    PrimitiveVal(PrimitiveVal<'input>),
+    PrimitiveVal(SpannedAstNode<PrimitiveVal<'input>>),
     FnCall(Box<FnCall<'input>>),
     Indexing(Box<Indexing<'input>>),
     MemberAccess(Box<MemberAcess<'input>>),
     Id(Id),
+    Cast(Box<Casting<'input>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Casting<'a> {
+    pub casted: Expr<'a>,
+    pub as_kw: SimpleSpan,
+    pub cast_type: SpannedAstNode<ValueVarType>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -335,19 +550,28 @@ pub struct Indexing<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FnCallArgs<'i> {
+    pub args: Vec<Expr<'i>>,
+    pub rparen: SimpleSpan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FnCall<'a> {
     pub fn_expr: Expr<'a>,
     pub args: Vec<Expr<'a>>,
+    pub rparen: SimpleSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoWhile<'a> {
+    pub do_kw: SimpleSpan,
     pub do_block: Block<'a>,
     pub while_cond: Expr<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct While<'a> {
+    pub while_kw: SimpleSpan,
     pub while_cond: Expr<'a>,
     pub block: Block<'a>,
 }
@@ -358,42 +582,54 @@ pub struct For<'a> {
     pub cmp_expr: Option<Expr<'a>>,
     pub postfix_stmt: Option<Box<Stmt<'a>>>,
     pub block: Block<'a>,
+    pub for_kw: SimpleSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct If<'a> {
+    pub if_kw: SimpleSpan,
     pub if_expr: Expr<'a>,
     pub if_block: Block<'a>,
     pub else_if: Vec<ElseIf<'a>>,
-    pub else_b: Option<Block<'a>>,
+    pub else_: Option<Else<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Else<'a> {
+    pub else_kw: SimpleSpan,
+    pub else_b: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElseIf<'a> {
+    pub else_kw: SimpleSpan,
     pub else_expr: Expr<'a>,
     pub else_block: Block<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassDecl<'a> {
+    pub class_kw: SimpleSpan,
     pub class_id: Id,
     pub extended_class_id: Option<Id>,
     pub block: ClassBlock<'a>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassBlock<'a> {
+    pub lbracket: SimpleSpan,
     pub class_stmts: Vec<ClassStmt<'a>>,
+    pub rbracket: SimpleSpan,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertyDecl<'a> {
     pub id: Id,
-    pub vtype: Option<ValueVarType>,
-    pub assigned_expr: Expr<'a>,
+    pub vtype: Option<SpannedAstNode<ValueVarType>>,
+    pub assigned_expr: Option<Expr<'a>>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassStmt<'a> {
     // This includes the constructor
-    Method(MethodDecl<'a>),
+    Method(FnDef<'a>),
     Accessor,
     Property(PropertyDecl<'a>),
 }
@@ -405,46 +641,57 @@ pub struct MemberAcess<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FnDecl<'a> {
-    pub fn_id: Id,
-    pub args: Vec<(Destructure<'a>, ValueVarType)>,
-    pub ret_type: Option<ValueVarType>,
-    pub block: Block<'a>,
+pub struct FnDef<'a> {
+    pub fn_kw: Option<SimpleSpan>,
+    pub fn_signature: FnSignature<'a>,
+    pub fn_type: FnType<'a>,
+    pub fn_scope: FnScope,
 }
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct MethodDecl<'a> {
-    pub method_id: Id,
-    pub args: Vec<(Destructure<'a>, ValueVarType)>,
-    pub ret_type: Option<ValueVarType>,
-    pub block: Block<'a>,
+pub struct InlineLlvmIr {
+    pub lbracket: SimpleSpan,
+    pub ir: String,
+    pub rbracket: SimpleSpan,
 }
-impl<'a> From<MethodDecl<'a>> for FnDecl<'a> {
-    fn from(method_decl: MethodDecl<'a>) -> Self {
-        FnDecl {
-            fn_id: method_decl.method_id,
-            args: method_decl.args,
-            ret_type: method_decl.ret_type,
-            block: method_decl.block,
-        }
-    }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FnType<'a> {
+    Native(Block<'a>),
+    InlineLlvmIr(InlineLlvmIr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FnScope {
+    Function,
+    Method,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnSignature<'a> {
+    pub fn_id: Id,
+    pub args: Vec<(Destructure<'a>, SpannedAstNode<ValueVarType>)>,
+    pub ret_type: Option<SpannedAstNode<ValueVarType>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment<'a> {
     pub assignee_expr: Expr<'a>,
-    pub bop: Option<BOp>,
+    pub bop: Option<SpannedAstNode<BOp>>,
     pub assigned_expr: Expr<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExternType {
-    Type(ValueVarType),
+    Type(SpannedAstNode<ValueVarType>),
     Spread,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternDecl {
-    pub ret_type: ValueVarType,
+    pub extern_kw: SimpleSpan,
+    pub ret_type: SpannedAstNode<ValueVarType>,
     pub fn_id: Id,
     pub arg_types: Vec<ExternType>,
+    pub rparen: SimpleSpan,
 }

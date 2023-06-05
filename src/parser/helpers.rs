@@ -31,7 +31,7 @@ macro_rules! recursive_parser {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::lexer::Token;
+    use crate::{ast::Id, lexer::Token, spanned_ast::SpannedAstNode};
     use chumsky::{
         input::{SpannedInput, Stream},
         prelude::Input,
@@ -59,5 +59,27 @@ pub(crate) mod test {
         let tokens = span_token_vec(tokens);
         let length = tokens.len();
         Stream::from_iter(tokens).spanned((length..length).into())
+    }
+
+    pub trait IntoSpanned<T> {
+        fn into_spanned(self) -> SpannedAstNode<T>;
+    }
+
+    impl<T> IntoSpanned<T> for T {
+        fn into_spanned(self) -> SpannedAstNode<T> {
+            SpannedAstNode {
+                node: self,
+                span: SimpleSpan::new(0, 0),
+            }
+        }
+    }
+
+    impl From<&str> for Id {
+        fn from(value: &str) -> Self {
+            Id {
+                id_str: value.to_string(),
+                span: SimpleSpan::new(0, 0),
+            }
+        }
     }
 }

@@ -1,63 +1,146 @@
 #![feature(lazy_cell)]
 #![feature(let_chains)]
+#![feature(path_file_prefix)]
 
-mod ast;
-mod ast_display;
-mod compiler;
-mod lexer;
-mod parser;
+use ariadne::{Color, Label, Report, ReportKind, Source};
+use clap::Parser;
+use compiler::{helpers::YepTarget, main_codegen::compile_yep};
+use std::{fs, path::Path};
+use yep_lang::compiler::{self, main_codegen::CompilerArgs};
 
-use compiler::{helpers::Compiler, main_codegen::compile_to_x86};
-use inkwell::{context::Context, passes::PassManager};
-use parser::main_parser::parse;
-use std::{cell::OnceCell, collections::HashMap};
+const TARGET: &str = env!("TARGET");
 
-fn main() {
-    let input = r#"
-    extern i32 printf(*i8, ...);
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Name of the file to compile
+    #[arg(index = 1)]
+    name: String,
+    /// Directory to output the file to
+    #[arg(long)]
+    out: Option<String>,
+    /// Compile but do not link
+    #[arg(long)]
+    skip_link: bool,
+    /// Emit LLVM IR
+    #[arg(long)]
+    emit_llvm: bool,
+    /// Emit assembly
+    #[arg(long)]
+    emit_assembly: bool,
+    /// The target to compile to
+    #[arg(long, default_value_t = TARGET.to_string())]
+    target_triple: String,
+    /// Signals to the compiler that the
+    /// target environment doesn't have libc available
+    #[arg(long)]
+    no_std: bool,
+    /// Compiles the program without an implicit main
+    /// function, designed for linking with other
+    /// modules
+    #[arg(long)]
+    lib_only: bool,
+}
 
-    let arr: i32[3][1] = [[1], [2], [3]];
-    let one: u32 = 1, three: u32 = 3;
-    for(let i: u32 = 0; i < three; i = i + one) {
-        for(let j: u32 = 0; j < one; j = j + one) {
-            printf("Array element %d, %d is %d\n", i, j, arr[i][j]);
-        }   
+fn main() -> Result<(), String> {
+    let args = Args::parse();
+
+    let input_path = Path::new(args.name.as_str());
+    if !input_path.is_file() {
+        return Err("The input path must point to a valid file".to_string());
     }
-    "#;
-    let top_block = parse(input, "input.file").expect("Invalid code");
 
-    let context = Context::create();
-    let module = context.create_module("TODO_file_name");
-    let builder = context.create_builder();
+    let input_name_no_ext = input_path.with_extension("");
+    let input_name = input_name_no_ext.file_name().unwrap();
 
-    let fpm = PassManager::create(&module);
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
-    fpm.add_gvn_pass();
-    fpm.add_cfg_simplification_pass();
-    fpm.add_basic_alias_analysis_pass();
-    fpm.add_promote_memory_to_register_pass();
-    fpm.add_instruction_combining_pass();
-    fpm.add_reassociate_pass();
-    fpm.initialize();
+    let input = fs::read_to_string(input_path).map_err(|err| err.to_string())?;
+    let input_ref: &'static str = Box::leak(input.into_boxed_str());
 
-    let mut compiler = Compiler {
-        builder: &builder,
-        module: &module,
-        context: &context,
-        fpm: &fpm,
-        curr_scope_vars: HashMap::new(),
-        basic_block_stack: Vec::new(),
-        scope_stack: Vec::new(),
-        curr_func_ret_val: None,
-        func_ret_val_stack: vec![],
-        target_data: OnceCell::new(),
+    let target = YepTarget {
+        target_triple: args.target_triple,
+        nostd: args.no_std,
     };
 
-    compile_to_x86(
-        &mut compiler,
-        top_block,
-        "C:/Users/TGMM/Documents/Tareas/Compiladores/yep_lang/tests",
-        "test",
-    );
+    let compiler_args = CompilerArgs {
+        skip_link: args.skip_link,
+        emit_llvm: args.emit_llvm,
+        emit_assembly: args.emit_assembly,
+        skip_compile: false,
+        lib_only: args.lib_only,
+    };
+
+    if compiler_args.lib_only && !compiler_args.skip_link {
+        println!("Warning: Lib-only mode can't produce an executable");
+        println!("The value of the skip_link flag is ignored");
+    }
+
+    let (out_path, out_name): (String, String) = if let Some(arg_path_str) = args.out {
+        let arg_path = Path::new(&arg_path_str);
+
+        if arg_path.is_dir() {
+            (
+                arg_path.join(input_name).to_str().unwrap().to_string(),
+                input_name.to_str().unwrap().to_string(),
+            )
+        } else {
+            let arg_path_no_ext = arg_path.with_extension("");
+
+            (
+                arg_path_no_ext.to_str().unwrap().to_string(),
+                arg_path_no_ext
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            )
+        }
+    } else {
+        let curr_dir = std::env::current_dir().unwrap();
+        let curr_dir_path = Path::new(&curr_dir);
+
+        if curr_dir_path.is_dir() {
+            (
+                curr_dir_path.join(input_name).to_str().unwrap().to_string(),
+                input_name.to_str().unwrap().to_string(),
+            )
+        } else {
+            let curr_dir_path_no_ext = curr_dir_path.with_extension("");
+
+            (
+                curr_dir_path_no_ext.to_str().unwrap().to_string(),
+                curr_dir_path
+                    .with_extension("")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            )
+        }
+    };
+
+    let res = compile_yep(input_ref, out_path, out_name, target, compiler_args);
+    match res {
+        Ok(_) => {}
+        Err(e) => {
+            let file_name = "test.yep";
+            if let Some(span) = e.span {
+                Report::build(ReportKind::Error, file_name, span.start)
+                    .with_code(3)
+                    .with_message(e.reason.clone())
+                    .with_label(
+                        Label::new((file_name, span.into_range()))
+                            .with_message(e.reason)
+                            .with_color(Color::Red),
+                    )
+                    .finish()
+                    .eprint((file_name, Source::from(input_ref)))
+                    .unwrap()
+            } else {
+                eprintln!("{}", e.reason);
+            }
+        }
+    }
+
+    Ok(())
 }

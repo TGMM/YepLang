@@ -1,39 +1,59 @@
 use super::{
-    class_codegen::{codegen_fn_decl, codegen_return},
+    class_codegen::{codegen_fn_decl, codegen_fn_def, codegen_return},
     control_flow_codegen::{codegen_do_while, codegen_for, codegen_if, codegen_while},
-    expr_codegen::{codegen_lhs_expr, codegen_rhs_expr},
+    expr_codegen::{codegen_bexpr, codegen_lhs_expr, codegen_rhs_expr},
     ffi_codegen::codegen_extern_decl,
-    helpers::{BlockType, Compiler, ScopeMarker, ScopedVal, ScopedVar},
+    helpers::{
+        convert_type_to_metadata, BlockType, Compiler, CompilerError, ErrorMessages,
+        ExpectedExprType, ScopedVal, ScopedVar, YepTarget,
+    },
+    linker::link_exe,
 };
-use crate::ast::{Assignment, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType};
+use crate::{
+    ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
+    parser::main_parser::parse,
+    spanned_ast::GetSpan,
+};
+use chumsky::span::SimpleSpan;
 use inkwell::{
+    context::Context,
     module::Linkage,
+    passes::PassManager,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{BasicType, BasicTypeEnum},
+    types::{BasicType, BasicTypeEnum, FunctionType},
+    values::{BasicMetadataValueEnum, BasicValue, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
-use std::path::Path;
+use rustc_hash::FxHashMap;
+use std::{collections::VecDeque, fs, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 
 pub fn convert_to_type_enum<'input, 'ctx>(
     compiler: &Compiler<'input, 'ctx>,
     vvt: &ValueVarType,
-) -> BasicTypeEnum<'ctx> {
+) -> Result<BasicTypeEnum<'ctx>, CompilerError> {
     let ctx = compiler.context;
-    let basic_vtype: Option<BasicTypeEnum> = match &vvt.vtype {
-        VarType::I8 | VarType::U8 => ctx.i8_type().as_basic_type_enum().into(),
-        VarType::I16 | VarType::U16 => ctx.i16_type().as_basic_type_enum().into(),
-        VarType::I32 | VarType::U32 => ctx.i32_type().as_basic_type_enum().into(),
-        VarType::I64 | VarType::U64 => ctx.i64_type().as_basic_type_enum().into(),
-        VarType::I128 | VarType::U128 => ctx.i128_type().as_basic_type_enum().into(),
-        VarType::F32 => ctx.f32_type().as_basic_type_enum().into(),
-        VarType::F64 => ctx.f64_type().as_basic_type_enum().into(),
-        VarType::Boolean => ctx.bool_type().as_basic_type_enum().into(),
-        other => panic!("{} is not a valid basic value", other),
+    let basic_vtype: Result<BasicTypeEnum, CompilerError> = match &vvt.vtype {
+        VarType::I8 | VarType::U8 => Ok(ctx.i8_type().as_basic_type_enum()),
+        VarType::I16 | VarType::U16 => Ok(ctx.i16_type().as_basic_type_enum()),
+        VarType::I32 | VarType::U32 => Ok(ctx.i32_type().as_basic_type_enum()),
+        VarType::I64 | VarType::U64 => Ok(ctx.i64_type().as_basic_type_enum()),
+        VarType::I128 | VarType::U128 => Ok(ctx.i128_type().as_basic_type_enum()),
+        VarType::F32 => Ok(ctx.f32_type().as_basic_type_enum()),
+        VarType::F64 => Ok(ctx.f64_type().as_basic_type_enum()),
+        VarType::Boolean => Ok(ctx.bool_type().as_basic_type_enum()),
+        VarType::String => Ok(ctx
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .as_basic_type_enum()),
+        other => Err(CompilerError {
+            reason: format!("{} is not a valid basic value", other),
+            span: None,
+        }),
     };
 
-    let mut final_type = basic_vtype.unwrap();
+    let mut final_type = basic_vtype?;
     for dim in vvt.array_dimensions.iter().rev() {
         final_type = final_type.array_type(*dim).as_basic_type_enum()
     }
@@ -43,93 +63,254 @@ pub fn convert_to_type_enum<'input, 'ctx>(
             .as_basic_type_enum()
     }
 
-    final_type
+    Ok(final_type)
 }
 
-pub fn declare_variable<'input, 'ctx>(
+pub fn declare_scoped_val<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_name: String,
-    value: ScopedVar<'ctx>,
-) {
-    if let Some(redeclared_var) = compiler.curr_scope_vars.remove(&var_name) {
-        // Var was already declared so we push it to the stack
-        // to recover it later
-        compiler
-            .scope_stack
-            .push(ScopeMarker::Var(var_name.clone(), Some(redeclared_var)))
-    } else {
-        // Var was not declared so we push it to the stack
-        // to delete it later
-        compiler
-            .scope_stack
-            .push(ScopeMarker::Var(var_name.clone(), None))
+    value: ScopedVal<'ctx>,
+    err_span: Option<SimpleSpan>,
+) -> Result<(), CompilerError> {
+    let curr_scope_mut = compiler.get_curr_scope_mut()?;
+    if curr_scope_mut.get(&var_name).is_some() {
+        return Err(CompilerError {
+            reason: format!(
+                "Cannot redeclare block-scoped variable or function '{}'.",
+                var_name
+            ),
+            span: err_span,
+        });
     }
 
-    compiler
-        .curr_scope_vars
-        .insert(var_name, ScopedVal::Var(value));
+    curr_scope_mut.insert(var_name, value);
+
+    Ok(())
 }
 
-pub fn codegen_top_block(compiler: &mut Compiler, top_block: TopBlock) {
+pub fn initialize_oob_message<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+) -> PointerValue<'ctx> {
+    compiler.err_msgs.out_of_bounds.unwrap_or_else(|| {
+        compiler
+            .builder
+            .build_global_string_ptr(
+                "Error: Index out of bounds, array of length %d was indexed with %d.",
+                "oob_err",
+            )
+            .as_pointer_value()
+    })
+}
+
+pub fn codegen_nostd_panic_fn<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    // TODO: Get this name from another place so it's not duplicated
+    let panic_fn =
+        compiler
+            .module
+            .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+
+    let entry_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
+    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "panic");
+
+    // Entry block
+    compiler.builder.position_at_end(entry_fn_bb);
+    compiler.builder.build_unconditional_branch(panic_fn_bb);
+
+    // Panic block
+    compiler.builder.position_at_end(panic_fn_bb);
+
+    let donothing_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    let donothing_fn = compiler
+        .module
+        .add_function("llvm.donothing", donothing_fn_ty, None);
+
+    compiler.builder.build_call(donothing_fn, &[], "nop");
+
+    // Infinite loop
+    compiler.builder.build_unconditional_branch(panic_fn_bb);
+
+    Ok(panic_fn)
+}
+
+pub fn add_function_to_module<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+    fn_name: &str,
+    fn_type: FunctionType<'ctx>,
+    linkage: Option<Linkage>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    if fn_name.starts_with("__yep_") {
+        return Err(CompilerError { reason: format!(
+            "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
+            "__yep_"
+        ), span: None });
+    }
+
+    let fun = if let Some(fun) = compiler.module.get_function(&fn_name) {
+        let line_one = format!(
+            "The function declaration of '{}' does not correspond with a previous existing one.",
+            fn_name
+        );
+        let line_two = "This might be because the extern'd function is a libc defined function.";
+        let line_three =
+            "The compiler internally links to some libc functions for run-time error handling.";
+
+        if fn_type != fun.get_type() {
+            return Err(CompilerError {
+                reason: format!("{}\n{}\n{}", line_one, line_two, line_three),
+                span: None,
+            });
+        }
+
+        fun
+    } else {
+        let fun = compiler.module.add_function(fn_name, fn_type, linkage);
+
+        fun
+    };
+
+    Ok(fun)
+}
+
+pub fn link_to_printf<'input, 'ctx>(
+    compiler: &Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    let bmt_i8ptr = compiler
+        .context
+        .i8_type()
+        .ptr_type(AddressSpace::default())
+        .as_basic_type_enum();
+    let printf_fn_ty = compiler
+        .context
+        .i32_type()
+        .fn_type(&[bmt_i8ptr.into()], true);
+
+    let printf_fn =
+        add_function_to_module(compiler, "printf", printf_fn_ty, Some(Linkage::External))?;
+
+    Ok(printf_fn)
+}
+
+pub fn codegen_libc_panic_fn<'input, 'ctx>(
+    compiler: &mut Compiler<'input, 'ctx>,
+) -> Result<FunctionValue<'ctx>, CompilerError> {
+    // TODO: This only works on environments with a libc
+    let bmt_i32 = convert_type_to_metadata(compiler.context.i32_type().as_basic_type_enum());
+    let exit_fn_ty = compiler.context.void_type().fn_type(&[bmt_i32], false);
+    let exit_fn = add_function_to_module(compiler, "exit", exit_fn_ty, Some(Linkage::External))?;
+
+    // TODO: This function should only be declared once on another module
+    let panic_fn_ty = compiler.context.void_type().fn_type(&[], false);
+    // TODO: Get this name from another place so it's not duplicated
+    let panic_fn =
+        compiler
+            .module
+            .add_function("__yep_panic_handler", panic_fn_ty, Some(Linkage::External));
+
+    let panic_fn_bb = compiler.context.append_basic_block(panic_fn, "entry");
+    compiler.builder.position_at_end(panic_fn_bb);
+
+    let exit_code =
+        BasicMetadataValueEnum::IntValue(compiler.context.i32_type().const_int(1, false));
+    // Exit program
+    compiler
+        .builder
+        .build_call(exit_fn, &[exit_code], "call_panic_exit");
+    compiler.builder.build_return(None);
+
+    Ok(panic_fn)
+}
+
+pub fn codegen_top_block(
+    compiler: &mut Compiler,
+    top_block: TopBlock,
+    yep_target: YepTarget,
+) -> Result<(), CompilerError> {
     let fn_type = compiler.context.i32_type().fn_type(&[], false);
     let fun = compiler
         .module
         .add_function(MAIN_FN_NAME, fn_type, Some(Linkage::External));
     let entry_basic_block = compiler.context.append_basic_block(fun, "entry");
-    compiler.builder.position_at_end(entry_basic_block);
     compiler.basic_block_stack.push(entry_basic_block);
 
-    // Codegen all statements
-    codegen_block(compiler, top_block.0, BlockType::GLOBAL);
+    let panic_fn = if yep_target.nostd {
+        codegen_nostd_panic_fn(compiler)
+    } else {
+        codegen_libc_panic_fn(compiler)
+    }?;
+    _ = compiler.panic_fn.insert(panic_fn);
 
-    let int_zero = compiler.context.i32_type().const_zero();
+    compiler.builder.position_at_end(entry_basic_block);
+    // Codegen all statements
+    codegen_block(compiler, top_block.0, BlockType::GLOBAL)?;
+
+    let main_ret_ty = compiler.context.i32_type();
+    let int_zero = main_ret_ty.const_zero();
     compiler.builder.build_return(Some(&int_zero));
+
+    Ok(())
 }
 
-pub fn codegen_block(compiler: &mut Compiler, block: Block, mut block_type: BlockType) {
-    // Entering a block means the block type is not global anymore
-    block_type.remove(BlockType::GLOBAL);
-    block_type.insert(BlockType::LOCAL);
+pub fn codegen_block(
+    compiler: &mut Compiler,
+    block: Block,
+    block_type: BlockType,
+) -> Result<(), CompilerError> {
+    // When we enter a block, we push a new variable scope
+    if block_type != BlockType::FUNC_LOCAL
+        && block_type != BlockType::FUNC_GLOBAL
+        && !block_type.contains(BlockType::FOR)
+    {
+        compiler.var_scopes.push(FxHashMap::default());
+    }
 
-    if !(block_type == BlockType::FUNC) {
-        compiler.scope_stack.push(ScopeMarker::ScopeBegin);
+    // Function forward-declaration
+    for fn_def in block.stmts.iter() {
+        match fn_def {
+            Stmt::FnDef(fn_def) => {
+                codegen_fn_decl(compiler, &fn_def.fn_signature, block_type)?;
+            }
+            _ => {}
+        };
     }
 
     for stmt in block.stmts {
-        codegen_stmt(compiler, stmt, block_type);
+        codegen_stmt(compiler, stmt, block_type)?;
     }
 
-    // Now we swap
-    while let Some(sm) = compiler.scope_stack.pop() {
-        // Scope has ended, exit loop
-        match sm {
-            ScopeMarker::ScopeBegin => break,
-            ScopeMarker::Var(id, Some(var_val)) => {
-                // Var existed before, we return it to it's previous value
-                compiler.curr_scope_vars.remove(&id);
-                compiler.curr_scope_vars.insert(id, var_val);
-            }
-            ScopeMarker::Var(id, None) => {
-                // Var didn't exist before, we just remove it from var map
-                compiler.curr_scope_vars.remove(&id);
-            }
-        }
+    // Then after we're done with it, we pop it
+    if !block_type.contains(BlockType::FOR) {
+        compiler.var_scopes.pop().ok_or(CompilerError {
+            reason: "ICE: Attempted to pop a scope when there are none left".to_string(),
+            span: None,
+        })?;
     }
+
+    Ok(())
 }
 
-pub fn codegen_stmt(compiler: &mut Compiler, stmt: Stmt, block_type: BlockType) {
+pub fn codegen_stmt(
+    compiler: &mut Compiler,
+    stmt: Stmt,
+    mut block_type: BlockType,
+) -> Result<(), CompilerError> {
     match stmt {
-        Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment),
-        Stmt::Expr(expr) => _ = codegen_rhs_expr(compiler, expr, None),
+        Stmt::Assignment(assignment) => codegen_assignment(compiler, assignment, block_type),
+        Stmt::Expr(expr) => codegen_rhs_expr(compiler, expr, None, block_type).map(|(_, _)| ()),
         Stmt::ClassDecl(_) => todo!(),
-        Stmt::FnDecl(fn_decl) => codegen_fn_decl(compiler, fn_decl, block_type),
+        Stmt::FnDef(fn_def) => codegen_fn_def(compiler, fn_def, block_type),
         Stmt::For(for_) => codegen_for(compiler, for_, block_type),
         Stmt::While(while_) => codegen_while(compiler, while_, block_type),
         Stmt::DoWhile(do_while) => codegen_do_while(compiler, do_while, block_type),
-        Stmt::If(if_) => {
-            codegen_if(compiler, if_, block_type);
+        Stmt::If(if_) => codegen_if(compiler, if_, block_type),
+        Stmt::Block(block) => {
+            // Entering a block means the block type is not global anymore
+            block_type.remove(BlockType::GLOBAL);
+            block_type.insert(BlockType::LOCAL);
+            codegen_block(compiler, block, block_type)
         }
-        Stmt::Block(block) => codegen_block(compiler, block, block_type),
         Stmt::VarDecl(var_decl) => codegen_var_decl(compiler, var_decl, block_type),
         Stmt::ExternDecl(extern_decl) => codegen_extern_decl(compiler, extern_decl),
         Stmt::Return(return_) => codegen_return(compiler, return_, block_type),
@@ -140,39 +321,92 @@ fn codegen_var_decl<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     var_decl: VarDecl,
     block_type: BlockType,
-) {
+) -> Result<(), CompilerError> {
+    let var_decl_span = var_decl.get_span();
+
     // TODO: Handle scope specifier
     for decl_as in var_decl.decl_assignments {
+        let decl_as_span = decl_as.get_span();
         // TODO: Handle destructures instead of only ids
         let id = match decl_as.destructure {
-            Destructure::Id(id) => id,
-            _ => panic!("Destructures are not supported yet"),
+            Destructure::Id(id) => {
+                if id.id_str.as_str() == "this" {
+                    return Err(CompilerError {
+                        reason: "'this' is a reserved keyword and can't be used as a variable name"
+                            .to_string(),
+                        span: Some(id.get_span()),
+                    });
+                }
+
+                id
+            }
+            _ => {
+                return Err(CompilerError {
+                    reason: "Destructures are not supported yet".to_string(),
+                    span: Some(decl_as.destructure.get_span()),
+                })
+            }
         };
 
         let initial_expr_val = decl_as.expr.map(|initial_expr| {
-            codegen_rhs_expr(compiler, initial_expr, decl_as.var_type.as_ref()).unwrap()
+            codegen_rhs_expr(
+                compiler,
+                initial_expr,
+                decl_as.var_type.as_ref().map(|svvt| &svvt.node),
+                block_type,
+            )
         });
+
         let (initial_val, inferred_var_type) = match initial_expr_val {
-            Some((bve, vvt)) => (Some(bve), Some(vvt)),
+            Some(Ok((bve, vvt))) => (Some(bve), Some(vvt)),
+            Some(Err(err)) => return Err(err),
             None => (None, None),
         };
 
         let type_;
-        let var_type;
+        let var_type: ValueVarType;
         if let Some(explicit_var_type) = decl_as.var_type {
-            type_ = convert_to_type_enum(compiler, &explicit_var_type);
-            var_type = explicit_var_type;
+            type_ = convert_to_type_enum(compiler, &explicit_var_type.node)?;
+
+            // Type checking
+            if let Some(ivt) = inferred_var_type && ivt != explicit_var_type.node {
+                return Err(CompilerError { reason: format!(
+                    "Can't assign a value of {} to a variable of type {}",
+                    ivt, explicit_var_type
+                ), span: Some(var_decl_span) });
+            }
+
+            var_type = explicit_var_type.node;
         } else if let Some(inferred_var_type) = inferred_var_type {
-            type_ = convert_to_type_enum(compiler, &inferred_var_type);
+            type_ = convert_to_type_enum(compiler, &inferred_var_type)?;
             var_type = inferred_var_type;
         } else {
-            panic!("Variables must have an explicit type or an initial value");
+            return Err(CompilerError {
+                reason: "Variables must have an explicit type or an initial value".to_string(),
+                span: Some(decl_as_span),
+            });
         }
 
+        // Global variable
         if matches!(block_type, BlockType::GLOBAL) {
-            let new_global = compiler.module.add_global(type_, None, &id.0);
+            if id.id_str.starts_with("__yep_") {
+                return Err(CompilerError { reason: format!(
+                    "The {} prefix is reserved for internal compiler use and not allowed in global variables or functions.",
+                    "__yep_"
+                ), span: Some(id.get_span()) });
+            }
+            let new_global = compiler.module.add_global(type_, None, &id.id_str);
 
             if let Some(initial_val) = initial_val {
+                // Return error if initial_val comes from an instruction
+                // That likely means that it's not constant
+                if let Some(_) = initial_val.as_instruction_value() {
+                    return Err(CompilerError {
+                        reason: "Initializer element is not a compile-time constant".to_string(),
+                        span: None,
+                    });
+                }
+
                 new_global.set_initializer(&initial_val);
             } else {
                 let default_value = type_.const_zero();
@@ -180,55 +414,124 @@ fn codegen_var_decl<'input, 'ctx>(
             }
 
             let global_ptr = new_global.as_pointer_value();
-            compiler.curr_scope_vars.insert(
-                id.0,
+
+            let id_span = id.get_span();
+            declare_scoped_val(
+                compiler,
+                id.id_str,
                 ScopedVal::Var(ScopedVar {
                     ptr_val: global_ptr,
                     var_type,
                 }),
-            );
+                Some(id_span),
+            )?;
 
-            return;
+            return Ok(());
         }
 
-        let new_local = compiler.builder.build_alloca(type_, &id.0);
+        let new_local = compiler.builder.build_alloca(type_, &id.id_str);
 
         if let Some(initial_val) = initial_val {
             compiler.builder.build_store(new_local, initial_val);
         }
 
-        declare_variable(
+        let id_span = id.get_span();
+        // Only applies to local variables
+        declare_scoped_val(
             compiler,
-            id.0,
-            ScopedVar {
+            id.id_str,
+            ScopedVal::Var(ScopedVar {
                 ptr_val: new_local,
                 var_type,
+            }),
+            Some(id_span),
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn codegen_assignment(
+    compiler: &Compiler,
+    assignment: Assignment,
+    block_type: BlockType,
+) -> Result<(), CompilerError> {
+    let assignment_span = assignment.get_span();
+    let (assignee_ptr, expected_type) =
+        codegen_lhs_expr(compiler, assignment.assignee_expr.clone(), None, block_type)?;
+
+    let new_val = if let Some(bop) = assignment.bop {
+        let bexpr = BExpr {
+            lhs: assignment.assignee_expr,
+            op: bop,
+            rhs: assignment.assigned_expr,
+        };
+
+        let (bop_val, bop_type) = codegen_bexpr(
+            compiler,
+            bexpr,
+            ExpectedExprType {
+                expected_lhs_type: Some(&expected_type),
+                expected_rhs_type: Some(&expected_type),
+                expected_ret_type: Some(&expected_type),
             },
-        );
-    }
+            block_type,
+        )?;
+
+        if expected_type != bop_type {
+            return Err(CompilerError {
+                reason: format!(
+                    "Invalid types, expected {} but got {}",
+                    expected_type, bop_type
+                ),
+                span: Some(assignment_span),
+            });
+        }
+
+        bop_val
+    } else {
+        let core_type = ValueVarType {
+            vtype: expected_type.vtype.clone(),
+            array_dimensions: VecDeque::new(),
+            pointer_nesting_level: 0,
+        };
+
+        let (new_val, new_val_type) = codegen_rhs_expr(
+            compiler,
+            assignment.assigned_expr,
+            Some(&core_type),
+            block_type,
+        )?;
+
+        if expected_type != new_val_type {
+            return Err(CompilerError {
+                reason: format!(
+                    "Invalid types, expected {} but got {}",
+                    expected_type, new_val_type
+                ),
+                span: Some(assignment_span),
+            });
+        }
+
+        new_val
+    };
+
+    compiler.builder.build_store(assignee_ptr, new_val);
+    Ok(())
 }
 
-pub fn codegen_assignment(compiler: &Compiler, assignment: Assignment) {
-    // TODO: The BOP doesn't work
-    if assignment.bop.is_some() {
-        panic!("Binary operators on assignments aren't supported yet");
-    }
-
-    let assignee_ptr = codegen_lhs_expr(compiler, assignment.assignee_expr, None).0;
-    let new_val = codegen_rhs_expr(compiler, assignment.assigned_expr, None).unwrap();
-
-    compiler.builder.build_store(assignee_ptr, new_val.0);
-}
-
-pub fn compile_to_x86<'input, 'ctx>(
+pub fn compile<'input, 'ctx>(
     compiler: &mut Compiler<'input, 'ctx>,
     top_block: TopBlock,
-    path: &str,
-    file_name: &str,
-) -> String {
-    Target::initialize_x86(&InitializationConfig::default());
-    let triple = TargetTriple::create("x86_64-pc-windows-msvc");
-    let target = Target::from_triple(&triple).unwrap();
+    path: String,
+    file_name: String,
+    yep_target: YepTarget,
+    compiler_args: CompilerArgs,
+) -> Result<String, CompilerError> {
+    Target::initialize_all(&InitializationConfig::default());
+
+    let triple = TargetTriple::create(&yep_target.target_triple);
+    let target = Target::from_triple(&triple).map_err(|err| err.to_string())?;
     let cpu = "generic";
     let features = "";
     let target_machine = target
@@ -243,32 +546,125 @@ pub fn compile_to_x86<'input, 'ctx>(
         .unwrap();
 
     compiler.module.set_triple(&triple);
-    compiler
-        .module
-        .set_data_layout(&target_machine.get_target_data().get_data_layout());
+    let data_layout = target_machine.get_target_data().get_data_layout();
+    compiler.module.set_data_layout(&data_layout);
+    _ = compiler.data_layout.insert(data_layout);
 
-    let _ = compiler.target_data.set(target_machine.get_target_data());
-    codegen_top_block(compiler, top_block);
+    codegen_top_block(compiler, top_block, yep_target)?;
 
-    let out_path = format!("{path}\\{file_name}");
-    compiler
-        .module
-        .print_to_file(&format!("{out_path}.ll"))
-        .unwrap();
-    target_machine
-        .write_to_file(
-            compiler.module,
-            FileType::Object,
-            Path::new(&format!("{out_path}.o")),
-        )
-        .unwrap();
-    target_machine
-        .write_to_file(
-            compiler.module,
-            FileType::Assembly,
-            Path::new(&format!("{out_path}.asm")),
-        )
-        .unwrap();
+    if compiler_args.lib_only {
+        unsafe {
+            compiler.module.get_function("main").unwrap().delete();
+        }
+    }
 
-    out_path
+    let out_path = Path::new(path.as_str());
+
+    if !compiler_args.skip_compile {
+        let out_file = &out_path.with_extension("o");
+
+        target_machine
+            .write_to_file(compiler.module, FileType::Object, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
+    }
+
+    if compiler_args.emit_llvm {
+        let out_file = &out_path.with_extension("ll");
+
+        compiler
+            .module
+            .print_to_file(out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
+    }
+
+    if compiler_args.emit_assembly {
+        let out_file = &out_path.with_extension("asm");
+
+        target_machine
+            .write_to_file(compiler.module, FileType::Assembly, out_file)
+            .map_err(|err| CompilerError {
+                reason: format!("Invalid out dir: {}", err),
+                span: None,
+            })?;
+    }
+
+    Ok(out_path.to_str().unwrap().to_string())
+}
+
+pub struct CompilerArgs {
+    pub skip_link: bool,
+    pub emit_llvm: bool,
+    pub emit_assembly: bool,
+    pub skip_compile: bool,
+    pub lib_only: bool,
+}
+
+pub fn compile_yep(
+    input: &'static str,
+    path: String,
+    out_name: String,
+    target: YepTarget,
+    compiler_args: CompilerArgs,
+) -> Result<(), CompilerError> {
+    let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
+
+    let context = Context::create();
+    let module = context.create_module("TODO_file_name");
+    let builder = context.create_builder();
+
+    let fpm = PassManager::create(&module);
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
+    fpm.add_gvn_pass();
+    fpm.add_cfg_simplification_pass();
+    fpm.add_basic_alias_analysis_pass();
+    fpm.add_promote_memory_to_register_pass();
+    fpm.add_instruction_combining_pass();
+    fpm.add_reassociate_pass();
+    fpm.initialize();
+
+    let mut compiler = Compiler {
+        builder: &builder,
+        module: &module,
+        context: &context,
+        fpm: &fpm,
+        var_scopes: Vec::new(),
+        basic_block_stack: Vec::new(),
+        curr_func_ret_val: None,
+        func_ret_val_stack: vec![],
+        data_layout: None,
+        panic_fn: None,
+        err_msgs: ErrorMessages {
+            out_of_bounds: None,
+        },
+    };
+
+    let skip_link = compiler_args.skip_link;
+    let lib_only = compiler_args.lib_only;
+
+    let out_obj = compile(
+        &mut compiler,
+        top_block,
+        path,
+        out_name,
+        target,
+        compiler_args,
+    )?;
+
+    let out_path = Path::new(out_obj.as_str());
+    let exe_path = out_path.with_extension("exe").to_str().unwrap().to_string();
+    let obj_path = out_path.with_extension("o").to_str().unwrap().to_string();
+
+    if !skip_link && !lib_only {
+        link_exe(exe_path, obj_path.clone())?;
+        fs::remove_file(obj_path).map_err(|_| "Could not remove .o file".to_string())?;
+    }
+
+    Ok(())
 }

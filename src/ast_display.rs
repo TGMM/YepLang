@@ -1,6 +1,7 @@
 use crate::{
-    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, VarType},
+    ast::{BOp, BoolUnaryOp, Id, ScopeSpecifier, ValueVarType, VarType},
     lexer::Token,
+    spanned_ast::SpannedAstNode,
 };
 use std::fmt;
 
@@ -37,12 +38,15 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Function => write!(f, "function"),
             Token::Extends => write!(f, "extends"),
             Token::Return => write!(f, "return"),
-            Token::BoolUnaryOp(op) => match op {
+            Token::BoolUnaryOp(op) => match op.node {
                 BoolUnaryOp::Not => write!(f, "!"),
             },
             Token::Dot => write!(f, "."),
             Token::Extern => write!(f, "extern"),
             Token::Spread => write!(f, "..."),
+            Token::At => write!(f, "@"),
+            Token::LlvmIr(_) => write!(f, "inline llvm"),
+            Token::As => write!(f, "as"),
         }
     }
 }
@@ -62,7 +66,9 @@ impl fmt::Display for BOp {
             Lt => write!(f, "<"),
             Lte => write!(f, "<="),
             Ne => write!(f, "!="),
-            Eq => write!(f, "=="),
+            CmpEq => write!(f, "=="),
+            And => write!(f, "&&"),
+            Or => write!(f, "||"),
         }
     }
 }
@@ -91,9 +97,27 @@ impl fmt::Display for VarType {
     }
 }
 
+impl fmt::Display for ValueVarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut output = String::new();
+
+        for _ in 0..self.pointer_nesting_level {
+            output += "*";
+        }
+
+        output += self.vtype.to_string().as_str();
+
+        for dim in self.array_dimensions.iter() {
+            output += format!("[{}]", dim).as_str();
+        }
+
+        write!(f, "{}", output)
+    }
+}
+
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.id_str)
     }
 }
 
@@ -104,5 +128,11 @@ impl fmt::Display for ScopeSpecifier {
             ScopeSpecifier::Const => write!(f, "const"),
             ScopeSpecifier::Let => write!(f, "let"),
         }
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for SpannedAstNode<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.fmt(f)
     }
 }
