@@ -1,7 +1,19 @@
-let x = true;
-let y = false;
-if(x && y) {
-    let a = 10;
-} else {
-    let b = 20;
+extern i32 printf(*i8, ...);
+extern i32 yscanf(*i8, ...);
+
+function fib(val: i32): i32 {
+    if(val < 1) {
+        return 0;
+    }
+    if(val < 2) {
+        return 1;
+    }
+    return fib(val - 2) + fib(val - 1);
+}
+
+{
+    let num: i32 = 0;
+    printf("Give me a number: \n" as *i8);
+    yscanf("%d" as *i8, &num);
+    printf("The fib of %d is %d" as *i8, num, fib(num));
 }

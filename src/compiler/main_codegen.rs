@@ -603,6 +603,7 @@ pub struct CompilerArgs {
     pub emit_assembly: bool,
     pub skip_compile: bool,
     pub lib_only: bool,
+    pub link_to_object: Option<Vec<String>>,
 }
 
 pub fn compile_yep(
@@ -610,7 +611,7 @@ pub fn compile_yep(
     path: String,
     out_name: String,
     target: YepTarget,
-    compiler_args: CompilerArgs,
+    mut compiler_args: CompilerArgs,
 ) -> Result<(), CompilerError> {
     let top_block = parse(input, "input.file").ok_or("Invalid code".to_string())?;
 
@@ -647,6 +648,7 @@ pub fn compile_yep(
 
     let skip_link = compiler_args.skip_link;
     let lib_only = compiler_args.lib_only;
+    let link_to_object = compiler_args.link_to_object.take();
 
     let out_obj = compile(
         &mut compiler,
@@ -662,7 +664,7 @@ pub fn compile_yep(
     let obj_path = out_path.with_extension("o").to_str().unwrap().to_string();
 
     if !skip_link && !lib_only {
-        link_exe(exe_path, obj_path.clone())?;
+        link_exe(exe_path, obj_path.clone(), link_to_object)?;
         fs::remove_file(obj_path).map_err(|_| "Could not remove .o file".to_string())?;
     }
 

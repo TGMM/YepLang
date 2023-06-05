@@ -32,6 +32,7 @@ macro_rules! compiler_test {
                 emit_assembly: false,
                 skip_compile: true,
                 lib_only: false,
+                link_to_object: None,
             };
             compile_yep(
                 input,
