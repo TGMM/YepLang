@@ -14,3 +14,4 @@ bitflags = "2.2.1"
 llvm-sys = { git = "https://github.com/TGMM/llvm-sys.rs", version = "160.1.0" }
 rustc-hash = "1.1.0"
 clap = { version = "4.3.1", features = ["derive"] }
+lld_rs = { git = "https://github.com/TGMM/lld-rs.git", version = "160.0.0" }

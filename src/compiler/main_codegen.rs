@@ -7,6 +7,7 @@ use super::{
         convert_type_to_metadata, BlockType, Compiler, CompilerError, ErrorMessages,
         ExpectedExprType, ScopedVal, ScopedVar, YepTarget,
     },
+    linker::link_exe,
 };
 use crate::{
     ast::{Assignment, BExpr, Block, Destructure, Stmt, TopBlock, ValueVarType, VarDecl, VarType},
@@ -24,7 +25,7 @@ use inkwell::{
     AddressSpace, OptimizationLevel,
 };
 use rustc_hash::FxHashMap;
-use std::{collections::VecDeque, path::Path};
+use std::{collections::VecDeque, fs, path::Path};
 
 const MAIN_FN_NAME: &str = "main";
 
@@ -637,7 +638,8 @@ pub fn compile_yep(
         },
     };
 
-    compile(
+    let skip_link = compiler_args.skip_link;
+    let out_obj = compile(
         &mut compiler,
         top_block,
         path,
@@ -645,6 +647,15 @@ pub fn compile_yep(
         target,
         compiler_args,
     )?;
+
+    let out_path = Path::new(out_obj.as_str());
+    let exe_path = out_path.with_extension("exe").to_str().unwrap().to_string();
+    let obj_path = out_path.with_extension("o").to_str().unwrap().to_string();
+
+    if !skip_link {
+        link_exe(exe_path, obj_path.clone())?;
+        fs::remove_file(obj_path).map_err(|_| "Could not remove .o file".to_string())?;
+    }
 
     Ok(())
 }
