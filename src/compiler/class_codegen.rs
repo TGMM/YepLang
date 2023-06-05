@@ -146,7 +146,7 @@ pub fn codegen_fn_decl<'input, 'ctx>(
     } else {
         convert_to_type_enum(compiler, &ret_type)?.fn_type(&param_types, false)
     };
-    let linkage = if matches!(block_type, BlockType::GLOBAL) {
+    let linkage = if block_type.contains(BlockType::GLOBAL) {
         Linkage::External
     } else {
         Linkage::Internal
