@@ -127,7 +127,6 @@ pub enum Token<'input> {
     #[token("<=", str_to_bop)]
     #[token("!=", str_to_bop)]
     #[token("==", str_to_bop)]
-    #[token("&&", str_to_bop)]
     #[token("||", str_to_bop)]
     BOp(SpannedAstNode<BOp>),
     #[token("=")]
@@ -182,6 +181,8 @@ pub enum Token<'input> {
     As,
     #[token("@", set_decorator_parsing)]
     At,
+    #[token("&")]
+    Ampersand,
     // Put a zero-width space here since it asks for something
     #[token("​", error_zero_width_char)]
     LlvmIr(&'input str),
