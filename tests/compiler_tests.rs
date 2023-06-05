@@ -35,7 +35,11 @@ macro_rules! compiler_test {
             };
             compile_yep(
                 input,
-                compiled_tests_dir.to_str().unwrap().to_string(),
+                compiled_tests_dir
+                    .join(test_name)
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
                 test_name.to_string(),
                 target,
                 compiler_args,
