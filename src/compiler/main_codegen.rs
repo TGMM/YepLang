@@ -249,16 +249,6 @@ pub fn codegen_top_block(
     let main_ret_ty = compiler.context.i32_type();
     let int_zero = main_ret_ty.const_zero();
 
-    println!(
-        "{}",
-        compiler
-            .builder
-            .get_insert_block()
-            .unwrap()
-            .get_name()
-            .to_str()
-            .unwrap()
-    );
     compiler.builder.build_return(Some(&int_zero));
 
     Ok(())
