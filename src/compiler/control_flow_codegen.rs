@@ -55,7 +55,10 @@ pub fn codegen_if(
     // Then
     compiler.builder.position_at_end(then_block);
     codegen_block(compiler, if_.if_block, block_type)?;
-    compiler.builder.build_unconditional_branch(merge_block);
+    // Only add branch instruction if we don't have one already
+    if parent_block.get_terminator().is_none() {
+        compiler.builder.build_unconditional_branch(merge_block);
+    }
 
     // Else ifs
     let else_ifs = if_.else_if;
