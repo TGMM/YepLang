@@ -298,16 +298,6 @@ pub fn codegen_llvm_fn(
         .module
         .get_function(&fn_name)
         .expect("Could not find LLVM inlined function");
-    declare_scoped_val(
-        compiler,
-        fn_name,
-        ScopedVal::Fn(ScopedFunc {
-            ptr_val: fn_ptr,
-            arg_types: arg_extypes,
-            ret_type,
-        }),
-        Some(fn_id_span),
-    )?;
 
     Ok(())
 }
@@ -331,7 +321,9 @@ pub fn codegen_native_fn(
     assert_eq!(fun.count_params() as usize, fn_signature.args.len());
 
     // Return check
-    if let Some(ref ret_type) = fn_signature.ret_type && !ret_type.node.is_void() {
+    if let Some(ref ret_type) = fn_signature.ret_type
+        && !ret_type.node.is_void()
+    {
         let has_return = fn_block
             .stmts
             .iter()
@@ -340,7 +332,10 @@ pub fn codegen_native_fn(
 
         if !has_return {
             let err = "Non-void functions must have at least 1 top-level (as in, not nested) return statement.";
-            return Err(CompilerError { reason: err.to_string(), span: Some(fn_block.get_span()) });
+            return Err(CompilerError {
+                reason: err.to_string(),
+                span: Some(fn_block.get_span()),
+            });
         }
     }
 
@@ -421,7 +416,8 @@ pub fn codegen_native_fn(
     // If the previous instruction is an unconditional branch, then we don't build another
     if let Some(instr) = prev_bb.get_last_instruction()
         && instr.get_opcode() == InstructionOpcode::Br
-    {} else {
+    {
+    } else {
         compiler.builder.build_unconditional_branch(ret_basic_block);
     }
 
